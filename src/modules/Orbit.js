@@ -57,7 +57,7 @@ export default class Orbit {
     groundStationPosition,
     startDate = dayjs().toDate(),
     endDate = dayjs(startDate).add(7, "day").toDate(),
-    minElevation = 10,
+    minElevation = 5,
     maxPasses = 50,
   ) {
     const groundStation = { ...groundStationPosition };

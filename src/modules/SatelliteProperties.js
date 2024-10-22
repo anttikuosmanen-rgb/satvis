@@ -302,8 +302,17 @@ export class SatelliteProperties {
     if (this.name.includes("SENTINEL-2")) {
       return 290;
     }
+    if (this.name.includes("SENTINEL-3")) {
+      return 740;
+    }
     if (this.name.includes("LANDSAT")) {
       return 185;
+    }
+    if (this.name.includes("FENGYUN")) {
+      return 2900;
+    }
+    if (this.name.includes("METOP")) {
+      return 2900;
     }
     return 200;
   }
