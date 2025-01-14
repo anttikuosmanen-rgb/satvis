@@ -18,6 +18,7 @@ export const useCesiumStore = defineStore("cesium", {
       url: "layers",
       serialize: (v) => v.join(","),
       deserialize: (v) => v.split(",").filter((e) => e),
+      valid: (v) => v.every((l) => ["Offline", "OfflineHighres", "ArcGis", "OSM", "Topo", "BlackMarble", "Tiles", "GOES-IR", "Nextrad"].includes(l.split("_")[0])),
       default: ["OfflineHighres"],
     }, {
       name: "terrainProvider",
