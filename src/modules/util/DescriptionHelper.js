@@ -31,7 +31,11 @@ export class DescriptionHelper {
     }, false);
   }
 
-  static renderDescription(time, name, position, passes, isGroundStation, tle) {
+  static renderSatelliteDescription(time, position, props) {
+    const name = props.name;
+    const passes = props.passes;
+    const tle = props.orbit.tle;
+    const julianDate = props.orbit.julianDate;
     const description = `
       <div class="ib">
         <h3>Position</h3>
@@ -41,8 +45,8 @@ export class DescriptionHelper {
               <th>Name</th>
               <th>Latitude</th>
               <th>Longitude</th>
-              ${isGroundStation ? "" : "<th>Altitude</th>"}
-              ${isGroundStation ? "" : "<th>Velocity</th>"}
+              <th>Altitude</th>
+              <th>Velocity</th>
             </tr>
           </thead>
           <tbody>
@@ -50,13 +54,39 @@ export class DescriptionHelper {
               <td>${name}</td>
               <td>${position.latitude.toFixed(2)}&deg</td>
               <td>${position.longitude.toFixed(2)}&deg</td>
-              ${isGroundStation ? "" : `<td>${(position.height / 1000).toFixed(2)} km</td>`}
-              ${isGroundStation ? "" : `<td>${position.velocity.toFixed(2)} km/s</td>`}
+              <td>${(position.height / 1000).toFixed(2)} km</td>
+              <td>${position.velocity.toFixed(2)} km/s</td>
             </tr>
           </tbody>
         </table>
-        ${this.renderPasses(passes, time, isGroundStation)}
-        ${typeof tle === "undefined" ? "" : this.renderTLE(tle)}
+        ${this.renderPasses(passes, time, false)}
+        ${this.renderTLE(tle, julianDate)}
+      </div>
+    `;
+    return description;
+  }
+
+  static renderGroundstationDescription(time, name, position, passes) {
+    const description = `
+      <div class="ib">
+        <h3>Position</h3>
+        <table class="ibt">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Latitude</th>
+              <th>Longitude</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>${name}</td>
+              <td>${position.latitude.toFixed(2)}&deg</td>
+              <td>${position.longitude.toFixed(2)}&deg</td>
+            </tr>
+          </tbody>
+        </table>
+        ${this.renderPasses(passes, time, true)}
       </div>
     `;
     return description;
@@ -130,9 +160,13 @@ export class DescriptionHelper {
     return html;
   }
 
-  static renderTLE(tle) {
+  static renderTLE(tle, julianDate) {
+    const julianDayNumber = Math.floor(julianDate);
+    const secondsOfDay = (julianDate - julianDayNumber) * 60 * 60 * 24;
+    const tleDate = new Cesium.JulianDate(julianDayNumber, secondsOfDay);
+    const formattedDate = dayjs.utc(tleDate).format("YYYY-MM-DD HH:mm:ss");
     const html = `
-      <h3>TLE</h3>
+      <h3>TLE (Epoch ${formattedDate})</h3>
       <div class="ib-code"><code>${tle.slice(1, 3).join("\n")}</code></div>`;
     return html;
   }

@@ -19,6 +19,10 @@ export default class Orbit {
     return this.satrec.error;
   }
 
+  get julianDate() {
+    return this.satrec.jdsatepoch
+  }
+
   get orbitalPeriod() {
     const meanMotionRad = this.satrec.no;
     const period = (2 * Math.PI) / meanMotionRad;

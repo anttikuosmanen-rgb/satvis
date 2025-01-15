@@ -34,7 +34,7 @@ export class GroundStationEntity extends CesiumComponentCollection {
   createDescription() {
     this.description = DescriptionHelper.cachedCallbackProperty((time) => {
       const passes = this.passes(time);
-      const content = DescriptionHelper.renderDescription(time, this.name, this.position, passes, true);
+      const content = DescriptionHelper.renderGroundstationDescription(time, this.name, this.position, passes);
       return content;
     });
   }
