@@ -6,12 +6,11 @@ import { DescriptionHelper } from "./util/DescriptionHelper";
 import icon from "../images/icons/dish.svg";
 
 export class GroundStationEntity extends CesiumComponentCollection {
-  constructor(viewer, sats, position) {
+  constructor(viewer, sats, position, givenName = "") {
     super(viewer);
     this.sats = sats;
-
-    this.name = "Ground station";
     this.position = position;
+    this.givenName = givenName;
 
     this.createEntities();
   }
@@ -39,6 +38,17 @@ export class GroundStationEntity extends CesiumComponentCollection {
     });
   }
 
+  get hasName() {
+    return this.givenName !== "";
+  }
+
+  get name() {
+    if (this.givenName) {
+      return this.givenName;
+    }
+    return `${this.position.latitude.toFixed(2)}°, ${this.position.longitude.toFixed(2)}°`;
+  }
+
   passes(time, deltaHours = 48) {
     let passes = [];
     // Aggregate passes from all visible satellites
@@ -49,6 +59,9 @@ export class GroundStationEntity extends CesiumComponentCollection {
 
     // Filter passes based on time
     passes = passes.filter((pass) => dayjs(pass.start).diff(time, "hours") < deltaHours);
+
+    // Filter passes based on groundstation
+    passes = passes.filter((pass) => pass.groundStationName === this.name);
 
     // Sort passes by time
     passes = passes.sort((a, b) => a.start - b.start);

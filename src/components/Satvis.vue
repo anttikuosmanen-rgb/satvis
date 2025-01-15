@@ -217,7 +217,7 @@ export default {
     ]),
     ...mapWritableState(useSatStore, [
       "enabledComponents",
-      "groundstation",
+      "groundStations",
     ]),
   },
   watch: {
@@ -261,12 +261,12 @@ export default {
       },
       deep: true,
     },
-    groundstation(newPosition, oldPosition) {
+    groundStations(newGroundStations, oldGroundStations) {
       // Ignore if new and old positions are identical
-      if (oldPosition && oldPosition[0] === newPosition[0] && oldPosition[1] === newPosition[1]) {
+      if (oldGroundStations.length === newGroundStations.length) {
         return;
       }
-      cc.setGroundStationFromLatLon(...newPosition);
+      cc.setGroundStations(newGroundStations);
     },
   },
   mounted() {

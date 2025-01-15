@@ -11,6 +11,8 @@ export class SatelliteManager {
 
   #enabledSatellites = [];
 
+  #groundStations = [];
+
   constructor(viewer) {
     this.viewer = viewer;
 
@@ -70,7 +72,7 @@ export class SatelliteManager {
       return;
     }
     if (this.groundStationAvailable) {
-      newSat.groundStation = this.groundStation.position;
+      newSat.groundStations = this.#groundStations;
     }
     this.satellites.push(newSat);
 
@@ -259,34 +261,44 @@ export class SatelliteManager {
   }
 
   get groundStationAvailable() {
-    return (typeof this.groundStation !== "undefined");
+    return this.#groundStations.length > 0;
   }
 
   focusGroundStation() {
     if (this.groundStationAvailable) {
-      this.groundStation.track();
+      this.#groundStations[0].track();
     }
   }
 
-  setGroundStation(position) {
-    if (this.groundStationAvailable) {
-      this.groundStation.hide();
-    }
+  createGroundstation(position, name) {
+    const groundStation = new GroundStationEntity(this.viewer, this, position, name);
+    groundStation.show();
+    return groundStation;
+  }
+
+  addGroundStation(position, name) {
     if (position.height < 1) {
       position.height = 0;
     }
+    const groundStation = this.createGroundstation(position, name);
+    this.groundStations = [...this.#groundStations, groundStation];
+  }
 
-    // Create groundstation entity
-    this.groundStation = new GroundStationEntity(this.viewer, this, position);
-    this.groundStation.show();
+  set groundStations(newGroundStations) {
+    this.#groundStations = newGroundStations;
 
     // Set groundstation for all satellites
     this.satellites.forEach((sat) => {
-      sat.groundStation = this.groundStation.position;
+      sat.groundStations = this.#groundStations;
     });
 
     // Update store for url state
     const satStore = useSatStore();
-    satStore.groundstation = [position.latitude, position.longitude];
+    // TODO Store all groundsations in url param with name
+    satStore.groundStations = this.#groundStations.map((gs) => ({
+      lat: gs.position.latitude,
+      lon: gs.position.longitude,
+      name: gs.hasName ? gs.name : undefined,
+    }));
   }
 }

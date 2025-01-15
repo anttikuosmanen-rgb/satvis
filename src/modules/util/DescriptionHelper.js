@@ -113,8 +113,8 @@ export class DescriptionHelper {
     }
     const upcomingPasses = passes.slice(upcomingPassIdx);
 
-    const showPassName = isGroundStation;
-    const htmlName = showPassName ? "<th>Name</th>\n" : "";
+    const passNameField = isGroundStation ? "name" : "groundStationName";
+    const htmlName = passNameField ? "<th>Name</th>\n" : "";
     const html = `
       <h3>Passes</h3>
       <table class="ibt">
@@ -129,14 +129,14 @@ export class DescriptionHelper {
           </tr>
         </thead>
         <tbody>
-          ${upcomingPasses.map((pass) => this.renderPass(start, pass, showPassName)).join("")}
+          ${upcomingPasses.map((pass) => this.renderPass(start, pass, passNameField)).join("")}
         </tbody>
       </table>
     `;
     return html;
   }
 
-  static renderPass(time, pass, showPassName) {
+  static renderPass(time, pass, passNameField = "name") {
     function pad2(num) {
       return String(num).padStart(2, "0");
     }
@@ -146,7 +146,7 @@ export class DescriptionHelper {
     } else if (dayjs(pass.start).diff(time) > 0) {
       countdown = `${pad2(dayjs(pass.start).diff(time, "days"))}:${pad2(dayjs(pass.start).diff(time, "hours") % 24)}:${pad2(dayjs(pass.start).diff(time, "minutes") % 60)}:${pad2(dayjs(pass.start).diff(time, "seconds") % 60)}`;
     }
-    const htmlName = showPassName ? `<td>${pass.name}</td>\n` : "";
+    const htmlName = passNameField ? `<td>${pass[passNameField]}</td>\n` : "";
     const html = `
       <tr>
         ${htmlName}

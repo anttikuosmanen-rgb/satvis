@@ -371,13 +371,13 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     this.createCesiumSatelliteEntity("Ground station link", "polyline", polyline);
   }
 
-  set groundStation(position) {
+  set groundStations(groundStations) {
     // No groundstation calculation for GEO satellites
     if (this.props.orbit.orbitalPeriod > 60 * 12) {
       return;
     }
 
-    this.props.groundStationPosition = position;
+    this.props.groundStations = groundStations;
     this.props.clearPasses();
     if (this.isSelected || this.isTracked) {
       this.props.updatePasses(this.viewer.clock.currentTime);

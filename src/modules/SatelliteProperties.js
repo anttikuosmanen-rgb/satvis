@@ -19,7 +19,7 @@ export class SatelliteProperties {
     this.satnum = this.orbit.satnum;
     this.tags = tags;
 
-    this.groundStationPosition = undefined;
+    this.groundStations = [];
     this.passes = [];
     this.passInterval = undefined;
     this.passIntervals = new Cesium.TimeIntervalCollection();
@@ -219,7 +219,7 @@ export class SatelliteProperties {
   }
 
   get groundStationAvailable() {
-    return (typeof this.groundStationPosition !== "undefined");
+    return this.groundStations.length > 0;
   }
 
   updatePasses(time) {
@@ -237,16 +237,23 @@ export class SatelliteProperties {
       stopPrediction: Cesium.JulianDate.addDays(time, 4, Cesium.JulianDate.clone(time)),
     };
 
-    const passes = this.orbit.computePassesElevation(
-      this.groundStationPosition,
-      Cesium.JulianDate.toDate(this.passInterval.start),
-      Cesium.JulianDate.toDate(this.passInterval.stopPrediction),
-    );
-    if (!passes) {
-      return false;
-    }
+    let allPasses = [];
+    this.groundStations.forEach((groundStation) => {
+      const passes = this.orbit.computePassesElevation(
+        groundStation.position,
+        Cesium.JulianDate.toDate(this.passInterval.start),
+        Cesium.JulianDate.toDate(this.passInterval.stopPrediction),
+      );
+      passes.forEach((pass) => {
+        pass.groundStationName = groundStation.name;
+      });
+      allPasses.push(...passes);
+    });
 
-    this.passes = passes;
+    // Sort passes by time
+    allPasses = allPasses.sort((a, b) => a.start - b.start);
+
+    this.passes = allPasses;
     this.computePassIntervals();
     return true;
   }

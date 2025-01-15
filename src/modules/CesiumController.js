@@ -349,7 +349,7 @@ export class CesiumController {
       coordinates.latitude = Cesium.Math.toDegrees(cartographicPosition.latitude);
       coordinates.height = Cesium.Math.toDegrees(cartographicPosition.height);
       coordinates.cartesian = cartesian;
-      this.sats.setGroundStation(coordinates);
+      this.sats.addGroundStation(coordinates);
       useCesiumStore().pickMode = false;
     }
   }
@@ -364,7 +364,7 @@ export class CesiumController {
       coordinates.latitude = position.coords.latitude;
       coordinates.height = position.coords.altitude;
       coordinates.cartesian = Cesium.Cartesian3.fromDegrees(coordinates.longitude, coordinates.latitude, coordinates.height);
-      this.sats.setGroundStation(coordinates);
+      this.sats.addGroundStation(coordinates, "Geolocation");
     });
   }
 
@@ -381,7 +381,27 @@ export class CesiumController {
     coordinates.latitude = lat;
     coordinates.height = height;
     coordinates.cartesian = Cesium.Cartesian3.fromDegrees(coordinates.longitude, coordinates.latitude, coordinates.height);
-    this.sats.setGroundStation(coordinates);
+    this.sats.addGroundStation(coordinates);
+  }
+
+  setGroundStations(groundStations) {
+    if (!groundStations && groundStations.length === 0) {
+      return;
+    }
+    const groundStationEntities = [];
+    groundStations.forEach((gs) => {
+      if (!gs.lat || !gs.lon) {
+        return;
+      }
+      const coordinates = {
+        longitude: gs.lon,
+        latitude: gs.lat,
+        height: 0,
+      };
+      coordinates.cartesian = Cesium.Cartesian3.fromDegrees(coordinates.longitude, coordinates.latitude, coordinates.height);
+      groundStationEntities.push(this.sats.createGroundstation(coordinates, gs.name));
+    });
+    this.sats.groundStations = groundStationEntities;
   }
 
   set showUI(enabled) {
