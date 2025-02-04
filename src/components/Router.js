@@ -6,7 +6,7 @@ export default createRouter({
   history: createWebHistory(document.location.pathname.match(".*/")[0]),
   routes: [
     { path: "/", component: Satvis },
-    { path: "/move.html", component: Satvis },
-    { path: "/ot.html", component: Satvis },
+    { path: "/ot.html", component: Satvis, alias: "/ot" },
+    { path: "/move.html", component: Satvis, alias: "/move" },
   ],
 });
