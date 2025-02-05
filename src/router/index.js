@@ -1,8 +1,8 @@
 import { createRouter, createWebHistory } from "vue-router";
 
-import Satvis from "./Satvis.vue";
+import Satvis from "../components/Satvis.vue";
 
-export default createRouter({
+export const router = createRouter({
   history: createWebHistory(document.location.pathname.match(".*/")[0]),
   routes: [
     { path: "/", component: Satvis },

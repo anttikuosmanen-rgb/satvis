@@ -12,7 +12,7 @@ import { faLayerGroup, faGlobeAfrica, faMobileAlt, faHammer, faEye } from "@fort
 import { faGithub } from "@fortawesome/free-brands-svg-icons";
 
 import App from "./App.vue";
-import router from "./components/Router";
+import { router } from "./router";
 import piniaUrlSync from "./modules/util/pinia-plugin-url-sync";
 import { CesiumController } from "./modules/CesiumController";
 
