@@ -32,10 +32,8 @@ export class DescriptionHelper {
   }
 
   static renderSatelliteDescription(time, position, props) {
-    const name = props.name;
-    const passes = props.passes;
-    const tle = props.orbit.tle;
-    const julianDate = props.orbit.julianDate;
+    const { name, passes, orbit } = props;
+    const { tle, julianDate } = orbit;
     const description = `
       <div class="ib">
         <h3>Position</h3>

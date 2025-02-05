@@ -20,7 +20,7 @@ export default class Orbit {
   }
 
   get julianDate() {
-    return this.satrec.jdsatepoch
+    return this.satrec.jdsatepoch;
   }
 
   get orbitalPeriod() {
