@@ -107,7 +107,9 @@ export class CesiumController {
         base: true,
       },
       ArcGis: {
-        create: () => Cesium.ArcGisMapServerImageryProvider.fromUrl("https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer"),
+        create: () => Cesium.ArcGisMapServerImageryProvider.fromUrl("https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer", {
+          enablePickFeatures: false,
+        }),
         alpha: 1,
         base: true,
       },
