@@ -1,12 +1,8 @@
 import * as Cesium from "@cesium/engine";
-import dayjs from "dayjs";
-import { useToast } from "vue-toastification";
 
 import Orbit from "./Orbit";
-import { PushManager } from "./util/PushManager";
 import "./util/CesiumSampledPositionRawValueAccess";
 
-import satvisIcon from "../assets/android-chrome-192x192.png";
 import { CesiumCallbackHelper } from "./util/CesiumCallbackHelper";
 
 export class SatelliteProperties {
@@ -23,9 +19,6 @@ export class SatelliteProperties {
     this.passes = [];
     this.passInterval = undefined;
     this.passIntervals = new Cesium.TimeIntervalCollection();
-    this.pm = new PushManager({
-      icon: satvisIcon,
-    });
   }
 
   hasTag(tag) {
@@ -274,28 +267,6 @@ export class SatelliteProperties {
       });
     });
     this.passIntervals = new Cesium.TimeIntervalCollection(passIntervalArray);
-  }
-
-  notifyPasses(aheadMin = 5) {
-    const toast = useToast();
-
-    if (!this.groundStationAvailable) {
-      toast.warning("Ground station required to notify for passes");
-      return;
-    }
-    const passes = this.orbit.computePassesElevation(this.groundStationPosition);
-    if (!passes) {
-      toast.info(`No passes for ${this.name}`);
-      return;
-    }
-
-    passes.forEach((pass) => {
-      const start = dayjs(pass.start).startOf("second");
-      this.pm.notifyAtDate(start.subtract(aheadMin, "minute"), `${pass.name} pass in ${aheadMin} minutes`);
-      this.pm.notifyAtDate(start, `${pass.name} pass starting now`);
-      // this.pm.notifyAtDate(dayjs().add(5, "second"), `${pass.name} test pass in ${aheadMin} minutes`);
-    });
-    toast.success(`Notifying for ${passes.length} passes of ${this.name}`);
   }
 
   get swath() {

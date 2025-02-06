@@ -5,8 +5,11 @@ import utc from "dayjs/plugin/utc";
 import * as Sentry from "@sentry/browser";
 import { icon } from "@fortawesome/fontawesome-svg-core";
 import { faBell, faInfo } from "@fortawesome/free-solid-svg-icons";
+import { useToast } from "vue-toastification";
+import satvisIcon from "../assets/android-chrome-192x192.png";
 
 import { DeviceDetect } from "./util/DeviceDetect";
+import { PushManager } from "./util/PushManager";
 import { CesiumPerformanceStats } from "./util/CesiumPerformanceStats";
 import { SatelliteManager } from "./SatelliteManager";
 import { useCesiumStore } from "../stores/cesium";
@@ -69,6 +72,10 @@ export class CesiumController {
 
     // Create Satellite Manager
     this.sats = new SatelliteManager(this.viewer);
+
+    this.pm = new PushManager({
+      icon: satvisIcon,
+    });
 
     // Add privacy policy to credits when not running in iframe
     if (!DeviceDetect.inIframe()) {
@@ -503,19 +510,37 @@ export class CesiumController {
       container.setAttribute("class", "cesium-infoBox-container");
       infoBox.insertBefore(container, close);
 
+      const notifyForPass = (pass, aheadMin = 5) => {
+        const start = dayjs(pass.start).startOf("second");
+        this.pm.notifyAtDate(start.subtract(aheadMin, "minute"), `${pass.name} pass in ${aheadMin} minutes`);
+        this.pm.notifyAtDate(start, `${pass.name} pass starting now`);
+        // this.pm.notifyAtDate(dayjs().add(5, "second"), `${pass.name} notification test`);
+      };
+
       // Notify button
       const notifyButton = document.createElement("button");
       notifyButton.setAttribute("type", "button");
       notifyButton.setAttribute("class", "cesium-button cesium-infoBox-custom");
       notifyButton.innerHTML = icon(faBell).html;
       notifyButton.addEventListener("click", () => {
-        if (this.sats.selectedSatellite) {
-          this.sats.getSatellite(this.sats.selectedSatellite).props.notifyPasses();
-        } else if (this.sats.groundStationAvailable && this.sats.groundStation.isSelected) {
-          this.sats.enabledSatellites.forEach((sat) => {
-            sat.props.notifyPasses();
-          });
+        let passes = [];
+        const toast = useToast();
+        if (!this.sats.groundStationAvailable) {
+          toast.warning("Ground station required to notify for passes");
+          return;
         }
+        const selectedGroundstation = this.sats.groundStations.find((gs) => gs.isSelected);
+        if (this.sats.selectedSatellite) {
+          passes = this.sats.getSatellite(this.sats.selectedSatellite).props.passes;
+        } else if (selectedGroundstation) {
+          passes = selectedGroundstation.passes(this.viewer.clock.currentTime);
+        }
+        if (!passes) {
+          toast.info(`No passes available`);
+          return;
+        }
+        passes.forEach((pass) => notifyForPass(pass));
+        toast.success(`Notifying for ${passes.length} passes`);
       });
       container.appendChild(notifyButton);
 

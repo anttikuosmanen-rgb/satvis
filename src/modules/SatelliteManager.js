@@ -138,20 +138,6 @@ export class SatelliteManager {
     return this.satellites.filter((sat) => sat.created);
   }
 
-  get monitoredSatellites() {
-    return this.satellites.filter((sat) => sat.props.pm.active).map((sat) => sat.props.name);
-  }
-
-  set monitoredSatellites(sats) {
-    this.satellites.forEach((sat) => {
-      if (sats.includes(sat.props.name)) {
-        sat.props.notifyPasses();
-      } else {
-        sat.props.pm.clearTimers();
-      }
-    });
-  }
-
   get satelliteNames() {
     return this.satellites.map((sat) => sat.props.name);
   }
@@ -282,6 +268,10 @@ export class SatelliteManager {
     }
     const groundStation = this.createGroundstation(position, name);
     this.groundStations = [...this.#groundStations, groundStation];
+  }
+
+  get groundStations() {
+    return this.#groundStations;
   }
 
   set groundStations(newGroundStations) {
