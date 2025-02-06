@@ -52,6 +52,11 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     } else if (name === "Orbit" && this.components[name] instanceof Cesium.GeometryInstance) {
       // Update the model matrix of the primitive containing all orbit geometries periodically to keep the orbit in the inertial frame
       if (!this.constructor.geometryPrimitiveUpdater) {
+        if (!this.components.Orbit) {
+          // Remove callback if orbit is disabled
+          this.geometryPrimitiveUpdater();
+          return;
+        }
         this.constructor.geometryPrimitiveUpdater = CesiumCallbackHelper.createPeriodicTimeCallback(this.viewer, 0.5, (time) => {
           const icrfToFixed = Cesium.Transforms.computeIcrfToFixedMatrix(time);
           if (Cesium.defined(icrfToFixed) && this.constructor.primitive) {
@@ -234,19 +239,27 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
   }
 
   createOrbit() {
-    if (this.isTracked) {
-      // Use a path graphic to visualize the currently tracked satellite's orbit
+    if (this.usePathGraphicForOrbit) {
       this.createOrbitPath();
     } else {
-      // For all other satellites use a polyline geometry to visualize the orbit for significantly improved performance.
-      // A polyline geometry is used instead of a polyline graphic as entities don't support adjusting the model matrix
-      // in order to display the orbit in the inertial frame.
       this.createOrbitPolylineGeometry();
     }
   }
 
   isCorrectOrbitComponent() {
-    return this.isTracked ? this.components.Orbit instanceof Cesium.Entity : this.components.Orbit instanceof Cesium.Primitive;
+    return this.usePathGraphicForOrbit ? this.components.Orbit instanceof Cesium.Entity : this.components.Orbit instanceof Cesium.Primitive;
+  }
+
+  get usePathGraphicForOrbit() {
+    const sceneModeSupportsPrimitive = this.viewer.scene.mode === Cesium.SceneMode.SCENE3D;
+    if (this.isTracked || !sceneModeSupportsPrimitive) {
+      // Use a path graphic to visualize the currently tracked satellite's orbit or when the scene mode doesn't support primitive modelmatrix updates
+      return true;
+    }
+    // For all other satellites use a polyline geometry to visualize the orbit for significantly improved performance.
+    // A polyline geometry is used instead of a polyline graphic as entities don't support adjusting the model matrix
+    // in order to display the orbit in the inertial frame.
+    return false;
   }
 
   createOrbitPath() {

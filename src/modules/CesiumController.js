@@ -57,7 +57,7 @@ export class CesiumController {
     // this.viewer.scene.postRender.addEventListener((scene) => {
     //   console.log(this.FrameRateMonitor.lastFramesPerSecond)
     // });
-    // this.enablePerformanceLogger(true);
+    // this.performanceStats = new CesiumPerformanceStats(this.viewer.scene, true);
 
     // Export CesiumController for debugger
     window.cc = this;
@@ -264,18 +264,20 @@ export class CesiumController {
   }
 
   set sceneMode(sceneMode) {
-    switch (sceneMode) {
-      case "3D":
-        this.viewer.scene.morphTo3D();
-        break;
-      case "2D":
-        this.viewer.scene.morphTo2D();
-        break;
-      case "Columbus":
-        this.viewer.scene.morphToColumbusView();
-        break;
-      default:
-        console.error("Unknown scene mode");
+    if (sceneMode === "3D") {
+      this.viewer.scene.morphTo3D();
+      return;
+    }
+    if (this.sats.enabledComponents.includes("Orbit")) {
+      useToast().warning("Disable the Orbit satellite element for 2D mode");
+      return;
+    }
+    if (sceneMode === "2D") {
+      this.viewer.scene.morphTo2D();
+      return;
+    }
+    if (sceneMode === "Columbus") {
+      this.viewer.scene.morphToColumbusView();
     }
   }
 
