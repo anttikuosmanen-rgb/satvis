@@ -30,18 +30,22 @@ export default class Orbit {
   }
 
   positionECI(time) {
-    return satellitejs.propagate(this.satrec, time).position;
+    const result = satellitejs.propagate(this.satrec, time);
+    return result ? result.position : null;
   }
 
   positionECF(time) {
     const positionEci = this.positionECI(time);
+    if (!positionEci) return null;
     const gmst = satellitejs.gstime(time);
     const positionEcf = satellitejs.eciToEcf(positionEci, gmst);
     return positionEcf;
   }
 
   positionGeodetic(timestamp, calculateVelocity = false) {
-    const { position: positionEci, velocity: velocityVector } = satellitejs.propagate(this.satrec, timestamp);
+    const result = satellitejs.propagate(this.satrec, timestamp);
+    if (!result) return null;
+    const { position: positionEci, velocity: velocityVector } = result;
     const gmst = satellitejs.gstime(timestamp);
     const positionGd = satellitejs.eciToGeodetic(positionEci, gmst);
 
