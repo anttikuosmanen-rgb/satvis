@@ -27,6 +27,7 @@
     "@fortawesome/vue-fontawesome": "^3.0.8",
     "@primevue/themes": "^4.2.5",
     "@sentry/browser": "^9.40.0",
+    "astronomy-engine": "^2.1.19",
     "cesium": "^1.126.0",
     "cesium-sensor-volumes": "github:Flowm/cesium-sensor-volumes#1.102.0",
     "dayjs": "^1.11.13",
