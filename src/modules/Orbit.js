@@ -1,16 +1,9 @@
 import * as satellitejs from "satellite.js";
 import dayjs from "dayjs";
-import * as SunCalc from "../../suncalc/suncalc.js";
+import { GroundStationConditions } from "./util/GroundStationConditions.js";
 
 const deg2rad = Math.PI / 180;
 const rad2deg = 180 / Math.PI;
-
-// Helper function to determine if ground station is in darkness
-function isGroundStationInDarkness(groundStationPosition, time) {
-  const sunPosition = SunCalc.getPosition(time, groundStationPosition.latitude, groundStationPosition.longitude);
-  // Sun altitude below -6 degrees indicates civil twilight (darkness for visual observation)
-  return sunPosition.altitude < (-6 * deg2rad);
-}
 
 export default class Orbit {
   constructor(name, tle) {
@@ -109,7 +102,7 @@ export default class Orbit {
             azimuthStart: lookAngles.azimuth,
             maxElevation: elevation,
             azimuthApex: lookAngles.azimuth,
-            groundStationDarkAtStart: isGroundStationInDarkness(originalGroundStation, date),
+            groundStationDarkAtStart: GroundStationConditions.isInDarkness(originalGroundStation, date),
           };
           ongoingPass = true;
         } else if (elevation > pass.maxElevation) {
@@ -125,7 +118,7 @@ export default class Orbit {
         pass.end = date.getTime();
         pass.duration = pass.end - pass.start;
         pass.azimuthEnd = lookAngles.azimuth;
-        pass.groundStationDarkAtEnd = isGroundStationInDarkness(originalGroundStation, date);
+        pass.groundStationDarkAtEnd = GroundStationConditions.isInDarkness(originalGroundStation, date);
         // Convert azimuth angles from radians to degrees
         pass.azimuthStart /= deg2rad;
         pass.azimuthApex /= deg2rad;
