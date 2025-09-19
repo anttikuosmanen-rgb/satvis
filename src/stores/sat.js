@@ -10,6 +10,7 @@ export const useSatStore = defineStore("sat", {
     groundStations: [],
     trackedSatellite: "",
     hideSunlightPasses: true,
+    showOnlyLitPasses: true,
   }),
   urlsync: {
     enabled: true,
@@ -50,7 +51,13 @@ export const useSatStore = defineStore("sat", {
       default: "",
     }, {
       name: "hideSunlightPasses",
-      url: "hideLight",
+      url: "hideSunlight",
+      serialize: (v) => v ? "1" : "0",
+      deserialize: (v) => v === "1",
+      default: true,
+    }, {
+      name: "showOnlyLitPasses",
+      url: "onlyLit",
       serialize: (v) => v ? "1" : "0",
       deserialize: (v) => v === "1",
       default: true,

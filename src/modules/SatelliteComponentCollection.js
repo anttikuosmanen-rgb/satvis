@@ -14,6 +14,10 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     this.eventListeners = {};
   }
 
+  disableComponent(name) {
+    super.disableComponent(name);
+  }
+
   enableComponent(name) {
     if (!this.created) {
       this.init();
@@ -318,12 +322,27 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
   }
 
   createOrbitTrack(leadTime = this.props.orbit.orbitalPeriod * 60, trailTime = 0) {
+    // Create dynamic material that changes color based on eclipse status
+    const dynamicMaterial = new Cesium.ColorMaterialProperty(
+      new Cesium.CallbackProperty((time) => {
+        try {
+          const isEclipsed = this.props.orbit.isInEclipse(Cesium.JulianDate.toDate(time));
+          return isEclipsed
+            ? Cesium.Color.DARKRED.withAlpha(0.4)  // Dark red for eclipsed portions
+            : Cesium.Color.GOLD.withAlpha(0.8);    // Bright gold for sunlit portions
+        } catch (error) {
+          // Fallback to gold if eclipse calculation fails
+          return Cesium.Color.GOLD.withAlpha(0.4);
+        }
+      }, false)
+    );
+
     const path = new Cesium.PathGraphics({
       leadTime,
       trailTime,
-      material: Cesium.Color.GOLD.withAlpha(0.15),
-      resolution: 600,
-      width: 2,
+      material: dynamicMaterial,
+      resolution: 300, // Reduced resolution for better performance with dynamic material
+      width: 3, // Slightly wider to make color changes more visible
     });
     this.createCesiumSatelliteEntity("Orbit track", "path", path);
   }

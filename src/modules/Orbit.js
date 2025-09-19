@@ -98,13 +98,13 @@ export default class Orbit {
         if (!ongoingPass) {
           // Start of new pass - record initial conditions
           pass = {
-            name: this.name,
             start: date.getTime(),
             azimuthStart: lookAngles.azimuth,
             maxElevation: elevation,
             azimuthApex: lookAngles.azimuth,
             groundStationDarkAtStart: GroundStationConditions.isInDarkness(originalGroundStation, date),
             satelliteEclipsedAtStart: this.isInEclipse(date),
+            name: this.name,
           };
           ongoingPass = true;
         } else if (elevation > pass.maxElevation) {
@@ -189,17 +189,20 @@ export default class Orbit {
         z: satEci.z
       };
 
-      // Get Sun's position using astronomy-engine
+      // Get Sun's position using astronomy-engine in proper geocentric coordinates
       const astroTime = new Astronomy.AstroTime(date);
-      const sunEcl = Astronomy.SunPosition(astroTime);
 
-      // Convert Sun's ecliptic coordinates to rectangular coordinates
-      // Sun distance in AU, convert to km
-      const sunDistanceKm = 149597870.7; // 1 AU in km
+      // Use GeoVector to get Sun position in geocentric equatorial coordinates
+      // This gives us the Sun's position relative to Earth's center in the same
+      // coordinate system as our satellite ECI coordinates
+      const sunGeoVector = Astronomy.GeoVector(Astronomy.Body.Sun, astroTime, false);
+
+      // Convert to km (astronomy-engine uses AU)
+      const auToKm = 149597870.7;
       const sunPos = {
-        x: sunDistanceKm * Math.cos(sunEcl.elon * deg2rad) * Math.cos(sunEcl.elat * deg2rad),
-        y: sunDistanceKm * Math.sin(sunEcl.elon * deg2rad) * Math.cos(sunEcl.elat * deg2rad),
-        z: sunDistanceKm * Math.sin(sunEcl.elat * deg2rad)
+        x: sunGeoVector.x * auToKm,
+        y: sunGeoVector.y * auToKm,
+        z: sunGeoVector.z * auToKm
       };
 
       // Earth radius in km
@@ -243,9 +246,9 @@ export default class Orbit {
     const dotProduct = sunToSat.x * sunToEarth.x + sunToSat.y * sunToEarth.y + sunToSat.z * sunToEarth.z;
     const projection = dotProduct / sunToEarthMag;
 
-    // Check if satellite is on the night side of Earth
+    // Check if satellite is on the day side of Earth (between Sun and Earth)
     if (projection < 0) {
-      return false; // Satellite is on day side
+      return false; // Satellite is on day side (between Sun and Earth), cannot be in shadow
     }
 
     // Calculate perpendicular distance from satellite to Sun-Earth line

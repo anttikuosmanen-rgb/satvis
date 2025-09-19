@@ -65,6 +65,11 @@
           <span class="slider"></span>
           Hide passes in daylight
         </label>
+        <label class="toolbarSwitch">
+          <input v-model="showOnlyLitPasses" type="checkbox">
+          <span class="slider"></span>
+          Show only lit satellites
+        </label>
       </div>
       <div v-show="menu.passes" class="toolbarSwitches">
         <div class="toolbarTitle">
@@ -106,6 +111,13 @@
                   <span v-if="pass.eclipseTransitions && pass.eclipseTransitions.length > 0" class="transitionInfo">
                     ({{ pass.eclipseTransitions.length }} transition{{ pass.eclipseTransitions.length > 1 ? 's' : '' }})
                   </span>
+                </div>
+                <div v-if="pass.eclipseTransitions && pass.eclipseTransitions.length > 0" class="transitionTimes">
+                  <div v-for="(transition, index) in pass.eclipseTransitions" :key="index" class="transitionTime">
+                    <span class="transitionIcon">{{ transition.toShadow ? '🌑' : '☀️' }}</span>
+                    <span class="transitionLabel">{{ formatTime(transition.time) }}</span>
+                    <span class="transitionDescription">{{ transition.toShadow ? 'enters eclipse' : 'exits eclipse' }}</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -274,6 +286,7 @@ export default {
       "enabledComponents",
       "groundStations",
       "hideSunlightPasses",
+      "showOnlyLitPasses",
     ]),
     selectedSatellitePasses() {
       if (!this.cc?.sats?.selectedSatellite) {
@@ -282,11 +295,23 @@ export default {
       const satellite = this.cc.sats.getSatellite(this.cc.sats.selectedSatellite);
       let passes = satellite?.props?.passes || [];
 
-      // Filter out passes in sunlight if option is enabled
+      // Filter passes based on ground station lighting conditions
       if (this.hideSunlightPasses) {
         passes = passes.filter(pass => {
-          // Show pass if either start or end is in darkness
+          // Show pass if ground station is in darkness at start or end
           return pass.groundStationDarkAtStart || pass.groundStationDarkAtEnd;
+        });
+      }
+
+      // Filter passes based on satellite lighting conditions
+      if (this.showOnlyLitPasses) {
+        passes = passes.filter(pass => {
+          // Show pass if satellite is lit (not eclipsed) at some point during the pass
+          // If start/end eclipse states are different, satellite transitions during pass
+          // If both are false (not eclipsed), satellite is lit throughout
+          // If satellite has transitions, it means it goes from eclipse to sunlight or vice versa
+          return !pass.satelliteEclipsedAtStart || !pass.satelliteEclipsedAtEnd ||
+                 (pass.eclipseTransitions && pass.eclipseTransitions.length > 0);
         });
       }
 
@@ -364,7 +389,7 @@ export default {
     },
     formatDate(timestamp) {
       const date = new Date(timestamp);
-      return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+      return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
     },
     formatDuration(duration) {
       const minutes = Math.floor(duration / 60000);
@@ -375,6 +400,10 @@ export default {
       const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
       const index = Math.round(azimuth / 45) % 8;
       return `${azimuth.toFixed(0)}° (${directions[index]})`;
+    },
+    formatTime(timestamp) {
+      const date = new Date(timestamp);
+      return date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
     },
   },
 };
@@ -469,6 +498,42 @@ export default {
   font-size: 9px;
   color: #95a5a6;
   font-style: italic;
+}
+
+.transitionTimes {
+  margin-top: 6px;
+  padding: 4px 6px;
+  background-color: rgba(52, 73, 94, 0.3);
+  border-radius: 4px;
+  border-left: 3px solid #3498db;
+}
+
+.transitionTime {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+  font-size: 10px;
+}
+
+.transitionTime:last-child {
+  margin-bottom: 0;
+}
+
+.transitionIcon {
+  font-size: 12px;
+  min-width: 16px;
+}
+
+.transitionLabel {
+  font-weight: bold;
+  color: #ecf0f1;
+  min-width: 60px;
+}
+
+.transitionDescription {
+  color: #bdc3c7;
+  font-size: 9px;
 }
 
 .toolbarText {
