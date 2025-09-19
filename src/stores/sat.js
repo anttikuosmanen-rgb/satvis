@@ -10,6 +10,7 @@ export const useSatStore = defineStore("sat", {
     groundStations: [],
     trackedSatellite: "",
     overpassMode: "elevation",
+    hideSunlightPasses: true,
   }),
   urlsync: {
     enabled: true,
@@ -71,6 +72,13 @@ export const useSatStore = defineStore("sat", {
         name: "overpassMode",
         url: "overpass",
         default: "elevation",
+      },
+      {
+        name: "hideSunlightPasses",
+        url: "hideLight",
+        serialize: (v) => (v ? "1" : "0"),
+        deserialize: (v) => v === "1",
+        default: true,
       },
     ],
   },
