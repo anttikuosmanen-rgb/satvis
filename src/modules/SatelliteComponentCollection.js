@@ -136,6 +136,17 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       if (this.isSelected) {
         this.props.updatePasses(this.viewer.clock.currentTime);
         CesiumTimelineHelper.updateHighlightRanges(this.viewer, this.props.passes);
+
+        // Update Pass arc component if it exists
+        if ("Pass arc" in this.components) {
+          this.disableComponent("Pass arc");
+          this.enableComponent("Pass arc");
+        }
+      } else {
+        // Disable Pass arc when satellite is not selected
+        if ("Pass arc" in this.components) {
+          this.disableComponent("Pass arc");
+        }
       }
     });
 
@@ -215,6 +226,9 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
         break;
       case "Ground station link":
         this.createGroundStationLink();
+        break;
+      case "Pass arc":
+        this.createPassArc();
         break;
       default:
         console.error("Unknown component");
@@ -356,25 +370,12 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
   }
 
   createOrbitTrack(leadTime = this.props.orbit.orbitalPeriod * 60, trailTime = 0) {
-    // Create dynamic material that changes color based on eclipse status
-    const dynamicMaterial = new CallbackProperty((time) => {
-      try {
-        const isEclipsed = this.props.orbit.isInEclipse(JulianDate.toDate(time));
-        return isEclipsed
-          ? Color.DARKRED.withAlpha(0.4)  // Dark red for eclipsed portions
-          : Color.GOLD.withAlpha(0.8);    // Bright gold for sunlit portions
-      } catch (error) {
-        // Fallback to gold if eclipse calculation fails
-        return Color.GOLD.withAlpha(0.4);
-      }
-    }, false);
-
     const path = new PathGraphics({
       leadTime,
       trailTime,
-      material: dynamicMaterial,
-      resolution: 300, // Reduced resolution for better performance with dynamic material
-      width: 3, // Slightly wider to make color changes more visible
+      material: Color.GOLD.withAlpha(0.15),
+      resolution: 600,
+      width: 2,
     });
     this.createCesiumSatelliteEntity("Orbit track", "path", path);
   }
@@ -433,6 +434,62 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       width: 5,
     });
     this.createCesiumSatelliteEntity("Ground station link", "polyline", polyline);
+  }
+
+  createPassArc() {
+    if (!this.props.groundStationAvailable || !this.isSelected) {
+      return;
+    }
+
+    // Find current pass
+    const getCurrentPass = (time) => {
+      const currentTime = new Date(JulianDate.toDate(time));
+      return this.props.passes.find(pass => {
+        const passStart = new Date(pass.start);
+        const passEnd = new Date(pass.end);
+        return currentTime >= passStart && currentTime <= passEnd;
+      });
+    };
+
+    // Create dynamic material that changes color based on eclipse status
+    const dynamicMaterial = new CallbackProperty((time) => {
+      try {
+        const isEclipsed = this.props.orbit.isInEclipse(JulianDate.toDate(time));
+        return isEclipsed
+          ? Color.DARKRED.withAlpha(0.8)  // Dark red for eclipsed portions
+          : Color.CYAN.withAlpha(0.9);    // Bright cyan for sunlit portions during pass
+      } catch (error) {
+        // Fallback to cyan if eclipse calculation fails
+        return Color.CYAN.withAlpha(0.8);
+      }
+    }, false);
+
+    const path = new PathGraphics({
+      leadTime: new CallbackProperty((time) => {
+        const currentPass = getCurrentPass(time);
+        if (!currentPass) return 0;
+
+        const currentTime = JulianDate.toDate(time);
+        const passEnd = new Date(currentPass.end);
+        return Math.max(0, (passEnd.getTime() - currentTime.getTime()) / 1000);
+      }, false),
+      trailTime: new CallbackProperty((time) => {
+        const currentPass = getCurrentPass(time);
+        if (!currentPass) return 0;
+
+        const currentTime = JulianDate.toDate(time);
+        const passStart = new Date(currentPass.start);
+        return Math.max(0, (currentTime.getTime() - passStart.getTime()) / 1000);
+      }, false),
+      material: dynamicMaterial,
+      resolution: 120, // Higher resolution for more detailed pass arc
+      width: 4, // Wider to make it stand out
+      show: new CallbackProperty((time) => {
+        // Only show when satellite is selected and during a pass
+        return this.isSelected && this.props.passIntervals.contains(time);
+      }, false),
+    });
+    this.createCesiumSatelliteEntity("Pass arc", "path", path);
   }
 
   set groundStations(groundStations) {
