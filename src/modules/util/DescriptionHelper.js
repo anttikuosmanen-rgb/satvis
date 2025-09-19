@@ -124,6 +124,7 @@ export class DescriptionHelper {
             <th>End</th>
             <th>El</th>
             <th>Az</th>
+            <th>Conditions</th>
           </tr>
         </thead>
         <tbody>
@@ -144,6 +145,26 @@ export class DescriptionHelper {
     } else if (dayjs(pass.start).diff(time) > 0) {
       countdown = `${pad2(dayjs(pass.start).diff(time, "days"))}:${pad2(dayjs(pass.start).diff(time, "hours") % 24)}:${pad2(dayjs(pass.start).diff(time, "minutes") % 60)}:${pad2(dayjs(pass.start).diff(time, "seconds") % 60)}`;
     }
+
+    // Generate ground station lighting conditions display
+    let conditionsHtml = "";
+    if (pass.groundStationDarkAtStart !== undefined && pass.groundStationDarkAtEnd !== undefined) {
+      const startCondition = pass.groundStationDarkAtStart ? "🌙" : "☀️";
+      const endCondition = pass.groundStationDarkAtEnd ? "🌙" : "☀️";
+      const startText = pass.groundStationDarkAtStart ? "Dark" : "Light";
+      const endText = pass.groundStationDarkAtEnd ? "Dark" : "Light";
+
+      if (pass.groundStationDarkAtStart === pass.groundStationDarkAtEnd) {
+        // Same condition throughout pass
+        conditionsHtml = `<span title="Ground station lighting: ${startText} throughout pass">${startCondition} ${startText}</span>`;
+      } else {
+        // Different conditions at start and end
+        conditionsHtml = `<span title="Ground station lighting: ${startText} → ${endText}">${startCondition}→${endCondition}</span>`;
+      }
+    } else {
+      conditionsHtml = "—";
+    }
+
     const htmlName = passNameField ? `<td>${pass[passNameField]}</td>\n` : "";
     const html = `
       <tr>
@@ -153,6 +174,7 @@ export class DescriptionHelper {
         <td>${dayjs.utc(pass.end).format("HH:mm:ss")}</td>
         <td class="ibt-right">${pass.maxElevation.toFixed(0)}&deg</td>
         <td class="ibt-right">${pass.azimuthApex.toFixed(2)}&deg</td>
+        <td class="ibt-center">${conditionsHtml}</td>
       </tr>
     `;
     return html;
