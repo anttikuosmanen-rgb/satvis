@@ -36,6 +36,19 @@ export class DescriptionHelper {
   static renderSatelliteDescription(time, position, props) {
     const { name, passes, orbit, overpassMode } = props;
     const { tle, julianDate } = orbit;
+
+    // Get current eclipse status if orbit object is available
+    let eclipseStatus = "—";
+    if (orbit && typeof orbit.isInEclipse === 'function') {
+      try {
+        const isEclipsed = orbit.isInEclipse(new Date(time));
+        eclipseStatus = isEclipsed ? "🌑 Eclipse" : "☀️ Sunlit";
+      } catch (error) {
+        console.warn("Failed to get eclipse status:", error);
+        eclipseStatus = "—";
+      }
+    }
+
     const description = `
       <div class="ib">
         <h3>Position</h3>
@@ -47,6 +60,7 @@ export class DescriptionHelper {
               <th>Longitude</th>
               <th>Altitude</th>
               <th>Velocity</th>
+              <th>Illumination</th>
             </tr>
           </thead>
           <tbody>
@@ -56,6 +70,7 @@ export class DescriptionHelper {
               <td>${position.longitude.toFixed(2)}&deg</td>
               <td>${(position.height / 1000).toFixed(2)} km</td>
               <td>${position.velocity.toFixed(2)} km/s</td>
+              <td class="ibt-center" title="Current satellite illumination status">${eclipseStatus}</td>
             </tr>
           </tbody>
         </table>
@@ -152,7 +167,8 @@ export class DescriptionHelper {
             <th>End</th>
             <th>${overpassMode === "elevation" ? "El" : "Dist"}</th>
             <th>${overpassMode === "elevation" ? "Az" : "Swath"}</th>
-            <th>Conditions</th>
+            <th>Ground</th>
+            <th>Satellite</th>
           </tr>
         </thead>
         <tbody>
@@ -175,7 +191,7 @@ export class DescriptionHelper {
     }
 
     // Generate ground station lighting conditions display
-    let conditionsHtml = "";
+    let groundConditionsHtml = "";
     if (pass.groundStationDarkAtStart !== undefined && pass.groundStationDarkAtEnd !== undefined) {
       const startCondition = pass.groundStationDarkAtStart ? "🌙" : "☀️";
       const endCondition = pass.groundStationDarkAtEnd ? "🌙" : "☀️";
@@ -184,13 +200,38 @@ export class DescriptionHelper {
 
       if (pass.groundStationDarkAtStart === pass.groundStationDarkAtEnd) {
         // Same condition throughout pass
-        conditionsHtml = `<span title="Ground station lighting: ${startText} throughout pass">${startCondition} ${startText}</span>`;
+        groundConditionsHtml = `<span title="Ground station lighting: ${startText} throughout pass">${startCondition}</span>`;
       } else {
         // Different conditions at start and end
-        conditionsHtml = `<span title="Ground station lighting: ${startText} → ${endText}">${startCondition}→${endCondition}</span>`;
+        groundConditionsHtml = `<span title="Ground station lighting: ${startText} → ${endText}">${startCondition}→${endCondition}</span>`;
       }
     } else {
-      conditionsHtml = "—";
+      groundConditionsHtml = "—";
+    }
+
+    // Generate satellite eclipse conditions display
+    let satelliteConditionsHtml = "";
+    if (pass.satelliteEclipsedAtStart !== undefined && pass.satelliteEclipsedAtEnd !== undefined) {
+      const startCondition = pass.satelliteEclipsedAtStart ? "🌑" : "☀️";
+      const endCondition = pass.satelliteEclipsedAtEnd ? "🌑" : "☀️";
+      const startText = pass.satelliteEclipsedAtStart ? "Eclipse" : "Sunlit";
+      const endText = pass.satelliteEclipsedAtEnd ? "Eclipse" : "Sunlit";
+
+      let transitionText = "";
+      if (pass.eclipseTransitions && pass.eclipseTransitions.length > 0) {
+        const transitionCount = pass.eclipseTransitions.length;
+        transitionText = ` (${transitionCount} transition${transitionCount > 1 ? 's' : ''})`;
+      }
+
+      if (pass.satelliteEclipsedAtStart === pass.satelliteEclipsedAtEnd) {
+        // Same condition throughout pass
+        satelliteConditionsHtml = `<span title="Satellite illumination: ${startText} throughout pass${transitionText}">${startCondition}</span>`;
+      } else {
+        // Different conditions at start and end
+        satelliteConditionsHtml = `<span title="Satellite illumination: ${startText} → ${endText}${transitionText}">${startCondition}→${endCondition}</span>`;
+      }
+    } else {
+      satelliteConditionsHtml = "—";
     }
 
     const htmlName = passNameField ? `<td>${pass[passNameField]}</td>\n` : "";
@@ -214,7 +255,8 @@ export class DescriptionHelper {
         <td>${dayjs.utc(pass.end).format("HH:mm:ss")}</td>
         <td class="ibt-right">${elevationCell}</td>
         <td class="ibt-right">${azimuthCell}</td>
-        <td class="ibt-center">${conditionsHtml}</td>
+        <td class="ibt-center">${groundConditionsHtml}</td>
+        <td class="ibt-center">${satelliteConditionsHtml}</td>
       </tr>
     `;
     return html;

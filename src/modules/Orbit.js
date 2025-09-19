@@ -1,6 +1,7 @@
 import * as satellitejs from "satellite.js";
 import dayjs from "dayjs";
 import { GroundStationConditions } from "./util/GroundStationConditions.js";
+import * as Astronomy from "astronomy-engine";
 
 const deg2rad = Math.PI / 180;
 const rad2deg = 180 / Math.PI;
@@ -105,6 +106,7 @@ export default class Orbit {
             maxElevation: elevation,
             azimuthApex: lookAngles.azimuth,
             groundStationDarkAtStart: GroundStationConditions.isInDarkness(originalGroundStation, date),
+            satelliteEclipsedAtStart: this.isInEclipse(date),
           };
           ongoingPass = true;
         } else if (elevation > pass.maxElevation) {
@@ -121,6 +123,11 @@ export default class Orbit {
         pass.duration = pass.end - pass.start;
         pass.azimuthEnd = lookAngles.azimuth;
         pass.groundStationDarkAtEnd = GroundStationConditions.isInDarkness(originalGroundStation, date);
+        pass.satelliteEclipsedAtEnd = this.isInEclipse(date);
+
+        // Find eclipse transitions during the pass
+        pass.eclipseTransitions = this.findEclipseTransitions(pass.start, pass.end, 30);
+
         // Convert azimuth angles from radians to degrees
         pass.azimuthStart /= deg2rad;
         pass.azimuthApex /= deg2rad;
@@ -246,5 +253,128 @@ export default class Orbit {
     }
 
     return passes;
+  }
+
+  /**
+   * Determines if satellite is in Earth's shadow (eclipsed)
+   * @param {Date} date - Time to check eclipse status
+   * @returns {boolean} True if satellite is in Earth's shadow
+   */
+  isInEclipse(date) {
+    try {
+      // Get satellite position in ECF coordinates
+      const satEcf = this.positionECF(date);
+
+      // Convert ECF to ECI coordinates for astronomy calculations
+      const gmst = satellitejs.gstime(date);
+      const satEci = satellitejs.ecfToEci(satEcf, gmst);
+
+      // Convert to kilometers and get position vector
+      const satPos = {
+        x: satEci.x,
+        y: satEci.y,
+        z: satEci.z
+      };
+
+      // Get Sun's position using astronomy-engine
+      const astroTime = new Astronomy.AstroTime(date);
+      const sunEcl = Astronomy.SunPosition(astroTime);
+
+      // Convert Sun's ecliptic coordinates to rectangular coordinates
+      // Sun distance in AU, convert to km
+      const sunDistanceKm = 149597870.7; // 1 AU in km
+      const sunPos = {
+        x: sunDistanceKm * Math.cos(sunEcl.elon * deg2rad) * Math.cos(sunEcl.elat * deg2rad),
+        y: sunDistanceKm * Math.sin(sunEcl.elon * deg2rad) * Math.cos(sunEcl.elat * deg2rad),
+        z: sunDistanceKm * Math.sin(sunEcl.elat * deg2rad)
+      };
+
+      // Earth radius in km
+      const earthRadius = 6378.137;
+
+      // Calculate if satellite is in Earth's shadow
+      return this.calculateEarthShadow(satPos, sunPos, earthRadius);
+    } catch (error) {
+      console.warn("Eclipse calculation failed:", error);
+      return false; // Default to sunlit if calculation fails
+    }
+  }
+
+  /**
+   * Calculate if satellite is in Earth's shadow using geometric shadow model
+   * @param {Object} satPos - Satellite position {x, y, z} in km
+   * @param {Object} sunPos - Sun position {x, y, z} in km
+   * @param {number} earthRadius - Earth radius in km
+   * @returns {boolean} True if satellite is in shadow
+   */
+  calculateEarthShadow(satPos, sunPos, earthRadius) {
+    // Vector from Sun to satellite
+    const sunToSat = {
+      x: satPos.x - sunPos.x,
+      y: satPos.y - sunPos.y,
+      z: satPos.z - sunPos.z
+    };
+
+    // Vector from Sun to Earth center (opposite of sunPos since Earth is at origin)
+    const sunToEarth = {
+      x: -sunPos.x,
+      y: -sunPos.y,
+      z: -sunPos.z
+    };
+
+    // Distance from satellite to Sun-Earth line
+    const sunToEarthMag = Math.sqrt(sunToEarth.x * sunToEarth.x + sunToEarth.y * sunToEarth.y + sunToEarth.z * sunToEarth.z);
+    const sunToSatMag = Math.sqrt(sunToSat.x * sunToSat.x + sunToSat.y * sunToSat.y + sunToSat.z * sunToSat.z);
+
+    // Dot product to find projection
+    const dotProduct = sunToSat.x * sunToEarth.x + sunToSat.y * sunToEarth.y + sunToSat.z * sunToEarth.z;
+    const projection = dotProduct / sunToEarthMag;
+
+    // Check if satellite is on the night side of Earth
+    if (projection < 0) {
+      return false; // Satellite is on day side
+    }
+
+    // Calculate perpendicular distance from satellite to Sun-Earth line
+    const perpDistance = Math.sqrt(sunToSatMag * sunToSatMag - projection * projection);
+
+    // Simple umbra calculation - satellite is in shadow if within Earth's shadow cone
+    // This is a simplified model; a more accurate model would include penumbra
+    const shadowRadius = earthRadius; // Simplified - actual shadow radius varies with distance
+
+    return perpDistance < shadowRadius;
+  }
+
+  /**
+   * Find eclipse transition times during a satellite pass
+   * @param {number} startTime - Pass start time in milliseconds
+   * @param {number} endTime - Pass end time in milliseconds
+   * @param {number} timeStep - Time step in seconds for searching
+   * @returns {Array} Array of transition times {time, fromShadow: boolean}
+   */
+  findEclipseTransitions(startTime, endTime, timeStep = 10) {
+    const transitions = [];
+    const startDate = new Date(startTime);
+    const endDate = new Date(endTime);
+
+    let currentDate = new Date(startDate);
+    let wasInEclipse = this.isInEclipse(currentDate);
+
+    while (currentDate < endDate) {
+      currentDate.setSeconds(currentDate.getSeconds() + timeStep);
+      const isInEclipse = this.isInEclipse(currentDate);
+
+      if (isInEclipse !== wasInEclipse) {
+        // Eclipse state changed - record transition
+        transitions.push({
+          time: currentDate.getTime(),
+          fromShadow: wasInEclipse, // true if transitioning from shadow to sunlight
+          toShadow: isInEclipse     // true if transitioning from sunlight to shadow
+        });
+        wasInEclipse = isInEclipse;
+      }
+    }
+
+    return transitions;
   }
 }

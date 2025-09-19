@@ -91,12 +91,29 @@
               <div>Start: {{ formatAzimuth(pass.azimuthStart) }} | End: {{ formatAzimuth(pass.azimuthEnd) }}</div>
               <div v-if="pass.groundStationName" class="groundStationName">{{ pass.groundStationName }}</div>
               <div class="darknessInfo">
-                <span :class="{'dark': pass.groundStationDarkAtStart, 'light': !pass.groundStationDarkAtStart}">
-                  Start: {{ pass.groundStationDarkAtStart ? '🌙 Dark' : '☀️ Light' }}
-                </span>
-                <span :class="{'dark': pass.groundStationDarkAtEnd, 'light': !pass.groundStationDarkAtEnd}">
-                  End: {{ pass.groundStationDarkAtEnd ? '🌙 Dark' : '☀️ Light' }}
-                </span>
+                <div class="conditionRow">
+                  <span class="conditionLabel">Ground:</span>
+                  <span :class="{'dark': pass.groundStationDarkAtStart, 'light': !pass.groundStationDarkAtStart}">
+                    {{ pass.groundStationDarkAtStart ? '🌙' : '☀️' }}
+                  </span>
+                  →
+                  <span :class="{'dark': pass.groundStationDarkAtEnd, 'light': !pass.groundStationDarkAtEnd}">
+                    {{ pass.groundStationDarkAtEnd ? '🌙' : '☀️' }}
+                  </span>
+                </div>
+                <div class="conditionRow" v-if="pass.satelliteEclipsedAtStart !== undefined">
+                  <span class="conditionLabel">Satellite:</span>
+                  <span :class="{'eclipse': pass.satelliteEclipsedAtStart, 'sunlit': !pass.satelliteEclipsedAtStart}">
+                    {{ pass.satelliteEclipsedAtStart ? '🌑' : '☀️' }}
+                  </span>
+                  →
+                  <span :class="{'eclipse': pass.satelliteEclipsedAtEnd, 'sunlit': !pass.satelliteEclipsedAtEnd}">
+                    {{ pass.satelliteEclipsedAtEnd ? '🌑' : '☀️' }}
+                  </span>
+                  <span v-if="pass.eclipseTransitions && pass.eclipseTransitions.length > 0" class="transitionInfo">
+                    ({{ pass.eclipseTransitions.length }} transition{{ pass.eclipseTransitions.length > 1 ? 's' : '' }})
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -404,9 +421,21 @@ export default {
 }
 
 .darknessInfo {
-  display: flex;
-  gap: 10px;
   margin-top: 4px;
+}
+
+.conditionRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.conditionLabel {
+  font-size: 10px;
+  font-weight: bold;
+  min-width: 60px;
+  color: #bdc3c7;
 }
 
 .darknessInfo span {
@@ -423,6 +452,22 @@ export default {
 .darknessInfo .light {
   background-color: #f39c12;
   color: #2c3e50;
+}
+
+.darknessInfo .eclipse {
+  background-color: #34495e;
+  color: #ecf0f1;
+}
+
+.darknessInfo .sunlit {
+  background-color: #f1c40f;
+  color: #2c3e50;
+}
+
+.transitionInfo {
+  font-size: 9px;
+  color: #95a5a6;
+  font-style: italic;
 }
 
 .toolbarText {
