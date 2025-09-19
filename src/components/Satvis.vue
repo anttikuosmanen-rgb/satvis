@@ -11,6 +11,9 @@
         <button v-tooltip="'Ground station'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('gs')">
           <i class="icon svg-groundstation"></i>
         </button>
+        <button v-tooltip="'Satellite passes'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('passes')">
+          📡
+        </button>
         <button v-tooltip="'Map'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('map')">
           <font-awesome-icon icon="fas fa-globe-africa" />
         </button>
@@ -57,6 +60,35 @@
           <input type="button" @click="cc.sats.focusGroundStation()">
           Focus
         </label>
+      </div>
+      <div v-show="menu.passes" class="toolbarSwitches">
+        <div class="toolbarTitle">
+          Satellite passes
+        </div>
+        <div v-if="!selectedSatellitePasses.length" class="toolbarText">
+          Select a satellite to view passes
+        </div>
+        <div v-else class="passesContainer">
+          <div v-for="pass in selectedSatellitePasses.slice(0, 10)" :key="pass.start" class="passItem">
+            <div class="passHeader">
+              <strong>{{ formatDate(pass.start) }}</strong>
+              <span class="passDuration">{{ formatDuration(pass.duration) }}</span>
+            </div>
+            <div class="passDetails">
+              <div>Max elevation: {{ pass.maxElevation.toFixed(1) }}°</div>
+              <div>Start: {{ formatAzimuth(pass.azimuthStart) }} | End: {{ formatAzimuth(pass.azimuthEnd) }}</div>
+              <div v-if="pass.groundStationName" class="groundStationName">{{ pass.groundStationName }}</div>
+              <div class="darknessInfo">
+                <span :class="{'dark': pass.groundStationDarkAtStart, 'light': !pass.groundStationDarkAtStart}">
+                  Start: {{ pass.groundStationDarkAtStart ? '🌙 Dark' : '☀️ Light' }}
+                </span>
+                <span :class="{'dark': pass.groundStationDarkAtEnd, 'light': !pass.groundStationDarkAtEnd}">
+                  End: {{ pass.groundStationDarkAtEnd ? '🌙 Dark' : '☀️ Light' }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
       <div v-show="menu.map" class="toolbarSwitches">
         <div class="toolbarTitle">
@@ -197,6 +229,7 @@ export default {
         cat: false,
         sat: false,
         gs: false,
+        passes: false,
         map: false,
         ios: false,
         dbg: false,
@@ -219,6 +252,13 @@ export default {
       "enabledComponents",
       "groundStations",
     ]),
+    selectedSatellitePasses() {
+      if (!this.cc?.sats?.selectedSatellite) {
+        return [];
+      }
+      const satellite = this.cc.sats.getSatellite(this.cc.sats.selectedSatellite);
+      return satellite?.props?.passes || [];
+    },
   },
   watch: {
     layers: {
@@ -289,6 +329,91 @@ export default {
         cc.showUI = this.showUI;
       }
     },
+    formatDate(timestamp) {
+      const date = new Date(timestamp);
+      return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    },
+    formatDuration(duration) {
+      const minutes = Math.floor(duration / 60000);
+      const seconds = Math.floor((duration % 60000) / 1000);
+      return `${minutes}m ${seconds}s`;
+    },
+    formatAzimuth(azimuth) {
+      const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+      const index = Math.round(azimuth / 45) % 8;
+      return `${azimuth.toFixed(0)}° (${directions[index]})`;
+    },
   },
 };
 </script>
+
+<style scoped>
+.passesContainer {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.passItem {
+  border-bottom: 1px solid #444;
+  padding: 8px 0;
+  font-size: 12px;
+}
+
+.passItem:last-child {
+  border-bottom: none;
+}
+
+.passHeader {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.passDuration {
+  color: #aaa;
+  font-size: 11px;
+}
+
+.passDetails {
+  color: #ccc;
+  line-height: 1.3;
+}
+
+.passDetails > div {
+  margin-bottom: 2px;
+}
+
+.groundStationName {
+  color: #8cc8ff;
+  font-weight: bold;
+}
+
+.darknessInfo {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.darknessInfo span {
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.darknessInfo .dark {
+  background-color: #2c3e50;
+  color: #ecf0f1;
+}
+
+.darknessInfo .light {
+  background-color: #f39c12;
+  color: #2c3e50;
+}
+
+.toolbarText {
+  color: #aaa;
+  padding: 10px;
+  text-align: center;
+  font-style: italic;
+}
+</style>

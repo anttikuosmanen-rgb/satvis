@@ -1,8 +1,16 @@
 import * as satellitejs from "satellite.js";
 import dayjs from "dayjs";
+import * as SunCalc from "../../suncalc/suncalc.js";
 
 const deg2rad = Math.PI / 180;
 const rad2deg = 180 / Math.PI;
+
+// Helper function to determine if ground station is in darkness
+function isGroundStationInDarkness(groundStationPosition, time) {
+  const sunPosition = SunCalc.getPosition(time, groundStationPosition.latitude, groundStationPosition.longitude);
+  // Sun altitude below -6 degrees indicates civil twilight (darkness for visual observation)
+  return sunPosition.altitude < (-6 * deg2rad);
+}
 
 export default class Orbit {
   constructor(name, tle) {
@@ -68,67 +76,91 @@ export default class Orbit {
     minElevation = 5,
     maxPasses = 50,
   ) {
+    // Keep original position for sun calculations (degrees)
+    const originalGroundStation = { ...groundStationPosition };
+
+    // Convert ground station position to radians and proper units for satellite.js
     const groundStation = { ...groundStationPosition };
     groundStation.latitude *= deg2rad;
     groundStation.longitude *= deg2rad;
-    groundStation.height /= 1000;
+    groundStation.height /= 1000; // Convert meters to kilometers
 
+    // Initialize tracking variables
     const date = new Date(startDate);
     const passes = [];
     let pass = false;
     let ongoingPass = false;
     let lastElevation = 0;
+
+    // Main calculation loop - step through time until end date
     while (date < endDate) {
+      // Calculate satellite position and look angles from ground station
       const positionEcf = this.positionECF(date);
       const lookAngles = satellitejs.ecfToLookAngles(groundStation, positionEcf);
-      const elevation = lookAngles.elevation / deg2rad;
+      const elevation = lookAngles.elevation / deg2rad; // Convert to degrees
 
       if (elevation > minElevation) {
+        // Satellite is visible above minimum elevation threshold
         if (!ongoingPass) {
-          // Start of new pass
+          // Start of new pass - record initial conditions
           pass = {
             name: this.name,
             start: date.getTime(),
             azimuthStart: lookAngles.azimuth,
             maxElevation: elevation,
             azimuthApex: lookAngles.azimuth,
+            groundStationDarkAtStart: isGroundStationInDarkness(originalGroundStation, date),
           };
           ongoingPass = true;
         } else if (elevation > pass.maxElevation) {
-          // Ongoing pass
+          // Update peak conditions during ongoing pass
           pass.maxElevation = elevation;
           pass.apex = date.getTime();
           pass.azimuthApex = lookAngles.azimuth;
         }
+        // Small time step during visible pass for accuracy
         date.setSeconds(date.getSeconds() + 5);
       } else if (ongoingPass) {
-        // End of pass
+        // End of pass - finalize pass data and add to results
         pass.end = date.getTime();
         pass.duration = pass.end - pass.start;
         pass.azimuthEnd = lookAngles.azimuth;
+        pass.groundStationDarkAtEnd = isGroundStationInDarkness(originalGroundStation, date);
+        // Convert azimuth angles from radians to degrees
         pass.azimuthStart /= deg2rad;
         pass.azimuthApex /= deg2rad;
         pass.azimuthEnd /= deg2rad;
         passes.push(pass);
+
+        // Stop if we've found enough passes
         if (passes.length > maxPasses) {
           break;
         }
+
         ongoingPass = false;
         lastElevation = -180;
+        // Skip ahead roughly half an orbital period to next potential pass
         date.setMinutes(date.getMinutes() + this.orbitalPeriod * 0.5);
       } else {
+        // Satellite not visible - use adaptive time stepping for efficiency
         const deltaElevation = elevation - lastElevation;
         lastElevation = elevation;
+
         if (deltaElevation < 0) {
+          // Satellite moving away from horizon - skip ahead half orbit
           date.setMinutes(date.getMinutes() + this.orbitalPeriod * 0.5);
           lastElevation = -180;
         } else if (elevation < -20) {
+          // Very far below horizon - large time steps
           date.setMinutes(date.getMinutes() + 5);
         } else if (elevation < -5) {
+          // Moderately below horizon - medium time steps
           date.setMinutes(date.getMinutes() + 1);
         } else if (elevation < -1) {
+          // Close to horizon - smaller time steps
           date.setSeconds(date.getSeconds() + 5);
         } else {
+          // Very close to horizon - finest time steps for accuracy
           date.setSeconds(date.getSeconds() + 2);
         }
       }
