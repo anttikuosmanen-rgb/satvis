@@ -2,6 +2,7 @@ import * as Cesium from "@cesium/engine";
 import dayjs from "dayjs";
 import { CesiumComponentCollection } from "./util/CesiumComponentCollection";
 import { DescriptionHelper } from "./util/DescriptionHelper";
+import { useSatStore } from "../stores/sat";
 
 import icon from "../images/icons/dish.svg";
 
@@ -62,6 +63,15 @@ export class GroundStationEntity extends CesiumComponentCollection {
 
     // Filter passes based on groundstation
     passes = passes.filter((pass) => pass.groundStationName === this.name);
+
+    // Filter out passes in sunlight if option is enabled
+    const satStore = useSatStore();
+    if (satStore.hideSunlightPasses) {
+      passes = passes.filter(pass => {
+        // Show pass if either start or end is in darkness
+        return pass.groundStationDarkAtStart || pass.groundStationDarkAtEnd;
+      });
+    }
 
     // Sort passes by time
     passes = passes.sort((a, b) => a.start - b.start);

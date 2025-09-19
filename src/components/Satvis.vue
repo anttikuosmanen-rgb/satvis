@@ -60,6 +60,11 @@
           <input type="button" @click="cc.sats.focusGroundStation()">
           Focus
         </label>
+        <label class="toolbarSwitch">
+          <input v-model="hideSunlightPasses" type="checkbox">
+          <span class="slider"></span>
+          Hide passes in daylight
+        </label>
       </div>
       <div v-show="menu.passes" class="toolbarSwitches">
         <div class="toolbarTitle">
@@ -251,13 +256,24 @@ export default {
     ...mapWritableState(useSatStore, [
       "enabledComponents",
       "groundStations",
+      "hideSunlightPasses",
     ]),
     selectedSatellitePasses() {
       if (!this.cc?.sats?.selectedSatellite) {
         return [];
       }
       const satellite = this.cc.sats.getSatellite(this.cc.sats.selectedSatellite);
-      return satellite?.props?.passes || [];
+      let passes = satellite?.props?.passes || [];
+
+      // Filter out passes in sunlight if option is enabled
+      if (this.hideSunlightPasses) {
+        passes = passes.filter(pass => {
+          // Show pass if either start or end is in darkness
+          return pass.groundStationDarkAtStart || pass.groundStationDarkAtEnd;
+        });
+      }
+
+      return passes;
     },
   },
   watch: {

@@ -3,6 +3,7 @@ import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import utc from "dayjs/plugin/utc";
 import { GroundStationConditions } from "./GroundStationConditions.js";
+import { useSatStore } from "../../stores/sat";
 
 dayjs.extend(relativeTime);
 dayjs.extend(utc);
@@ -111,12 +112,32 @@ export class DescriptionHelper {
         `;
     }
 
+    // Apply sunlight filtering if enabled
+    const satStore = useSatStore();
+    let filteredPasses = passes;
+    if (satStore.hideSunlightPasses) {
+      filteredPasses = passes.filter(pass => {
+        // Show pass if either start or end is in darkness
+        return pass.groundStationDarkAtStart || pass.groundStationDarkAtEnd;
+      });
+    }
+
+    // Check if any passes remain after filtering
+    if (filteredPasses.length === 0) {
+      if (satStore.hideSunlightPasses) {
+        return `
+          <h3>Passes</h3>
+          <div class="ib-text">No passes in darkness available</div>
+          `;
+      }
+    }
+
     const start = dayjs(time);
-    const upcomingPassIdx = passes.findIndex((pass) => dayjs(pass.end).isAfter(start));
+    const upcomingPassIdx = filteredPasses.findIndex((pass) => dayjs(pass.end).isAfter(start));
     if (upcomingPassIdx < 0) {
       return "";
     }
-    const upcomingPasses = passes.slice(upcomingPassIdx);
+    const upcomingPasses = filteredPasses.slice(upcomingPassIdx);
 
     const passNameField = isGroundStation ? "name" : "groundStationName";
     const htmlName = passNameField ? "<th>Name</th>\n" : "";
