@@ -2,6 +2,7 @@ import { CallbackProperty, JulianDate } from "@cesium/engine";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import utc from "dayjs/plugin/utc";
+import { GroundStationConditions } from "./GroundStationConditions.js";
 
 dayjs.extend(relativeTime);
 dayjs.extend(utc);
@@ -65,6 +66,10 @@ export class DescriptionHelper {
   }
 
   static renderGroundstationDescription(time, name, position, passes, overpassMode = null) {
+    // Get current lighting conditions
+    const currentTime = JulianDate.toDate(time);
+    const lightingCondition = GroundStationConditions.getLightingConditionWithEmoji(position, currentTime);
+
     const description = `
       <div class="ib">
         <h3>Position</h3>
@@ -74,6 +79,7 @@ export class DescriptionHelper {
               <th>Name</th>
               <th>Latitude</th>
               <th>Longitude</th>
+              <th>Conditions</th>
             </tr>
           </thead>
           <tbody>
@@ -81,6 +87,7 @@ export class DescriptionHelper {
               <td>${name}</td>
               <td>${position.latitude.toFixed(2)}&deg</td>
               <td>${position.longitude.toFixed(2)}&deg</td>
+              <td class="ibt-center" title="Current ground station lighting conditions">${lightingCondition}</td>
             </tr>
           </tbody>
         </table>
