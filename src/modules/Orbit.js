@@ -242,14 +242,18 @@ export default class Orbit {
     const sunToEarthMag = Math.sqrt(sunToEarth.x * sunToEarth.x + sunToEarth.y * sunToEarth.y + sunToEarth.z * sunToEarth.z);
     const sunToSatMag = Math.sqrt(sunToSat.x * sunToSat.x + sunToSat.y * sunToSat.y + sunToSat.z * sunToSat.z);
 
+    console.log(`Eclipse debug - sunToEarthMag: ${sunToEarthMag.toFixed(2)} km, sunToSatMag: ${sunToSatMag.toFixed(2)} km`);
+
+    // Check if satellite is on the sun side of Earth
+    // If satellite is closer to sun than Earth is, it's on the sun side
+    if (sunToSatMag < sunToEarthMag) {
+      console.log(`Satellite on sun side: sunToSatMag (${sunToSatMag.toFixed(2)}) < sunToEarthMag (${sunToEarthMag.toFixed(2)})`);
+      return false; // Satellite is on sun side, cannot be in shadow
+    }
+
     // Dot product to find projection
     const dotProduct = sunToSat.x * sunToEarth.x + sunToSat.y * sunToEarth.y + sunToSat.z * sunToEarth.z;
     const projection = dotProduct / sunToEarthMag;
-
-    // Check if satellite is on the day side of Earth (between Sun and Earth)
-    if (projection < 0) {
-      return false; // Satellite is on day side (between Sun and Earth), cannot be in shadow
-    }
 
     // Calculate perpendicular distance from satellite to Sun-Earth line
     const perpDistance = Math.sqrt(sunToSatMag * sunToSatMag - projection * projection);
