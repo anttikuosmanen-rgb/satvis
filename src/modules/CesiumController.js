@@ -123,7 +123,7 @@ export class CesiumController {
       },
       Topo: {
         create: () => new Cesium.UrlTemplateImageryProvider({
-          url: "https://api.maptiler.com/maps/topo-v2/{z}/{x}/{y}@2x.png?key=tiHE8Ed08u6ZoFjbE32Z",
+          url: "https://api.maptiler.com/maps/topo-v2/{z}/{x}/{y}@2x.png?key=smE1YAavFPhU2rf3prVZ",
           credit: `<a href="https://www.maptiler.com/copyright/" target="_blank">&copy; MapTiler</a> <a href="https://www.openstreetmap.org/copyright" target="_blank">&copy; OpenStreetMap contributors</a>`,
         }),
         alpha: 1,
@@ -180,7 +180,7 @@ export class CesiumController {
         create: () => new Cesium.EllipsoidTerrainProvider(),
       },
       Maptiler: {
-        create: () => Cesium.CesiumTerrainProvider.fromUrl("https://api.maptiler.com/tiles/terrain-quantized-mesh/?key=tiHE8Ed08u6ZoFjbE32Z", {
+        create: () => Cesium.CesiumTerrainProvider.fromUrl("https://api.maptiler.com/tiles/terrain-quantized-mesh/?key=smE1YAavFPhU2rf3prVZ", {
           credit: "<a href=\"https://www.maptiler.com/copyright/\" target=\"_blank\">© MapTiler</a> <a href=\"https://www.openstreetmap.org/copyright\" target=\"_blank\">© OpenStreetMap contributors</a>",
           requestVertexNormals: true,
         }),
