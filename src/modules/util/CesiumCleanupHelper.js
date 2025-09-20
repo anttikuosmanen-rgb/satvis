@@ -9,7 +9,7 @@ export class CesiumCleanupHelper {
       onTickEventRemovalCallback();
       /* eslint-disable no-underscore-dangle */
       const labelCollection = viewer.scene.primitives?._primitives[0]?._primitives[0]._primitives[0]._labelCollection;
-      if (labelCollection) {
+      if (labelCollection && labelCollection._billboardCollection) {
         labelCollection._spareBillboards.forEach((billboard) => {
           labelCollection._billboardCollection.remove(billboard);
         });
