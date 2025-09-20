@@ -4,3 +4,6 @@
 [submodule "data/models"]
 	path = data/models
 	url = https://github.com/Flowm/satvis-3d-models.git
+[submodule "suncalc"]
+	path = suncalc
+	url = https://github.com/mourner/suncalc

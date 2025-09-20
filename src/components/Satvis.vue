@@ -57,6 +57,16 @@
           <input type="button" @click="cc.sats.focusGroundStation()">
           Focus
         </label>
+        <label class="toolbarSwitch">
+          <input v-model="hideSunlightPasses" type="checkbox">
+          <span class="slider"></span>
+          Hide passes in daylight
+        </label>
+        <label class="toolbarSwitch">
+          <input v-model="showOnlyLitPasses" type="checkbox">
+          <span class="slider"></span>
+          Show only lit satellites
+        </label>
       </div>
       <div v-show="menu.map" class="toolbarSwitches">
         <div class="toolbarTitle">
@@ -218,6 +228,8 @@ export default {
     ...mapWritableState(useSatStore, [
       "enabledComponents",
       "groundStations",
+      "hideSunlightPasses",
+      "showOnlyLitPasses",
     ]),
   },
   watch: {
@@ -289,6 +301,34 @@ export default {
         cc.showUI = this.showUI;
       }
     },
+    formatDate(timestamp) {
+      const date = new Date(timestamp);
+      return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+    },
+    formatDuration(duration) {
+      const minutes = Math.floor(duration / 60000);
+      const seconds = Math.floor((duration % 60000) / 1000);
+      return `${minutes}m ${seconds}s`;
+    },
+    formatAzimuth(azimuth) {
+      const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+      const index = Math.round(azimuth / 45) % 8;
+      return `${azimuth.toFixed(0)}° (${directions[index]})`;
+    },
+    formatTime(timestamp) {
+      const date = new Date(timestamp);
+      return date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+    },
   },
 };
 </script>
+
+<style scoped>
+
+.toolbarText {
+  color: #aaa;
+  padding: 10px;
+  text-align: center;
+  font-style: italic;
+}
+</style>
