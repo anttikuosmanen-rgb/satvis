@@ -1,4 +1,4 @@
-import * as SunCalc from "../../../suncalc/suncalc.js";
+import * as SunCalc from "suncalc";
 import * as Astronomy from "astronomy-engine";
 
 const deg2rad = Math.PI / 180;
