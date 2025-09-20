@@ -11,9 +11,6 @@
         <button v-tooltip="'Ground station'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('gs')">
           <i class="icon svg-groundstation"></i>
         </button>
-        <button v-tooltip="'Satellite passes'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('passes')">
-          📡
-        </button>
         <button v-tooltip="'Map'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('map')">
           <font-awesome-icon icon="fas fa-globe-africa" />
         </button>
@@ -77,59 +74,6 @@
           <span class="slider"></span>
           Show only lit satellites
         </label>
-      </div>
-      <div v-show="menu.passes" class="toolbarSwitches">
-        <div class="toolbarTitle">
-          Satellite passes
-        </div>
-        <div v-if="!selectedSatellitePasses.length" class="toolbarText">
-          Select a satellite to view passes
-        </div>
-        <div v-else class="passesContainer">
-          <div v-for="pass in selectedSatellitePasses.slice(0, 10)" :key="pass.start" class="passItem">
-            <div class="passHeader">
-              <strong>{{ formatDate(pass.start) }}</strong>
-              <span class="passDuration">{{ formatDuration(pass.duration) }}</span>
-            </div>
-            <div class="passDetails">
-              <div>Max elevation: {{ pass.maxElevation.toFixed(1) }}°</div>
-              <div>Start: {{ formatAzimuth(pass.azimuthStart) }} | End: {{ formatAzimuth(pass.azimuthEnd) }}</div>
-              <div v-if="pass.groundStationName" class="groundStationName">{{ pass.groundStationName }}</div>
-              <div class="darknessInfo">
-                <div class="conditionRow">
-                  <span class="conditionLabel">Ground:</span>
-                  <span :class="{'dark': pass.groundStationDarkAtStart, 'light': !pass.groundStationDarkAtStart}">
-                    {{ pass.groundStationDarkAtStart ? '🌙' : '☀️' }}
-                  </span>
-                  →
-                  <span :class="{'dark': pass.groundStationDarkAtEnd, 'light': !pass.groundStationDarkAtEnd}">
-                    {{ pass.groundStationDarkAtEnd ? '🌙' : '☀️' }}
-                  </span>
-                </div>
-                <div class="conditionRow" v-if="pass.satelliteEclipsedAtStart !== undefined">
-                  <span class="conditionLabel">Satellite:</span>
-                  <span :class="{'eclipse': pass.satelliteEclipsedAtStart, 'sunlit': !pass.satelliteEclipsedAtStart}">
-                    {{ pass.satelliteEclipsedAtStart ? '🌑' : '☀️' }}
-                  </span>
-                  →
-                  <span :class="{'eclipse': pass.satelliteEclipsedAtEnd, 'sunlit': !pass.satelliteEclipsedAtEnd}">
-                    {{ pass.satelliteEclipsedAtEnd ? '🌑' : '☀️' }}
-                  </span>
-                  <span v-if="pass.eclipseTransitions && pass.eclipseTransitions.length > 0" class="transitionInfo">
-                    ({{ pass.eclipseTransitions.length }} transition{{ pass.eclipseTransitions.length > 1 ? 's' : '' }})
-                  </span>
-                </div>
-                <div v-if="pass.eclipseTransitions && pass.eclipseTransitions.length > 0" class="transitionTimes">
-                  <div v-for="(transition, index) in pass.eclipseTransitions" :key="index" class="transitionTime">
-                    <span class="transitionIcon">{{ transition.toShadow ? '🌑' : '☀️' }}</span>
-                    <span class="transitionLabel">{{ formatTime(transition.time) }}</span>
-                    <span class="transitionDescription">{{ transition.toShadow ? 'enters eclipse' : 'exits eclipse' }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
       <div v-show="menu.map" class="toolbarSwitches">
         <div class="toolbarTitle">Layers</div>
@@ -258,7 +202,6 @@ export default {
         cat: false,
         sat: false,
         gs: false,
-        passes: false,
         map: false,
         ios: false,
         dbg: false,
@@ -284,35 +227,6 @@ export default {
       "hideSunlightPasses",
       "showOnlyLitPasses",
     ]),
-    selectedSatellitePasses() {
-      if (!this.cc?.sats?.selectedSatellite) {
-        return [];
-      }
-      const satellite = this.cc.sats.getSatellite(this.cc.sats.selectedSatellite);
-      let passes = satellite?.props?.passes || [];
-
-      // Filter passes based on ground station lighting conditions
-      if (this.hideSunlightPasses) {
-        passes = passes.filter(pass => {
-          // Show pass if ground station is in darkness at start or end
-          return pass.groundStationDarkAtStart || pass.groundStationDarkAtEnd;
-        });
-      }
-
-      // Filter passes based on satellite lighting conditions
-      if (this.showOnlyLitPasses) {
-        passes = passes.filter(pass => {
-          // Show pass if satellite is lit (not eclipsed) at some point during the pass
-          // If start/end eclipse states are different, satellite transitions during pass
-          // If both are false (not eclipsed), satellite is lit throughout
-          // If satellite has transitions, it means it goes from eclipse to sunlight or vice versa
-          return !pass.satelliteEclipsedAtStart || !pass.satelliteEclipsedAtEnd ||
-                 (pass.eclipseTransitions && pass.eclipseTransitions.length > 0);
-        });
-      }
-
-      return passes;
-    },
   },
   watch: {
     layers: {
@@ -409,131 +323,6 @@ export default {
 </script>
 
 <style scoped>
-.passesContainer {
-  max-height: 400px;
-  overflow-y: auto;
-}
-
-.passItem {
-  border-bottom: 1px solid #444;
-  padding: 8px 0;
-  font-size: 12px;
-}
-
-.passItem:last-child {
-  border-bottom: none;
-}
-
-.passHeader {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 4px;
-}
-
-.passDuration {
-  color: #aaa;
-  font-size: 11px;
-}
-
-.passDetails {
-  color: #ccc;
-  line-height: 1.3;
-}
-
-.passDetails > div {
-  margin-bottom: 2px;
-}
-
-.groundStationName {
-  color: #8cc8ff;
-  font-weight: bold;
-}
-
-.darknessInfo {
-  margin-top: 4px;
-}
-
-.conditionRow {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 2px;
-}
-
-.conditionLabel {
-  font-size: 10px;
-  font-weight: bold;
-  min-width: 60px;
-  color: #bdc3c7;
-}
-
-.darknessInfo span {
-  font-size: 11px;
-  padding: 2px 4px;
-  border-radius: 3px;
-}
-
-.darknessInfo .dark {
-  background-color: #2c3e50;
-  color: #ecf0f1;
-}
-
-.darknessInfo .light {
-  background-color: #f39c12;
-  color: #2c3e50;
-}
-
-.darknessInfo .eclipse {
-  background-color: #34495e;
-  color: #ecf0f1;
-}
-
-.darknessInfo .sunlit {
-  background-color: #f1c40f;
-  color: #2c3e50;
-}
-
-.transitionInfo {
-  font-size: 9px;
-  color: #95a5a6;
-  font-style: italic;
-}
-
-.transitionTimes {
-  margin-top: 6px;
-  padding: 4px 6px;
-  background-color: rgba(52, 73, 94, 0.3);
-  border-radius: 4px;
-  border-left: 3px solid #3498db;
-}
-
-.transitionTime {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 2px;
-  font-size: 10px;
-}
-
-.transitionTime:last-child {
-  margin-bottom: 0;
-}
-
-.transitionIcon {
-  font-size: 12px;
-  min-width: 16px;
-}
-
-.transitionLabel {
-  font-weight: bold;
-  color: #ecf0f1;
-  min-width: 60px;
-}
-
-.transitionDescription {
-  color: #bdc3c7;
-  font-size: 9px;
-}
 
 .toolbarText {
   color: #aaa;
