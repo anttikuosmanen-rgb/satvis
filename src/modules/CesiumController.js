@@ -75,6 +75,7 @@ export class CesiumController {
     this.viewer.scene.maximumRenderTimeChange = 1 / 30;
     this.viewer.scene.requestRenderMode = true;
 
+
     // Cesium Performance Tools
     // this.viewer.scene.debugShowFramesPerSecond = true;
     // this.FrameRateMonitor = FrameRateMonitor.fromScene(this.viewer.scene);
@@ -543,6 +544,7 @@ export class CesiumController {
       Sentry.captureException(error);
     };
   }
+
 
   styleInfoBox() {
     const infoBox = this.viewer.infoBox.container.getElementsByClassName("cesium-infoBox")[0];
