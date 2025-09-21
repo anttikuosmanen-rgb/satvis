@@ -216,7 +216,7 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       case "Orbit track":
         this.createOrbitTrack();
         break;
-      case "Ground track":
+      case "Visibility area":
         this.createGroundTrack();
         break;
       case "Sensor cone":
@@ -386,7 +386,7 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     // Satellites with orbital periods > 2 hours are typically in higher orbits
     // where ground track visualization becomes less meaningful
     if (this.props.orbit.orbitalPeriod > 60 * 2) {
-      console.log(`[${this.props.name}] Ground track skipped - orbital period ${this.props.orbit.orbitalPeriod.toFixed(1)} min > 120 min (non-LEO)`);
+      console.log(`[${this.props.name}] Visibility area skipped - orbital period ${this.props.orbit.orbitalPeriod.toFixed(1)} min > 120 min (non-LEO)`);
       return;
     }
 
@@ -438,7 +438,7 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     });
 
     // Add the visibility circle to the Cesium scene
-    this.createCesiumSatelliteEntity("Ground track", "ellipse", visibilityCircle);
+    this.createCesiumSatelliteEntity("Visibility area", "ellipse", visibilityCircle);
   }
 
   createCone(fov = 10) {
