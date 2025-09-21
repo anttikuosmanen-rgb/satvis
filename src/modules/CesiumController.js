@@ -70,10 +70,14 @@ export class CesiumController {
 
     // Cesium default settings
     this.viewer.clock.shouldAnimate = true;
+    this.viewer.clock.multiplier = 1.0; // Ensure clock multiplier is set
+    this.viewer.clock.clockStep = Cesium.ClockStep.SYSTEM_CLOCK_MULTIPLIER;
     this.viewer.scene.globe.enableLighting = true;
     this.viewer.scene.highDynamicRange = true;
     this.viewer.scene.maximumRenderTimeChange = 1 / 30;
-    this.viewer.scene.requestRenderMode = true;
+    // Comment out requestRenderMode temporarily to see if it's interfering
+    // this.viewer.scene.requestRenderMode = true;
+
 
 
     // Cesium Performance Tools
