@@ -93,3 +93,4 @@ The application detects iOS devices and iframe embedding to adjust UI accordingl
 - Implements custom Cesium imagery providers for offline tile serving
 - Uses Sentry for error tracking in production (satvis.space domain)
 - State synchronization between URL parameters and Pinia stores for bookmarkable views
+- restart dev server

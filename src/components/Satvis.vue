@@ -299,15 +299,26 @@ export default {
       // Toggle between focusing on first ground station and returning to normal view
       const currentTrackedEntity = this.cc.viewer.trackedEntity;
 
+      console.log('Double-click on ground station button');
+      console.log('Current tracked entity:', currentTrackedEntity);
+      console.log('Entity name:', currentTrackedEntity ? currentTrackedEntity.name : 'None');
+
       // Check if we're currently tracking a ground station
       const isTrackingGroundStation = currentTrackedEntity &&
         currentTrackedEntity.name &&
-        currentTrackedEntity.name.includes('Groundstation');
+        (currentTrackedEntity.name.includes('Groundstation') ||
+         currentTrackedEntity.name.includes('Ground station') ||
+         currentTrackedEntity.name === 'Groundstation');
+
+      console.log('Is tracking ground station:', isTrackingGroundStation);
 
       if (isTrackingGroundStation) {
         // Return to normal view
         console.log('Returning to normal view from ground station focus');
         this.cc.viewer.trackedEntity = undefined;
+
+        // Also clear selected entity to ensure clean return
+        this.cc.viewer.selectedEntity = undefined;
       } else {
         // Focus on the first ground station
         if (this.groundStations && this.groundStations.length > 0) {
