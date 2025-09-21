@@ -38,6 +38,12 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       if (this.components.Label) {
         this.components.Label.label.pixelOffset = new Cesium.Cartesian2(20, 0);
       }
+    } else if (name === "Height stick") {
+      // Refresh label to show elevation text when height stick is enabled
+      if (this.components.Label) {
+        this.disableComponent("Label");
+        this.enableComponent("Label");
+      }
     } else if (name === "Orbit" && this.components[name] instanceof Cesium.Primitive) {
       // Update the model matrix periodically to keep the orbit in the inertial frame
       if (!this.orbitPrimitiveUpdater) {
@@ -78,7 +84,19 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
         this.components.Label.label.pixelOffset = new Cesium.Cartesian2(10, 0);
       }
     }
+
     super.disableComponent(name);
+
+    if (name === "Height stick") {
+      // Refresh label to hide elevation text when height stick is disabled
+      if (this.components.Label) {
+        const wasEnabled = this.componentNames.includes("Label");
+        if (wasEnabled) {
+          this.disableComponent("Label");
+          this.enableComponent("Label");
+        }
+      }
+    }
 
     if (this.componentNames.length === 0) {
       // Remove event listeners when no components are enabled
@@ -137,13 +155,8 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
           this.disableComponent("Orbit");
           this.enableComponent("Orbit");
         }
-      } else if (type === "Sensor cone") {
+      } else if (type === "Height stick") {
         component.position = fixed;
-        component.orientation = new Cesium.CallbackProperty((time) => {
-          const position = this.props.position(time);
-          const hpr = new Cesium.HeadingPitchRoll(0, Cesium.Math.toRadians(180), 0);
-          return Cesium.Transforms.headingPitchRollQuaternion(position, hpr);
-        }, false);
       } else {
         component.position = fixed;
         component.orientation = new Cesium.VelocityOrientationProperty(fixed);
@@ -175,8 +188,8 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       case "Visibility area":
         this.createGroundTrack();
         break;
-      case "Sensor cone":
-        this.createCone();
+      case "Height stick":
+        this.createHeightStick();
         break;
       case "3D model":
         this.createModel();
@@ -231,7 +244,25 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
 
   createLabel() {
     const label = new Cesium.LabelGraphics({
-      text: this.props.name,
+      text: new Cesium.CallbackProperty((time) => {
+        // Only add elevation when height stick is enabled
+        if (!this.components["Height stick"]) {
+          return this.props.name;
+        }
+
+        // Only add elevation for satellites with orbital period under 120 minutes (same as height stick)
+        if (this.props.orbit.orbitalPeriod > 120) {
+          return this.props.name;
+        }
+
+        const cartographic = this.props.orbit.positionGeodetic(Cesium.JulianDate.toDate(time), true);
+        if (!cartographic) {
+          return this.props.name;
+        }
+
+        const heightKm = Math.round(cartographic.height / 1000); // Round to nearest km
+        return `${this.props.name} ${heightKm}km`;
+      }, false),
       font: "15px Arial",
       style: Cesium.LabelStyle.FILL_AND_OUTLINE,
       outlineColor: Cesium.Color.DIMGREY,
@@ -380,23 +411,109 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     this.createCesiumSatelliteEntity("Visibility area", "ellipse", visibilityCircle);
   }
 
-  createCone(fov = 10) {
-    if (this.props.orbit.orbitalPeriod > 60 * 2) {
-      // Cone graphic unavailable for non-LEO satellites
+  createHeightStick() {
+    // Only show height stick for satellites with orbital period under 120 minutes
+    if (this.props.orbit.orbitalPeriod > 120) {
       return;
     }
-    const entity = new Cesium.Entity();
-    entity.addProperty("conicSensor");
-    entity.conicSensor = new CesiumSensorVolumes.ConicSensorGraphics({
-      radius: 1000000,
-      innerHalfAngle: Cesium.Math.toRadians(0),
-      outerHalfAngle: Cesium.Math.toRadians(fov),
-      lateralSurfaceMaterial: Cesium.Color.GOLD.withAlpha(0.15),
-      intersectionColor: Cesium.Color.GOLD.withAlpha(0.3),
-      intersectionWidth: 1,
+
+    // Create the main vertical line entity
+    const entity = new Cesium.Entity({
+      polyline: new Cesium.PolylineGraphics({
+        positions: new Cesium.CallbackProperty((time) => {
+          const satellitePosition = this.props.position(time);
+          const cartographic = Cesium.Cartographic.fromCartesian(satellitePosition);
+          const surfacePosition = Cesium.Cartesian3.fromRadians(
+            cartographic.longitude,
+            cartographic.latitude,
+            0
+          );
+          return [surfacePosition, satellitePosition];
+        }, false),
+        followSurface: false,
+        material: Cesium.Color.CYAN,
+        width: 1,
+        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(2000, 8e7),
+        translucencyByDistance: new Cesium.NearFarScalar(6e7, 1.0, 8e7, 0.0)
+      })
     });
-    this.components["Sensor cone"] = entity;
+
+    // Create static tick marks (simplified approach to avoid clock interference)
+    const tickEntities = [];
+    const maxAltitude = 1000; // Max altitude in km for tick marks
+
+    // Create tick marks every 100km up to maxAltitude
+    for (let altitude = 100; altitude <= maxAltitude; altitude += 100) {
+      const is500km = altitude % 500 === 0;
+      const tickId = `heightstick-tick-${this.props.satnum}-${altitude}`;
+
+      const tickEntity = new Cesium.Entity({
+        id: tickId,
+        polyline: new Cesium.PolylineGraphics({
+          positions: new Cesium.CallbackProperty((time) => {
+            const satellitePosition = this.props.position(time);
+            const cartographic = Cesium.Cartographic.fromCartesian(satellitePosition);
+            const currentHeight = cartographic.height / 1000;
+
+            // Only show tick if satellite is above this altitude
+            if (currentHeight < altitude) {
+              return [];
+            }
+
+            const tickPosition = Cesium.Cartesian3.fromRadians(
+              cartographic.longitude,
+              cartographic.latitude,
+              altitude * 1000
+            );
+
+            // Calculate eastward direction for tick
+            const up = Cesium.Cartesian3.normalize(satellitePosition, new Cesium.Cartesian3());
+            const east = Cesium.Cartesian3.cross(Cesium.Cartesian3.UNIT_Z, up, new Cesium.Cartesian3());
+            Cesium.Cartesian3.normalize(east, east);
+
+            const tickLength = is500km ? 8000 : 4000;
+            const tickEnd = Cesium.Cartesian3.add(
+              tickPosition,
+              Cesium.Cartesian3.multiplyByScalar(east, tickLength, new Cesium.Cartesian3()),
+              new Cesium.Cartesian3()
+            );
+
+            return [tickPosition, tickEnd];
+          }, false),
+          followSurface: false,
+          material: Cesium.Color.CYAN,
+          width: is500km ? 2 : 1,
+          distanceDisplayCondition: new Cesium.DistanceDisplayCondition(2000, 8e7),
+          translucencyByDistance: new Cesium.NearFarScalar(6e7, 1.0, 8e7, 0.0)
+        })
+      });
+
+      this.viewer.entities.add(tickEntity);
+      tickEntities.push(tickEntity);
+    }
+
+    // Store tick entities for cleanup
+    entity._tickEntities = tickEntities;
+    this.components["Height stick"] = entity;
   }
+
+  disableComponent(name) {
+    if (name === "Height stick") {
+      const component = this.components[name];
+      if (component) {
+        // Clean up tick mark entities
+        if (component._tickEntities) {
+          component._tickEntities.forEach(tickEntity => {
+            this.viewer.entities.remove(tickEntity);
+          });
+          component._tickEntities.length = 0;
+        }
+      }
+    }
+    // Call parent method for standard cleanup
+    super.disableComponent(name);
+  }
+
 
   createGroundStationLink() {
     if (!this.props.groundStationAvailable) {

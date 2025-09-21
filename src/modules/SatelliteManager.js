@@ -17,7 +17,7 @@ export class SatelliteManager {
     this.viewer = viewer;
 
     this.satellites = [];
-    this.availableComponents = ["Point", "Label", "Orbit", "Orbit track", "Visibility area", "Sensor cone", "3D model"];
+    this.availableComponents = ["Point", "Label", "Orbit", "Orbit track", "Visibility area", "Height stick", "3D model"];
 
     this.viewer.trackedEntityChanged.addEventListener(() => {
       if (this.trackedSatellite) {
@@ -88,6 +88,9 @@ export class SatelliteManager {
     const satStore = useSatStore();
     satStore.availableTags = this.tags;
     satStore.availableSatellitesByTag = this.taglist;
+
+    // Refresh labels to pick up new dynamic elevation text behavior
+    setTimeout(() => this.refreshLabels(), 1000);
   }
 
   get taglist() {
@@ -144,6 +147,16 @@ export class SatelliteManager {
 
   getSatellite(name) {
     return this.satellites.find((sat) => sat.props.name === name);
+  }
+
+  refreshLabels() {
+    // Force refresh of all existing satellite labels to pick up new dynamic text
+    this.visibleSatellites.forEach((sat) => {
+      if (sat.components.Label) {
+        sat.disableComponent("Label");
+        sat.enableComponent("Label");
+      }
+    });
   }
 
   get enabledSatellites() {
