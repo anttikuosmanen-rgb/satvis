@@ -278,8 +278,8 @@ export class SatelliteProperties {
     }
     const visibleDiameterKm = 2 * visibleRadiusKm;
 
-    // Debug logging for ground track width calculations
-    console.log(`[${this.name}] Ground track width calculation:`, {
+    // Debug logging for visibility area calculations
+    console.log(`[${this.name}] Visibility area calculation:`, {
       altitudeKm: altitudeKm.toFixed(1),
       minElevationDeg: minElevation,
       satelliteDistance: satelliteDistance.toFixed(1),
