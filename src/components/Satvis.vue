@@ -190,6 +190,14 @@
         <font-awesome-icon icon="fas fa-eye" />
       </button>
     </div>
+    <div v-show="showUI" id="timelineControls">
+      <button v-tooltip="'Zoom In Timeline'" type="button" class="cesium-button cesium-toolbar-button timeline-button" @click="zoomInTimeline">
+        +
+      </button>
+      <button v-tooltip="'Zoom Out Timeline'" type="button" class="cesium-button cesium-toolbar-button timeline-button" @click="zoomOutTimeline">
+        -
+      </button>
+    </div>
   </div>
 </template>
 
@@ -403,6 +411,68 @@ export default {
 
       // Clear all ground stations by setting empty array
       this.cc.sats.groundStations = [];
+    },
+    zoomInTimeline() {
+      if (!this.cc.viewer.timeline) {
+        return;
+      }
+
+      // Use Cesium's timeline zoom functionality directly
+      // Get current timeline range and zoom in by reducing the range
+      const timeline = this.cc.viewer.timeline;
+      const clock = this.cc.viewer.clock;
+
+      const currentStart = clock.startTime;
+      const currentStop = clock.stopTime;
+      const currentTime = clock.currentTime;
+
+      // Calculate current range in seconds
+      const totalSeconds = Cesium.JulianDate.secondsDifference(currentStop, currentStart);
+
+      // Zoom in by reducing the range to 75% of current
+      const newRangeSeconds = totalSeconds * 0.75;
+      const halfRange = newRangeSeconds / 2;
+
+      // Center the new range around current time
+      const newStart = Cesium.JulianDate.addSeconds(currentTime, -halfRange, new Cesium.JulianDate());
+      const newStop = Cesium.JulianDate.addSeconds(currentTime, halfRange, new Cesium.JulianDate());
+
+      // Update clock and timeline
+      clock.startTime = newStart;
+      clock.stopTime = newStop;
+      timeline.updateFromClock();
+      timeline.zoomTo(newStart, newStop);
+    },
+    zoomOutTimeline() {
+      if (!this.cc.viewer.timeline) {
+        return;
+      }
+
+      // Use Cesium's timeline zoom functionality directly
+      // Get current timeline range and zoom out by increasing the range
+      const timeline = this.cc.viewer.timeline;
+      const clock = this.cc.viewer.clock;
+
+      const currentStart = clock.startTime;
+      const currentStop = clock.stopTime;
+      const currentTime = clock.currentTime;
+
+      // Calculate current range in seconds
+      const totalSeconds = Cesium.JulianDate.secondsDifference(currentStop, currentStart);
+
+      // Zoom out by increasing the range to 133% of current
+      const newRangeSeconds = totalSeconds * 1.33;
+      const halfRange = newRangeSeconds / 2;
+
+      // Center the new range around current time
+      const newStart = Cesium.JulianDate.addSeconds(currentTime, -halfRange, new Cesium.JulianDate());
+      const newStop = Cesium.JulianDate.addSeconds(currentTime, halfRange, new Cesium.JulianDate());
+
+      // Update clock and timeline
+      clock.startTime = newStart;
+      clock.stopTime = newStop;
+      timeline.updateFromClock();
+      timeline.zoomTo(newStart, newStop);
     },
   },
 };
