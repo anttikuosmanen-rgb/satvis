@@ -35,13 +35,38 @@ export class CesiumTimelineHelper {
         highlightRange._clickListener = () => {
           // Find the satellite entity by name and track it
           const entities = viewer.entities.values;
-          const satelliteEntity = entities.find(entity =>
+
+          // Try different naming patterns to find the satellite entity
+          let satelliteEntity = entities.find(entity =>
             entity.name && entity.name.includes(satelliteName) && entity.name.includes('Point')
           );
 
+          // If not found with "Point", try just the satellite name
+          if (!satelliteEntity) {
+            satelliteEntity = entities.find(entity =>
+              entity.name && entity.name === satelliteName
+            );
+          }
+
+          // If still not found, try partial match
+          if (!satelliteEntity) {
+            satelliteEntity = entities.find(entity =>
+              entity.name && entity.name.includes(satelliteName)
+            );
+          }
+
           if (satelliteEntity) {
-            viewer.trackedEntity = satelliteEntity;
-            console.log(`Tracking ${satelliteName} - pass clicked`);
+            // First clear any existing tracking to ensure clean switch
+            viewer.trackedEntity = undefined;
+
+            // Small delay to ensure the untracking is processed
+            setTimeout(() => {
+              viewer.trackedEntity = satelliteEntity;
+              console.log(`Tracking ${satelliteName} - pass clicked (entity: ${satelliteEntity.name})`);
+            }, 50);
+          } else {
+            console.warn(`Could not find satellite entity for ${satelliteName}`);
+            console.log('Available entities:', entities.map(e => e.name).filter(n => n));
           }
         };
 
