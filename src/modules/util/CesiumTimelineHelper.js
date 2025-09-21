@@ -1,12 +1,20 @@
 import { Color, JulianDate } from "@cesium/engine";
+import suncalc from "suncalc";
 
 export class CesiumTimelineHelper {
   static clearHighlightRanges(viewer) {
     if (!viewer.timeline || viewer.timeline._highlightRanges.length === 0) {
       return;
     }
-
-    viewer.timeline._highlightRanges = [];
+    // Only clear satellite pass highlights (priority 0), preserve daytime ranges (priority -1)
+    // eslint-disable-next-line
+    const highlightRanges = viewer.timeline._highlightRanges;
+    // eslint-disable-next-line
+    viewer.timeline._highlightRanges = highlightRanges.filter((range) =>
+      // Keep daytime ranges (priority -1), remove satellite pass ranges (priority 0)
+      // eslint-disable-next-line
+      range._base === -1
+    );
     viewer.timeline.updateFromClock();
     viewer.timeline.zoomTo(viewer.clock.startTime, viewer.clock.stopTime);
   }
@@ -92,5 +100,106 @@ export class CesiumTimelineHelper {
   static updateHighlightRanges(viewer, ranges, satelliteName) {
     this.clearHighlightRanges(viewer);
     this.addHighlightRanges(viewer, ranges, satelliteName);
+  }
+
+  static addGroundStationDaytimeRanges(viewer, groundStation) {
+    if (!viewer.timeline || !groundStation) {
+      return;
+    }
+
+    const startTime = viewer.clock.startTime;
+    const stopTime = viewer.clock.stopTime;
+
+    // Calculate daytime periods for a broader range (extend by 7 days on each side)
+    const extendedStart = JulianDate.addDays(startTime, -7, new JulianDate());
+    const extendedStop = JulianDate.addDays(stopTime, 7, new JulianDate());
+
+    const startDate = JulianDate.toDate(extendedStart);
+    const stopDate = JulianDate.toDate(extendedStop);
+
+    const { latitude: lat, longitude: lon } = groundStation.position;
+
+    // Calculate sunrise/sunset for each day in the timeline range
+    const currentDate = new Date(startDate);
+    currentDate.setHours(0, 0, 0, 0); // Start at beginning of day
+
+    while (currentDate <= stopDate) {
+      try {
+        const sunTimes = suncalc.getTimes(currentDate, lat, lon);
+
+        // Create daytime range from sunrise to sunset
+        if (sunTimes.sunrise && sunTimes.sunset) {
+          const sunriseJulian = JulianDate.fromDate(sunTimes.sunrise);
+          const sunsetJulian = JulianDate.fromDate(sunTimes.sunset);
+
+          // Add all daytime ranges (don't limit to visible timeline)
+          if (sunriseJulian && sunsetJulian) {
+            // Use full sunrise to sunset range
+            const rangeStart = sunriseJulian;
+            const rangeEnd = sunsetJulian;
+
+            // Try a completely different approach - use WHITE color to test if ANY color works
+            const testColor = Color.WHITE.withAlpha(0.7);
+            console.log('Creating daytime highlight with WHITE color to test');
+            const highlightRange = viewer.timeline.addHighlightRange(testColor, 60, -1);
+            highlightRange.setRange(rangeStart, rangeEnd);
+
+            console.log('Daytime highlight created:', highlightRange);
+            console.log('Element:', highlightRange._element);
+            console.log('Color set to:', highlightRange._color);
+
+            // Try to inspect and override the element
+            if (highlightRange._element) {
+              console.log('Element computed style:', window.getComputedStyle(highlightRange._element).backgroundColor);
+
+              // Try a MutationObserver to catch when Cesium changes the style
+              const observer = new MutationObserver((mutations) => {
+                mutations.forEach((mutation) => {
+                  if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
+                    console.log('Style changed, forcing white background');
+                    highlightRange._element.style.backgroundColor = 'rgba(255, 255, 255, 0.7)';
+                  }
+                });
+              });
+
+              observer.observe(highlightRange._element, {
+                attributes: true,
+                attributeFilter: ['style']
+              });
+
+              // Force white immediately
+              highlightRange._element.style.backgroundColor = 'rgba(255, 255, 255, 0.7)';
+              console.log('Set backgroundColor to white');
+            }
+          }
+        }
+      } catch (error) {
+        console.warn(`Failed to calculate sun times for ${currentDate}:`, error);
+      }
+
+      // Move to next day
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    viewer.timeline.updateFromClock();
+    viewer.timeline.zoomTo(viewer.clock.startTime, viewer.clock.stopTime);
+  }
+
+  static clearGroundStationDaytimeRanges(viewer) {
+    if (!viewer.timeline) {
+      return;
+    }
+
+    // Remove daytime highlight ranges (priority -1)
+    // eslint-disable-next-line
+    const highlightRanges = viewer.timeline._highlightRanges;
+    // eslint-disable-next-line
+    viewer.timeline._highlightRanges = highlightRanges.filter((range) =>
+      // eslint-disable-next-line
+      range._base !== -1
+    );
+
+    viewer.timeline.updateFromClock();
+    viewer.timeline.zoomTo(viewer.clock.startTime, viewer.clock.stopTime);
   }
 }

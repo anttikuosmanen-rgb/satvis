@@ -3,6 +3,7 @@ import { SatelliteComponentCollection } from "./SatelliteComponentCollection";
 import { GroundStationEntity } from "./GroundStationEntity";
 
 import { CesiumCleanupHelper } from "./util/CesiumCleanupHelper";
+import { CesiumTimelineHelper } from "./util/CesiumTimelineHelper";
 
 export class SatelliteManager {
   #enabledComponents = ["Point", "Label"];
@@ -300,6 +301,12 @@ export class SatelliteManager {
     this.satellites.forEach((sat) => {
       sat.groundStations = this.#groundStations;
     });
+
+    // Update daytime ranges for first ground station
+    CesiumTimelineHelper.clearGroundStationDaytimeRanges(this.viewer);
+    if (this.#groundStations.length > 0) {
+      CesiumTimelineHelper.addGroundStationDaytimeRanges(this.viewer, this.#groundStations[0]);
+    }
 
     // Update store for url state
     const satStore = useSatStore();
