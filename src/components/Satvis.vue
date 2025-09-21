@@ -65,6 +65,10 @@
           Swath
         </label>
         <label class="toolbarSwitch">
+          <input type="button" @click="clearAllGroundStations()">
+          Clear all stations
+        </label>
+        <label class="toolbarSwitch">
           <input v-model="hideSunlightPasses" type="checkbox">
           <span class="slider"></span>
           Hide passes in daylight
@@ -185,6 +189,7 @@
 </template>
 
 <script>
+import * as Cesium from "@cesium/engine";
 import { mapWritableState } from "pinia";
 import { useCesiumStore } from "../stores/cesium";
 import { useSatStore } from "../stores/sat";
@@ -298,21 +303,14 @@ export default {
       // Toggle between focusing on first ground station and returning to normal view
       const currentTrackedEntity = this.cc.viewer.trackedEntity;
 
-      console.log('Double-click on ground station button');
-      console.log('Current tracked entity:', currentTrackedEntity);
-      console.log('Entity name:', currentTrackedEntity ? currentTrackedEntity.name : 'None');
-
       // Check if we're currently tracking a ground station
       // Ground stations now have names like "Groundstation [60.81°, 23.95°]"
       const isTrackingGroundStation = currentTrackedEntity &&
         currentTrackedEntity.name &&
         currentTrackedEntity.name.includes('Groundstation');
 
-      console.log('Is tracking ground station:', isTrackingGroundStation);
-
       if (isTrackingGroundStation) {
         // Return to normal view focused on center of Earth
-        console.log('Returning to normal view focused on center of Earth');
         this.cc.viewer.trackedEntity = undefined;
         this.cc.viewer.selectedEntity = undefined;
 
@@ -328,10 +326,7 @@ export default {
       } else {
         // Focus on the first ground station
         if (this.groundStations && this.groundStations.length > 0) {
-          console.log(`Focusing on first ground station: ${this.groundStations[0].name}`);
           this.cc.sats.focusGroundStation(this.groundStations[0]);
-        } else {
-          console.warn('No ground stations available to focus on');
         }
       }
     },
@@ -358,6 +353,35 @@ export default {
     formatTime(timestamp) {
       const date = new Date(timestamp);
       return date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+    },
+    clearAllGroundStations() {
+      // Check if we're currently tracking a ground station and unfocus first
+      const currentTrackedEntity = this.cc.viewer.trackedEntity;
+      const isTrackingGroundStation = currentTrackedEntity &&
+        currentTrackedEntity.name &&
+        currentTrackedEntity.name.includes('Groundstation');
+
+      if (isTrackingGroundStation) {
+        // Return to normal view focused on center of Earth
+        this.cc.viewer.trackedEntity = undefined;
+        this.cc.viewer.selectedEntity = undefined;
+        this.cc.viewer.camera.setView({
+          destination: Cesium.Cartesian3.fromDegrees(0, 0, 15000000),
+          orientation: {
+            heading: 0,
+            pitch: -Cesium.Math.PI_OVER_TWO,
+            roll: 0
+          }
+        });
+      }
+
+      // Hide all ground station entities first
+      this.cc.sats.groundStations.forEach(groundStation => {
+        groundStation.hide();
+      });
+
+      // Clear all ground stations by setting empty array
+      this.cc.sats.groundStations = [];
     },
   },
 };
