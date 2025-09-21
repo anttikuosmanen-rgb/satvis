@@ -312,12 +312,20 @@ export default {
       console.log('Is tracking ground station:', isTrackingGroundStation);
 
       if (isTrackingGroundStation) {
-        // Return to normal view
-        console.log('Returning to normal view from ground station focus');
+        // Return to normal view focused on center of Earth
+        console.log('Returning to normal view focused on center of Earth');
         this.cc.viewer.trackedEntity = undefined;
-
-        // Also clear selected entity to ensure clean return
         this.cc.viewer.selectedEntity = undefined;
+
+        // Focus camera on center of Earth with a nice overview
+        this.cc.viewer.camera.setView({
+          destination: Cesium.Cartesian3.fromDegrees(0, 0, 15000000), // 15,000 km above Earth center
+          orientation: {
+            heading: 0,
+            pitch: -Cesium.Math.PI_OVER_TWO, // Look straight down
+            roll: 0
+          }
+        });
       } else {
         // Focus on the first ground station
         if (this.groundStations && this.groundStations.length > 0) {
