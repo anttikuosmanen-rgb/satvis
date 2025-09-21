@@ -376,9 +376,29 @@ export default {
         });
       }
 
-      // Hide all ground station entities first
+      // Properly remove all ground station entities from Cesium viewer
       this.cc.sats.groundStations.forEach((groundStation) => {
+        // Hide components first
         groundStation.hide();
+
+        // Ensure all entities are removed from the viewer
+        Object.values(groundStation.components).forEach((component) => {
+          if (component instanceof Cesium.Entity && this.cc.viewer.entities.contains(component)) {
+            this.cc.viewer.entities.remove(component);
+          }
+        });
+      });
+
+      // Additional cleanup: remove any remaining ground station entities from viewer
+      // This handles cases where entities might not be properly tracked by the component system
+      const entitiesToRemove = [];
+      this.cc.viewer.entities.values.forEach((entity) => {
+        if (entity.name && entity.name.includes("Groundstation")) {
+          entitiesToRemove.push(entity);
+        }
+      });
+      entitiesToRemove.forEach((entity) => {
+        this.cc.viewer.entities.remove(entity);
       });
 
       // Clear all ground stations by setting empty array
