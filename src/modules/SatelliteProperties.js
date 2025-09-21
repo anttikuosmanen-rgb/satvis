@@ -1,5 +1,6 @@
 import {
   Cartesian3,
+  Ellipsoid,
   ExtrapolationType,
   JulianDate,
   LagrangePolynomialApproximation,
@@ -212,16 +213,97 @@ export class SatelliteProperties {
     return { positionFixed, positionInertial: positionInertialICRF };
   }
 
-  groundTrack(julianDate, samplesFwd = 1, samplesBwd = 0, interval = 300) {
+  /**
+   * Calculate the satellite's ground track (subsatellite point path on Earth's surface)
+   *
+   * @param {JulianDate} julianDate - Current time reference point
+   * @param {number} samplesFwd - Number of sample intervals forward in time (default: 2)
+   * @param {number} samplesBwd - Number of sample intervals backward in time (default: 0)
+   * @param {number} interval - Time interval between samples in seconds (default: 600 = 10 minutes)
+   * @returns {Cartesian3[]} Array of 3D positions representing the ground track
+   */
+  groundTrack(julianDate, samplesFwd = 2, samplesBwd = 0, interval = 600) {
     const groundTrack = [];
 
-    const startTime = -samplesBwd * interval;
-    const stopTime = samplesFwd * interval;
+    // Calculate time range for ground track sampling
+    // Negative startTime goes backward in time, positive stopTime goes forward
+    const startTime = -samplesBwd * interval; // e.g., 0 * 600 = 0 (no backward samples by default)
+    const stopTime = samplesFwd * interval;   // e.g., 2 * 600 = 1200 seconds (20 minutes forward)
+
+    // Sample satellite positions at regular intervals to create ground track
     for (let time = startTime; time <= stopTime; time += interval) {
+      // Create timestamp for this sample point
       const timestamp = JulianDate.addSeconds(julianDate, time, new JulianDate());
+
+      // Get satellite position at this time using SGP4 orbital mechanics
+      // This returns the 3D Cartesian position in Earth-fixed coordinates
       groundTrack.push(this.position(timestamp));
     }
+
+    // Return array of positions that form the ground track
+    // Cesium will project these 3D positions onto Earth's surface for display
     return groundTrack;
+  }
+
+  /**
+   * Calculate the visible area width from satellite altitude
+   * This represents the diameter of the area on Earth's surface from which
+   * the satellite can be seen above the horizon (minimum 10° elevation)
+   *
+   * @param {Cesium.JulianDate} time - Time for satellite position calculation
+   * @param {number} minElevation - Minimum elevation angle in degrees (default: 10°)
+   * @returns {number} Visible area diameter in kilometers
+   */
+  getVisibleAreaWidth(time, minElevation = 10) {
+    // Get satellite position at given time
+    const satellitePosition = this.position(time);
+    if (!satellitePosition) return 0;
+
+    // Calculate satellite altitude above Earth's surface
+    const ellipsoid = Ellipsoid.WGS84;
+    const cartographic = ellipsoid.cartesianToCartographic(satellitePosition);
+    if (!cartographic) return 0;
+
+    const altitudeKm = cartographic.height / 1000; // Convert to kilometers
+    const earthRadiusKm = 6371; // Average Earth radius in km
+
+    // Calculate satellite visibility radius using simple geometric approach
+    // For 10° minimum elevation, use the horizon distance formula with elevation correction
+
+    const minElevationRad = minElevation * (Math.PI / 180);
+
+    // For 10° minimum elevation, use a more accurate geometric calculation
+    // The key insight: lower satellites have smaller visibility circles at high elevation angles
+
+    // Maximum slant range from observer to satellite at minimum elevation
+    // Using geometry: range = (R + h) * sin(arccos(R/(R+h)) - elevation_angle)
+    const satelliteDistance = earthRadiusKm + altitudeKm;
+    const nadir_angle = Math.acos(earthRadiusKm / satelliteDistance);
+    const effective_angle = nadir_angle - minElevationRad;
+
+    let visibleRadiusKm;
+    if (effective_angle <= 0) {
+      // Satellite too low for this elevation angle
+      visibleRadiusKm = 0;
+    } else {
+      // Ground range is approximately slant_range * cos(elevation)
+      const slant_range = satelliteDistance * Math.sin(effective_angle);
+      visibleRadiusKm = slant_range * Math.cos(minElevationRad);
+    }
+    const visibleDiameterKm = 2 * visibleRadiusKm;
+
+    // Debug logging for ground track width calculations
+    console.log(`[${this.name}] Ground track width calculation:`, {
+      altitudeKm: altitudeKm.toFixed(1),
+      minElevationDeg: minElevation,
+      satelliteDistance: satelliteDistance.toFixed(1),
+      nadirAngleDeg: (nadir_angle * 180 / Math.PI).toFixed(2),
+      effectiveAngleDeg: (effective_angle * 180 / Math.PI).toFixed(2),
+      visibleRadiusKm: visibleRadiusKm.toFixed(1),
+      visibleDiameterKm: visibleDiameterKm.toFixed(1)
+    });
+
+    return visibleDiameterKm;
   }
 
   get groundStationAvailable() {
