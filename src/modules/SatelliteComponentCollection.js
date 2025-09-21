@@ -439,7 +439,8 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       semiMajorAxis: new CallbackProperty((time) => {
         const visibleWidthKm = this.props.getVisibleAreaWidth(time);
         const radiusKm = visibleWidthKm / 2; // Convert diameter to radius
-        const radiusM = radiusKm * 1000; // Convert to meters
+        const expandedRadiusKm = radiusKm * 1.15; // Expand by 15% for better visibility
+        const radiusM = expandedRadiusKm * 1000; // Convert to meters
 
         return radiusM;
       }, false),
@@ -447,7 +448,8 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       semiMinorAxis: new CallbackProperty((time) => {
         const visibleWidthKm = this.props.getVisibleAreaWidth(time);
         const radiusKm = visibleWidthKm / 2; // Convert diameter to radius
-        return radiusKm * 1000; // Convert to meters
+        const expandedRadiusKm = radiusKm * 1.15; // Expand by 15% for better visibility
+        return expandedRadiusKm * 1000; // Convert to meters
       }, false),
     });
 
