@@ -103,16 +103,7 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
         this.props.updatePasses(this.viewer.clock.currentTime);
         CesiumTimelineHelper.updateHighlightRanges(this.viewer, this.props.passes);
 
-        // Update Pass arc component if it exists
-        if ("Pass arc" in this.components) {
-          this.disableComponent("Pass arc");
-          this.enableComponent("Pass arc");
-        }
       } else {
-        // Disable Pass arc when satellite is not selected
-        if ("Pass arc" in this.components) {
-          this.disableComponent("Pass arc");
-        }
       }
     });
 
@@ -192,9 +183,6 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
         break;
       case "Ground station link":
         this.createGroundStationLink();
-        break;
-      case "Pass arc":
-        this.createPassArc();
         break;
       default:
         console.error("Unknown component");
@@ -446,63 +434,6 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     this.createCesiumSatelliteEntity("Ground station link", "polyline", polyline);
   }
 
-  createPassArc() {
-    if (!this.props.groundStationAvailable || !this.isSelected) {
-      return;
-    }
-
-    // Find current pass
-    const getCurrentPass = (time) => {
-      const currentTime = new Date(Cesium.JulianDate.toDate(time));
-      return this.props.passes.find(pass => {
-        const passStart = new Date(pass.start);
-        const passEnd = new Date(pass.end);
-        return currentTime >= passStart && currentTime <= passEnd;
-      });
-    };
-
-    // Create dynamic material that changes color based on eclipse status
-    const dynamicMaterial = new Cesium.ColorMaterialProperty(
-      new Cesium.CallbackProperty((time) => {
-        try {
-          const isEclipsed = this.props.orbit.isInEclipse(Cesium.JulianDate.toDate(time));
-          return isEclipsed
-            ? Cesium.Color.DARKRED.withAlpha(0.8)  // Dark red for eclipsed portions
-            : Cesium.Color.CYAN.withAlpha(0.9);    // Bright cyan for sunlit portions during pass
-        } catch (error) {
-          // Fallback to cyan if eclipse calculation fails
-          return Cesium.Color.CYAN.withAlpha(0.8);
-        }
-      }, false)
-    );
-
-    const path = new Cesium.PathGraphics({
-      leadTime: new Cesium.CallbackProperty((time) => {
-        const currentPass = getCurrentPass(time);
-        if (!currentPass) return 0;
-
-        const currentTime = Cesium.JulianDate.toDate(time);
-        const passEnd = new Date(currentPass.end);
-        return Math.max(0, (passEnd.getTime() - currentTime.getTime()) / 1000);
-      }, false),
-      trailTime: new Cesium.CallbackProperty((time) => {
-        const currentPass = getCurrentPass(time);
-        if (!currentPass) return 0;
-
-        const currentTime = Cesium.JulianDate.toDate(time);
-        const passStart = new Date(currentPass.start);
-        return Math.max(0, (currentTime.getTime() - passStart.getTime()) / 1000);
-      }, false),
-      material: dynamicMaterial,
-      resolution: 120, // Higher resolution for more detailed pass arc
-      width: 4, // Wider to make it stand out
-      show: new Cesium.CallbackProperty((time) => {
-        // Only show when satellite is selected and during a pass
-        return this.isSelected && this.props.passIntervals.contains(time);
-      }, false),
-    });
-    this.createCesiumSatelliteEntity("Pass arc", "path", path);
-  }
 
   set groundStations(groundStations) {
     // No groundstation calculation for GEO satellites
