@@ -8,7 +8,7 @@
         <button v-tooltip="'Satellite elements'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('sat')">
           <font-awesome-icon icon="fas fa-layer-group" />
         </button>
-        <button v-tooltip="'Ground station'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('gs')">
+        <button v-tooltip="'Ground station (double-click to focus)'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('gs')" @dblclick="focusFirstGroundStation">
           <i class="icon svg-groundstation"></i>
         </button>
         <button v-tooltip="'Map'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('map')">
@@ -293,6 +293,15 @@ export default {
         this.menu[k] = false;
       });
       this.menu[name] = !oldState;
+    },
+    focusFirstGroundStation() {
+      // Focus on the first ground station when double-clicking the ground station button
+      if (this.groundStations && this.groundStations.length > 0) {
+        console.log(`Focusing on first ground station: ${this.groundStations[0].name}`);
+        this.cc.sats.focusGroundStation(this.groundStations[0]);
+      } else {
+        console.warn('No ground stations available to focus on');
+      }
     },
     toggleUI() {
       this.showUI = !this.showUI;
