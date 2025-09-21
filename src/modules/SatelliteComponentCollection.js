@@ -136,7 +136,7 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       }
       if (this.isSelected) {
         this.props.updatePasses(this.viewer.clock.currentTime);
-        CesiumTimelineHelper.updateHighlightRanges(this.viewer, this.props.passes);
+        CesiumTimelineHelper.updateHighlightRanges(this.viewer, this.props.passes, this.props.name);
 
       } else {
       }
@@ -536,7 +536,7 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     if (this.isSelected || this.isTracked) {
       this.props.updatePasses(this.viewer.clock.currentTime);
       if (this.isSelected) {
-        CesiumTimelineHelper.updateHighlightRanges(this.viewer, this.props.passes);
+        CesiumTimelineHelper.updateHighlightRanges(this.viewer, this.props.passes, this.props.name);
       }
     }
     if (this.created) {
