@@ -374,11 +374,8 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     // Satellites with orbital periods > 2 hours are typically in higher orbits
     // where ground track visualization becomes less meaningful
     if (this.props.orbit.orbitalPeriod > 60 * 2) {
-      console.log(`[${this.props.name}] Visibility area skipped - orbital period ${this.props.orbit.orbitalPeriod.toFixed(1)} min > 120 min (non-LEO)`);
       return;
     }
-
-    console.log(`[${this.props.name}] Creating visibility circle for LEO satellite (period: ${this.props.orbit.orbitalPeriod.toFixed(1)} min)`);
 
     // Create a circle showing the satellite's visibility footprint on Earth's surface
     // This represents the area where the satellite can be observed above 10° elevation

@@ -329,12 +329,9 @@ export default class Orbit {
     const sunToEarthMag = Math.sqrt(sunToEarth.x * sunToEarth.x + sunToEarth.y * sunToEarth.y + sunToEarth.z * sunToEarth.z);
     const sunToSatMag = Math.sqrt(sunToSat.x * sunToSat.x + sunToSat.y * sunToSat.y + sunToSat.z * sunToSat.z);
 
-    console.log(`Eclipse debug - sunToEarthMag: ${sunToEarthMag.toFixed(2)} km, sunToSatMag: ${sunToSatMag.toFixed(2)} km`);
-
     // Check if satellite is on the sun side of Earth
     // If satellite is closer to sun than Earth is, it's on the sun side
     if (sunToSatMag < sunToEarthMag) {
-      console.log(`Satellite on sun side: sunToSatMag (${sunToSatMag.toFixed(2)}) < sunToEarthMag (${sunToEarthMag.toFixed(2)})`);
       return false; // Satellite is on sun side, cannot be in shadow
     }
 
