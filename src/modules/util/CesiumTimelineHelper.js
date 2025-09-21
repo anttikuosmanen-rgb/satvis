@@ -34,40 +34,60 @@ export class CesiumTimelineHelper {
 
         // Add click listener to track the satellite
         highlightRange._clickListener = () => {
+          console.log(`Pass clicked for satellite: ${satelliteName}`);
+
           // Find the satellite entity by name and track it
           const entities = viewer.entities.values;
+          console.log(`Total entities: ${entities.length}`);
 
-          // Try different naming patterns to find the satellite entity
+          // Debug: log all satellite-related entities
+          const satelliteEntities = entities.filter(entity =>
+            entity.name && entity.name.includes(satelliteName)
+          );
+          console.log(`Entities for ${satelliteName}:`, satelliteEntities.map(e => e.name));
+
+          // Try to find the main satellite entity (usually the Point component)
           let satelliteEntity = entities.find(entity =>
             entity.name && entity.name.includes(satelliteName) && entity.name.includes('Point')
           );
 
-          // If not found with "Point", try just the satellite name
-          if (!satelliteEntity) {
-            satelliteEntity = entities.find(entity =>
-              entity.name && entity.name === satelliteName
-            );
-          }
-
-          // If still not found, try partial match
-          if (!satelliteEntity) {
-            satelliteEntity = entities.find(entity =>
-              entity.name && entity.name.includes(satelliteName)
-            );
+          // If not found with "Point", try the first entity with the satellite name
+          if (!satelliteEntity && satelliteEntities.length > 0) {
+            satelliteEntity = satelliteEntities[0];
           }
 
           if (satelliteEntity) {
-            // First clear any existing tracking to ensure clean switch
-            viewer.trackedEntity = undefined;
+            console.log(`Found entity to track: ${satelliteEntity.name}`);
 
-            // Small delay to ensure the untracking is processed
+            // Force clear tracking and camera
+            viewer.trackedEntity = null;
+            viewer.selectedEntity = null;
+
+            // Also try to trigger selection change through the satellite manager
+            // This should ensure proper satellite switching
+            if (window.cc && window.cc.sats) {
+              try {
+                const satManager = window.cc.sats;
+                // Find and select the satellite
+                const satellite = satManager.satellites.find(sat => sat.props.name === satelliteName);
+                if (satellite) {
+                  console.log(`Selecting satellite through manager: ${satelliteName}`);
+                  satManager.enabledSatellite = satelliteName;
+                  satManager.selectSatellite(satelliteName);
+                }
+              } catch (error) {
+                console.warn('Could not use satellite manager:', error);
+              }
+            }
+
+            // Small delay to ensure the selection is processed
             setTimeout(() => {
               viewer.trackedEntity = satelliteEntity;
-              console.log(`Tracking ${satelliteName} - pass clicked (entity: ${satelliteEntity.name})`);
-            }, 50);
+              console.log(`Now tracking: ${satelliteEntity.name}`);
+            }, 100);
           } else {
             console.warn(`Could not find satellite entity for ${satelliteName}`);
-            console.log('Available entities:', entities.map(e => e.name).filter(n => n));
+            console.log('All available entities:', entities.map(e => e.name).filter(n => n));
           }
         };
 
