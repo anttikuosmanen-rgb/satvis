@@ -292,7 +292,6 @@ export class SatelliteProperties {
     }
     const visibleDiameterKm = 2 * visibleRadiusKm;
 
-
     return visibleDiameterKm;
   }
 

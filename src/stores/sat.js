@@ -15,6 +15,7 @@ export const useSatStore = defineStore("sat", {
   }),
   urlsync: {
     enabled: true,
+<<<<<<< HEAD
     config: [
       {
         name: "enabledComponents",

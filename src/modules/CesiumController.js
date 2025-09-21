@@ -78,8 +78,6 @@ export class CesiumController {
     // Comment out requestRenderMode temporarily to see if it's interfering
     // this.viewer.scene.requestRenderMode = true;
 
-
-
     // Cesium Performance Tools
     // this.viewer.scene.debugShowFramesPerSecond = true;
     // this.FrameRateMonitor = FrameRateMonitor.fromScene(this.viewer.scene);
@@ -549,7 +547,6 @@ export class CesiumController {
     };
   }
 
-
   styleInfoBox() {
     const infoBox = this.viewer.infoBox.container.getElementsByClassName("cesium-infoBox")[0];
     const close = this.viewer.infoBox.container.getElementsByClassName("cesium-infoBox-close")[0];
@@ -665,22 +662,16 @@ export class CesiumController {
           const entities = this.viewer.entities.values;
 
           // Try different naming patterns to find the satellite entity
-          let satelliteEntity = entities.find(entity =>
-            entity.name && entity.name.includes(satelliteName) && entity.name.includes('Point')
-          );
+          let satelliteEntity = entities.find((entity) => entity.name && entity.name.includes(satelliteName) && entity.name.includes("Point"));
 
           // If not found with "Point", try just the satellite name
           if (!satelliteEntity) {
-            satelliteEntity = entities.find(entity =>
-              entity.name && entity.name === satelliteName
-            );
+            satelliteEntity = entities.find((entity) => entity.name && entity.name === satelliteName);
           }
 
           // If still not found, try partial match
           if (!satelliteEntity) {
-            satelliteEntity = entities.find(entity =>
-              entity.name && entity.name.includes(satelliteName)
-            );
+            satelliteEntity = entities.find((entity) => entity.name && entity.name.includes(satelliteName));
           }
 
           if (satelliteEntity) {
@@ -696,7 +687,7 @@ export class CesiumController {
                 console.log(`Tracking satellite through manager: ${satelliteName}`);
                 this.sats.trackedSatellite = satelliteName;
               } catch (error) {
-                console.warn('Could not use satellite manager:', error);
+                console.warn("Could not use satellite manager:", error);
               }
             }
 
@@ -707,7 +698,7 @@ export class CesiumController {
             }, 100);
           } else {
             console.warn(`Could not find satellite entity for: ${satelliteName}`);
-            console.log('Available entities:', entities.map(e => e.name).filter(n => n));
+            console.log("Available entities:", entities.map((entity) => entity.name).filter((n) => n));
           }
         }
       }

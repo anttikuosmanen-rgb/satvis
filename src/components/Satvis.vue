@@ -307,7 +307,7 @@ export default {
       // Ground stations now have names like "Groundstation [60.81°, 23.95°]"
       const isTrackingGroundStation = currentTrackedEntity &&
         currentTrackedEntity.name &&
-        currentTrackedEntity.name.includes('Groundstation');
+        currentTrackedEntity.name.includes("Groundstation");
 
       if (isTrackingGroundStation) {
         // Return to normal view focused on center of Earth
@@ -320,8 +320,8 @@ export default {
           orientation: {
             heading: 0,
             pitch: -Cesium.Math.PI_OVER_TWO, // Look straight down
-            roll: 0
-          }
+            roll: 0,
+          },
         });
       } else {
         // Focus on the first ground station
@@ -338,7 +338,7 @@ export default {
     },
     formatDate(timestamp) {
       const date = new Date(timestamp);
-      return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+      return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
     },
     formatDuration(duration) {
       const minutes = Math.floor(duration / 60000);
@@ -346,20 +346,20 @@ export default {
       return `${minutes}m ${seconds}s`;
     },
     formatAzimuth(azimuth) {
-      const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+      const directions = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
       const index = Math.round(azimuth / 45) % 8;
       return `${azimuth.toFixed(0)}° (${directions[index]})`;
     },
     formatTime(timestamp) {
       const date = new Date(timestamp);
-      return date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+      return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     },
     clearAllGroundStations() {
       // Check if we're currently tracking a ground station and unfocus first
       const currentTrackedEntity = this.cc.viewer.trackedEntity;
       const isTrackingGroundStation = currentTrackedEntity &&
         currentTrackedEntity.name &&
-        currentTrackedEntity.name.includes('Groundstation');
+        currentTrackedEntity.name.includes("Groundstation");
 
       if (isTrackingGroundStation) {
         // Return to normal view focused on center of Earth
@@ -370,13 +370,13 @@ export default {
           orientation: {
             heading: 0,
             pitch: -Cesium.Math.PI_OVER_TWO,
-            roll: 0
-          }
+            roll: 0,
+          },
         });
       }
 
       // Hide all ground station entities first
-      this.cc.sats.groundStations.forEach(groundStation => {
+      this.cc.sats.groundStations.forEach((groundStation) => {
         groundStation.hide();
       });
 

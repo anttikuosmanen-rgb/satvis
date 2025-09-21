@@ -50,10 +50,6 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     this.eventListeners = {};
   }
 
-  disableComponent(name) {
-    super.disableComponent(name);
-  }
-
   enableComponent(name) {
     if (!this.created) {
       this.init();
@@ -165,8 +161,6 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       if (this.isSelected) {
         this.props.updatePasses(this.viewer.clock.currentTime);
         CesiumTimelineHelper.updateHighlightRanges(this.viewer, this.props.passes, this.props.name);
-
-      } else {
       }
     });
 
@@ -447,7 +441,6 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
         const radiusKm = visibleWidthKm / 2; // Convert diameter to radius
         const radiusM = radiusKm * 1000; // Convert to meters
 
-
         return radiusM;
       }, false),
 
@@ -457,7 +450,6 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
         return radiusKm * 1000; // Convert to meters
       }, false),
     });
-
 
     // Add the visibility circle to the Cesium scene
     this.createCesiumSatelliteEntity("Visibility area", "ellipse", visibilityCircle);
@@ -478,7 +470,7 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
           const surfacePosition = Cartesian3.fromRadians(
             cartographic.longitude,
             cartographic.latitude,
-            0
+            0,
           );
           return [surfacePosition, satellitePosition];
         }, false),
@@ -486,8 +478,8 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
         material: Color.CYAN,
         width: 1,
         distanceDisplayCondition: new DistanceDisplayCondition(2000, 8e7),
-        translucencyByDistance: new NearFarScalar(6e7, 1.0, 8e7, 0.0)
-      })
+        translucencyByDistance: new NearFarScalar(6e7, 1.0, 8e7, 0.0),
+      }),
     });
 
     // Create static tick marks (simplified approach to avoid clock interference)
@@ -515,7 +507,7 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
             const tickPosition = Cartesian3.fromRadians(
               cartographic.longitude,
               cartographic.latitude,
-              altitude * 1000
+              altitude * 1000,
             );
 
             // Calculate eastward direction for tick
@@ -527,7 +519,7 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
             const tickEnd = Cartesian3.add(
               tickPosition,
               Cartesian3.multiplyByScalar(east, tickLength, new Cartesian3()),
-              new Cartesian3()
+              new Cartesian3(),
             );
 
             return [tickPosition, tickEnd];
@@ -536,8 +528,8 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
           material: Color.CYAN,
           width: is500km ? 2 : 1,
           distanceDisplayCondition: new DistanceDisplayCondition(2000, 8e7),
-          translucencyByDistance: new NearFarScalar(6e7, 1.0, 8e7, 0.0)
-        })
+          translucencyByDistance: new NearFarScalar(6e7, 1.0, 8e7, 0.0),
+        }),
       });
 
       this.viewer.entities.add(tickEntity);
