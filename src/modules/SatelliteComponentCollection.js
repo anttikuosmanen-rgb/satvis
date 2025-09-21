@@ -347,19 +347,63 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
   }
 
   createGroundTrack() {
+    // Only show ground tracks for Low Earth Orbit (LEO) satellites
+    // Satellites with orbital periods > 2 hours are typically in higher orbits
+    // where ground track visualization becomes less meaningful
     if (this.props.orbit.orbitalPeriod > 60 * 2) {
-      // Ground track unavailable for non-LEO satellites
+      console.log(`[${this.props.name}] Ground track skipped - orbital period ${this.props.orbit.orbitalPeriod.toFixed(1)} min > 120 min (non-LEO)`);
       return;
     }
-    const corridor = new Cesium.CorridorGraphics({
-      cornerType: Cesium.CornerType.MITERED,
-      height: 1000,
-      heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+
+    console.log(`[${this.props.name}] Creating visibility circle for LEO satellite (period: ${this.props.orbit.orbitalPeriod.toFixed(1)} min)`);
+
+    // Create a circle showing the satellite's visibility footprint on Earth's surface
+    // This represents the area where the satellite can be observed above 10° elevation
+    const visibilityCircle = new Cesium.EllipseGraphics({
+      // Semi-transparent dark red material for visibility without obscuring terrain
       material: Cesium.Color.DARKRED.withAlpha(0.25),
-      positions: new Cesium.CallbackProperty((time) => this.props.groundTrack(time), false),
-      width: this.props.swath * 1000,
+
+      // Add a subtle outline to make the circle more visible
+      outline: true,
+      outlineColor: Cesium.Color.DARKRED.withAlpha(0.8),
+      outlineWidth: 2,
+
+      // Elevate slightly above ground to avoid clipping at corners
+      height: 5000, // 5km above surface
+      heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND,
+
+      // Dynamic radius based on satellite altitude and 10° minimum elevation
+      // The radius represents the distance from subsatellite point to 10° horizon
+      semiMajorAxis: new Cesium.CallbackProperty((time) => {
+        const visibleWidthKm = this.props.getVisibleAreaWidth(time);
+        const radiusKm = visibleWidthKm / 2; // Convert diameter to radius
+        const radiusM = radiusKm * 1000; // Convert to meters
+
+        // Debug logging for circle radius updates
+        console.log(`[${this.props.name}] Visibility circle radius: ${radiusKm.toFixed(1)} km (${radiusM.toFixed(0)} m)`);
+
+        return radiusM;
+      }, false),
+
+      semiMinorAxis: new Cesium.CallbackProperty((time) => {
+        const visibleWidthKm = this.props.getVisibleAreaWidth(time);
+        const radiusKm = visibleWidthKm / 2; // Convert diameter to radius
+        return radiusKm * 1000; // Convert to meters
+      }, false),
     });
-    this.createCesiumSatelliteEntity("Ground track", "corridor", corridor);
+
+    // Debug logging for visibility circle parameters
+    console.log(`[${this.props.name}] Visibility circle parameters:`, {
+      height: '5000m above ground',
+      heightReference: 'RELATIVE_TO_GROUND',
+      material: 'DARKRED alpha 0.25',
+      outline: 'DARKRED alpha 0.8',
+      dynamicRadius: 'visible area calculation (10° elevation)',
+      shape: 'circle (equal major/minor axes)'
+    });
+
+    // Add the visibility circle to the Cesium scene
+    this.createCesiumSatelliteEntity("Ground track", "ellipse", visibilityCircle);
   }
 
   createCone(fov = 10) {
