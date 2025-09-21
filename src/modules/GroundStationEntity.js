@@ -67,10 +67,9 @@ export class GroundStationEntity extends CesiumComponentCollection {
     // Filter out passes in sunlight if option is enabled
     const satStore = useSatStore();
     if (satStore.hideSunlightPasses) {
-      passes = passes.filter(pass => {
+      passes = passes.filter((pass) =>
         // Show pass if either start or end is in darkness
-        return pass.groundStationDarkAtStart || pass.groundStationDarkAtEnd;
-      });
+        pass.groundStationDarkAtStart || pass.groundStationDarkAtEnd);
     }
 
     // Sort passes by time

@@ -1,7 +1,7 @@
 import * as satellitejs from "satellite.js";
 import dayjs from "dayjs";
-import { GroundStationConditions } from "./util/GroundStationConditions.js";
 import * as Astronomy from "astronomy-engine";
+import { GroundStationConditions } from "./util/GroundStationConditions";
 
 const deg2rad = Math.PI / 180;
 const rad2deg = 180 / Math.PI;
@@ -186,7 +186,7 @@ export default class Orbit {
       const satPos = {
         x: satEci.x,
         y: satEci.y,
-        z: satEci.z
+        z: satEci.z,
       };
 
       // Get Sun's position using astronomy-engine in proper geocentric coordinates
@@ -202,7 +202,7 @@ export default class Orbit {
       const sunPos = {
         x: sunGeoVector.x * auToKm,
         y: sunGeoVector.y * auToKm,
-        z: sunGeoVector.z * auToKm
+        z: sunGeoVector.z * auToKm,
       };
 
       // Earth radius in km
@@ -228,14 +228,14 @@ export default class Orbit {
     const sunToSat = {
       x: satPos.x - sunPos.x,
       y: satPos.y - sunPos.y,
-      z: satPos.z - sunPos.z
+      z: satPos.z - sunPos.z,
     };
 
     // Vector from Sun to Earth center (opposite of sunPos since Earth is at origin)
     const sunToEarth = {
       x: -sunPos.x,
       y: -sunPos.y,
-      z: -sunPos.z
+      z: -sunPos.z,
     };
 
     // Distance from satellite to Sun-Earth line
@@ -274,7 +274,7 @@ export default class Orbit {
     const startDate = new Date(startTime);
     const endDate = new Date(endTime);
 
-    let currentDate = new Date(startDate);
+    const currentDate = new Date(startDate);
     let wasInEclipse = this.isInEclipse(currentDate);
 
     while (currentDate < endDate) {
@@ -286,7 +286,7 @@ export default class Orbit {
         transitions.push({
           time: currentDate.getTime(),
           fromShadow: wasInEclipse, // true if transitioning from shadow to sunlight
-          toShadow: isInEclipse     // true if transitioning from sunlight to shadow
+          toShadow: isInEclipse,     // true if transitioning from sunlight to shadow
         });
         wasInEclipse = isInEclipse;
       }

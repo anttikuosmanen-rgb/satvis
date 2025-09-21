@@ -1,5 +1,4 @@
 import * as Cesium from "@cesium/engine";
-import CesiumSensorVolumes from "cesium-sensor-volumes";
 
 import { SatelliteProperties } from "./SatelliteProperties";
 import { CesiumComponentCollection } from "./util/CesiumComponentCollection";
@@ -12,10 +11,6 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     super(viewer);
     this.props = new SatelliteProperties(tle, tags);
     this.eventListeners = {};
-  }
-
-  disableComponent(name) {
-    super.disableComponent(name);
   }
 
   enableComponent(name) {
@@ -78,6 +73,19 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
   }
 
   disableComponent(name) {
+    if (name === "Height stick") {
+      const component = this.components[name];
+      if (component) {
+        // Clean up tick mark entities
+        if (component.tickEntities) {
+          component.tickEntities.forEach((tickEntity) => {
+            this.viewer.entities.remove(tickEntity);
+          });
+          component.tickEntities.length = 0;
+        }
+      }
+    }
+
     if (name === "3D model") {
       // Restore old label offset
       if (this.components.Label) {
@@ -120,8 +128,6 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       if (this.isSelected) {
         this.props.updatePasses(this.viewer.clock.currentTime);
         CesiumTimelineHelper.updateHighlightRanges(this.viewer, this.props.passes, this.props.name);
-
-      } else {
       }
     });
 
@@ -395,7 +401,6 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
         const radiusKm = visibleWidthKm / 2; // Convert diameter to radius
         const radiusM = radiusKm * 1000; // Convert to meters
 
-
         return radiusM;
       }, false),
 
@@ -405,7 +410,6 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
         return radiusKm * 1000; // Convert to meters
       }, false),
     });
-
 
     // Add the visibility circle to the Cesium scene
     this.createCesiumSatelliteEntity("Visibility area", "ellipse", visibilityCircle);
@@ -426,7 +430,7 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
           const surfacePosition = Cesium.Cartesian3.fromRadians(
             cartographic.longitude,
             cartographic.latitude,
-            0
+            0,
           );
           return [surfacePosition, satellitePosition];
         }, false),
@@ -434,8 +438,8 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
         material: Cesium.Color.CYAN,
         width: 1,
         distanceDisplayCondition: new Cesium.DistanceDisplayCondition(2000, 8e7),
-        translucencyByDistance: new Cesium.NearFarScalar(6e7, 1.0, 8e7, 0.0)
-      })
+        translucencyByDistance: new Cesium.NearFarScalar(6e7, 1.0, 8e7, 0.0),
+      }),
     });
 
     // Create static tick marks (simplified approach to avoid clock interference)
@@ -463,7 +467,7 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
             const tickPosition = Cesium.Cartesian3.fromRadians(
               cartographic.longitude,
               cartographic.latitude,
-              altitude * 1000
+              altitude * 1000,
             );
 
             // Calculate eastward direction for tick
@@ -475,7 +479,7 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
             const tickEnd = Cesium.Cartesian3.add(
               tickPosition,
               Cesium.Cartesian3.multiplyByScalar(east, tickLength, new Cesium.Cartesian3()),
-              new Cesium.Cartesian3()
+              new Cesium.Cartesian3(),
             );
 
             return [tickPosition, tickEnd];
@@ -484,8 +488,8 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
           material: Cesium.Color.CYAN,
           width: is500km ? 2 : 1,
           distanceDisplayCondition: new Cesium.DistanceDisplayCondition(2000, 8e7),
-          translucencyByDistance: new Cesium.NearFarScalar(6e7, 1.0, 8e7, 0.0)
-        })
+          translucencyByDistance: new Cesium.NearFarScalar(6e7, 1.0, 8e7, 0.0),
+        }),
       });
 
       this.viewer.entities.add(tickEntity);
@@ -493,27 +497,9 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     }
 
     // Store tick entities for cleanup
-    entity._tickEntities = tickEntities;
+    entity.tickEntities = tickEntities;
     this.components["Height stick"] = entity;
   }
-
-  disableComponent(name) {
-    if (name === "Height stick") {
-      const component = this.components[name];
-      if (component) {
-        // Clean up tick mark entities
-        if (component._tickEntities) {
-          component._tickEntities.forEach(tickEntity => {
-            this.viewer.entities.remove(tickEntity);
-          });
-          component._tickEntities.length = 0;
-        }
-      }
-    }
-    // Call parent method for standard cleanup
-    super.disableComponent(name);
-  }
-
 
   createGroundStationLink() {
     if (!this.props.groundStationAvailable) {
@@ -536,7 +522,6 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     });
     this.createCesiumSatelliteEntity("Ground station link", "polyline", polyline);
   }
-
 
   set groundStations(groundStations) {
     // No groundstation calculation for GEO satellites

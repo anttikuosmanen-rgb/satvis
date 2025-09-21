@@ -39,7 +39,7 @@ export class DescriptionHelper {
 
     // Get current eclipse status if orbit object is available
     let eclipseStatus = "—";
-    if (orbit && typeof orbit.isInEclipse === 'function') {
+    if (orbit && typeof orbit.isInEclipse === "function") {
       try {
         const isEclipsed = orbit.isInEclipse(new Date(time));
         eclipseStatus = isEclipsed ? "🌑 Eclipse" : "☀️ Sunlit";
@@ -219,10 +219,9 @@ export class DescriptionHelper {
     const satStore = useSatStore();
     let filteredPasses = passes;
     if (satStore.hideSunlightPasses) {
-      filteredPasses = passes.filter(pass => {
+      filteredPasses = passes.filter((pass) =>
         // Show pass if either start or end is in darkness
-        return pass.groundStationDarkAtStart || pass.groundStationDarkAtEnd;
-      });
+        pass.groundStationDarkAtStart || pass.groundStationDarkAtEnd);
     }
 
     // Check if any passes remain after filtering
@@ -298,9 +297,9 @@ export class DescriptionHelper {
       let transitionDetails = "";
       if (pass.eclipseTransitions && pass.eclipseTransitions.length > 0) {
         const transitionCount = pass.eclipseTransitions.length;
-        transitionText = ` (${transitionCount} transition${transitionCount > 1 ? 's' : ''})`;
+        transitionText = ` (${transitionCount} transition${transitionCount > 1 ? "s" : ""})`;
 
-        const transitionTimes = pass.eclipseTransitions.map(transition => {
+        const transitionTimes = pass.eclipseTransitions.map((transition) => {
           const time = dayjs.utc(transition.time).format("HH:mm:ss");
           const direction = transition.toShadow ? "→🌑" : "→☀️";
           const description = transition.toShadow ? "enters eclipse" : "exits eclipse";
@@ -322,7 +321,7 @@ export class DescriptionHelper {
     // Generate eclipse transition times for display
     let transitionsDisplay = "";
     if (pass.eclipseTransitions && pass.eclipseTransitions.length > 0) {
-      const transitionList = pass.eclipseTransitions.map(transition => {
+      const transitionList = pass.eclipseTransitions.map((transition) => {
         const time = dayjs.utc(transition.time).format("HH:mm:ss");
         const icon = transition.toShadow ? "🌑" : "☀️";
         const desc = transition.toShadow ? "eclipse" : "sunlit";
@@ -395,10 +394,10 @@ export class DescriptionHelper {
       let transitionDetails = "";
       if (pass.eclipseTransitions && pass.eclipseTransitions.length > 0) {
         const transitionCount = pass.eclipseTransitions.length;
-        transitionText = ` (${transitionCount} transition${transitionCount > 1 ? 's' : ''})`;
+        transitionText = ` (${transitionCount} transition${transitionCount > 1 ? "s" : ""})`;
 
         // Create detailed transition time information
-        const transitionTimes = pass.eclipseTransitions.map(transition => {
+        const transitionTimes = pass.eclipseTransitions.map((transition) => {
           const time = dayjs.utc(transition.time).format("HH:mm:ss");
           const direction = transition.toShadow ? "→🌑" : "→☀️";
           const description = transition.toShadow ? "enters eclipse" : "exits eclipse";
@@ -422,7 +421,7 @@ export class DescriptionHelper {
     // Generate eclipse transition times display
     let transitionsHtml = "—";
     if (pass.eclipseTransitions && pass.eclipseTransitions.length > 0) {
-      const transitionList = pass.eclipseTransitions.map(transition => {
+      const transitionList = pass.eclipseTransitions.map((transition) => {
         const time = dayjs.utc(transition.time).format("HH:mm:ss");
         const icon = transition.toShadow ? "🌑" : "☀️";
         return `${time} ${icon}`;

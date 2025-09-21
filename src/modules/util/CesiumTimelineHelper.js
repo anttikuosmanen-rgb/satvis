@@ -24,12 +24,12 @@ export class CesiumTimelineHelper {
 
       // Add click functionality to focus on satellite when pass is clicked
       if (satelliteName && highlightRange._element) {
-        highlightRange._element.style.cursor = 'pointer';
+        highlightRange._element.style.cursor = "pointer";
         highlightRange._element.title = `Click to track ${satelliteName} during this pass`;
 
         // Remove any existing click listeners
         if (highlightRange._clickListener) {
-          highlightRange._element.removeEventListener('click', highlightRange._clickListener);
+          highlightRange._element.removeEventListener("click", highlightRange._clickListener);
         }
 
         // Add click listener to track the satellite
@@ -41,15 +41,11 @@ export class CesiumTimelineHelper {
           console.log(`Total entities: ${entities.length}`);
 
           // Debug: log all satellite-related entities
-          const satelliteEntities = entities.filter(entity =>
-            entity.name && entity.name.includes(satelliteName)
-          );
-          console.log(`Entities for ${satelliteName}:`, satelliteEntities.map(e => e.name));
+          const satelliteEntities = entities.filter((entity) => entity.name && entity.name.includes(satelliteName));
+          console.log(`Entities for ${satelliteName}:`, satelliteEntities.map((e) => e.name));
 
           // Try to find the main satellite entity (usually the Point component)
-          let satelliteEntity = entities.find(entity =>
-            entity.name && entity.name.includes(satelliteName) && entity.name.includes('Point')
-          );
+          let satelliteEntity = entities.find((entity) => entity.name && entity.name.includes(satelliteName) && entity.name.includes("Point"));
 
           // If not found with "Point", try the first entity with the satellite name
           if (!satelliteEntity && satelliteEntities.length > 0) {
@@ -71,7 +67,7 @@ export class CesiumTimelineHelper {
                 console.log(`Tracking satellite through manager: ${satelliteName}`);
                 satManager.trackedSatellite = satelliteName;
               } catch (error) {
-                console.warn('Could not use satellite manager:', error);
+                console.warn("Could not use satellite manager:", error);
               }
             }
 
@@ -82,11 +78,11 @@ export class CesiumTimelineHelper {
             }, 100);
           } else {
             console.warn(`Could not find satellite entity for ${satelliteName}`);
-            console.log('All available entities:', entities.map(e => e.name).filter(n => n));
+            console.log("All available entities:", entities.map((e) => e.name).filter((n) => n));
           }
         };
 
-        highlightRange._element.addEventListener('click', highlightRange._clickListener);
+        highlightRange._element.addEventListener("click", highlightRange._clickListener);
       }
 
       viewer.timeline.updateFromClock();

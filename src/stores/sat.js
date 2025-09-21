@@ -52,13 +52,13 @@ export const useSatStore = defineStore("sat", {
     }, {
       name: "hideSunlightPasses",
       url: "hideSunlight",
-      serialize: (v) => v ? "1" : "0",
+      serialize: (v) => (v ? "1" : "0"),
       deserialize: (v) => v === "1",
       default: true,
     }, {
       name: "showOnlyLitPasses",
       url: "onlyLit",
-      serialize: (v) => v ? "1" : "0",
+      serialize: (v) => (v ? "1" : "0"),
       deserialize: (v) => v === "1",
       default: true,
     }],
