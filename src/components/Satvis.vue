@@ -303,11 +303,10 @@ export default {
       console.log('Entity name:', currentTrackedEntity ? currentTrackedEntity.name : 'None');
 
       // Check if we're currently tracking a ground station
+      // Ground stations now have names like "Groundstation [60.81°, 23.95°]"
       const isTrackingGroundStation = currentTrackedEntity &&
         currentTrackedEntity.name &&
-        (currentTrackedEntity.name.includes('Groundstation') ||
-         currentTrackedEntity.name.includes('Ground station') ||
-         currentTrackedEntity.name === 'Groundstation');
+        currentTrackedEntity.name.includes('Groundstation');
 
       console.log('Is tracking ground station:', isTrackingGroundStation);
 

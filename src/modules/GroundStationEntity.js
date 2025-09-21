@@ -46,7 +46,7 @@ export class GroundStationEntity extends CesiumComponentCollection {
     if (this.givenName) {
       return this.givenName;
     }
-    return `${this.position.latitude.toFixed(2)}°, ${this.position.longitude.toFixed(2)}°`;
+    return `Groundstation [${this.position.latitude.toFixed(2)}°, ${this.position.longitude.toFixed(2)}°]`;
   }
 
   passes(time, deltaHours = 48) {
