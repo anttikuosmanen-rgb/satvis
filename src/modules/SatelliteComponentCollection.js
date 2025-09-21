@@ -367,8 +367,6 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
         const radiusKm = visibleWidthKm / 2; // Convert diameter to radius
         const radiusM = radiusKm * 1000; // Convert to meters
 
-        // Debug logging for circle radius updates
-        console.log(`[${this.props.name}] Visibility circle radius: ${radiusKm.toFixed(1)} km (${radiusM.toFixed(0)} m)`);
 
         return radiusM;
       }, false),
@@ -380,15 +378,6 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       }, false),
     });
 
-    // Debug logging for visibility circle parameters
-    console.log(`[${this.props.name}] Visibility circle parameters:`, {
-      height: '5000m above ground',
-      heightReference: 'RELATIVE_TO_GROUND',
-      material: 'DARKRED alpha 0.25',
-      outline: 'DARKRED alpha 0.8',
-      dynamicRadius: 'visible area calculation (10° elevation)',
-      shape: 'circle (equal major/minor axes)'
-    });
 
     // Add the visibility circle to the Cesium scene
     this.createCesiumSatelliteEntity("Visibility area", "ellipse", visibilityCircle);

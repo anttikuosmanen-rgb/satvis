@@ -278,16 +278,6 @@ export class SatelliteProperties {
     }
     const visibleDiameterKm = 2 * visibleRadiusKm;
 
-    // Debug logging for visibility area calculations
-    console.log(`[${this.name}] Visibility area calculation:`, {
-      altitudeKm: altitudeKm.toFixed(1),
-      minElevationDeg: minElevation,
-      satelliteDistance: satelliteDistance.toFixed(1),
-      nadirAngleDeg: (nadir_angle * 180 / Math.PI).toFixed(2),
-      effectiveAngleDeg: (effective_angle * 180 / Math.PI).toFixed(2),
-      visibleRadiusKm: visibleRadiusKm.toFixed(1),
-      visibleDiameterKm: visibleDiameterKm.toFixed(1)
-    });
 
     return visibleDiameterKm;
   }
