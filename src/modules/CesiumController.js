@@ -689,9 +689,8 @@ export class CesiumController {
             // Also try to select satellite through satellite manager
             if (this.sats) {
               try {
-                console.log(`Selecting satellite through manager: ${satelliteName}`);
-                this.sats.enabledSatellite = satelliteName;
-                this.sats.selectSatellite(satelliteName);
+                console.log(`Tracking satellite through manager: ${satelliteName}`);
+                this.sats.trackedSatellite = satelliteName;
               } catch (error) {
                 console.warn('Could not use satellite manager:', error);
               }

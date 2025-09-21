@@ -62,18 +62,13 @@ export class CesiumTimelineHelper {
             viewer.trackedEntity = null;
             viewer.selectedEntity = null;
 
-            // Also try to trigger selection change through the satellite manager
+            // Also try to trigger tracking through the satellite manager
             // This should ensure proper satellite switching
             if (window.cc && window.cc.sats) {
               try {
                 const satManager = window.cc.sats;
-                // Find and select the satellite
-                const satellite = satManager.satellites.find(sat => sat.props.name === satelliteName);
-                if (satellite) {
-                  console.log(`Selecting satellite through manager: ${satelliteName}`);
-                  satManager.enabledSatellite = satelliteName;
-                  satManager.selectSatellite(satelliteName);
-                }
+                console.log(`Tracking satellite through manager: ${satelliteName}`);
+                satManager.trackedSatellite = satelliteName;
               } catch (error) {
                 console.warn('Could not use satellite manager:', error);
               }
