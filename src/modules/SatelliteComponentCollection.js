@@ -138,16 +138,7 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
         this.props.updatePasses(this.viewer.clock.currentTime);
         CesiumTimelineHelper.updateHighlightRanges(this.viewer, this.props.passes);
 
-        // Update Pass arc component if it exists
-        if ("Pass arc" in this.components) {
-          this.disableComponent("Pass arc");
-          this.enableComponent("Pass arc");
-        }
       } else {
-        // Disable Pass arc when satellite is not selected
-        if ("Pass arc" in this.components) {
-          this.disableComponent("Pass arc");
-        }
       }
     });
 
@@ -227,9 +218,6 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
         break;
       case "Ground station link":
         this.createGroundStationLink();
-        break;
-      case "Pass arc":
-        this.createPassArc();
         break;
       default:
         console.error("Unknown component");
