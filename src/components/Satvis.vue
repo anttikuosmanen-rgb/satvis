@@ -416,68 +416,90 @@ export default {
         return;
       }
 
-      // Use Cesium's timeline zoom functionality directly
-      // Get current timeline range and zoom in by reducing the range
-      const timeline = this.cc.viewer.timeline;
-      const clock = this.cc.viewer.clock;
+      try {
+        // Use Cesium's timeline zoom functionality directly
+        // Get current timeline range and zoom in by reducing the range
+        const timeline = this.cc.viewer.timeline;
+        const clock = this.cc.viewer.clock;
 
-      const currentStart = clock.startTime;
-      const currentStop = clock.stopTime;
-      const currentTime = clock.currentTime;
+        const currentStart = clock.startTime;
+        const currentStop = clock.stopTime;
+        const currentTime = clock.currentTime;
 
-      // Calculate current range in seconds
-      const totalSeconds = Cesium.JulianDate.secondsDifference(currentStop, currentStart);
+        // Calculate current range in seconds
+        const totalSeconds = Cesium.JulianDate.secondsDifference(currentStop, currentStart);
 
-      // Zoom in by reducing the range to 75% of current
-      const newRangeSeconds = totalSeconds * 0.75;
-      const halfRange = newRangeSeconds / 2;
+        // Zoom in by reducing the range to 75% of current
+        const newRangeSeconds = totalSeconds * 0.75;
+        const halfRange = newRangeSeconds / 2;
 
-      // Center the new range around current time
-      const newStart = Cesium.JulianDate.addSeconds(currentTime, -halfRange, new Cesium.JulianDate());
-      const newStop = Cesium.JulianDate.addSeconds(currentTime, halfRange, new Cesium.JulianDate());
+        // Center the new range around current time
+        const newStart = Cesium.JulianDate.addSeconds(currentTime, -halfRange, new Cesium.JulianDate());
+        const newStop = Cesium.JulianDate.addSeconds(currentTime, halfRange, new Cesium.JulianDate());
 
-      // Update clock and timeline
-      clock.startTime = newStart;
-      clock.stopTime = newStop;
-      timeline.updateFromClock();
-      timeline.zoomTo(newStart, newStop);
+        // Constrain timeline bounds first to prevent invalid dates
+        if (this.cc.constrainTimelineBounds) {
+          this.cc.constrainTimelineBounds();
+        }
 
-      // Trigger daytime range recalculation if needed
-      this.cc.sats.checkAndUpdateDaytimeRanges();
+        // Update clock and timeline
+        clock.startTime = newStart;
+        clock.stopTime = newStop;
+        timeline.updateFromClock();
+        timeline.zoomTo(newStart, newStop);
+
+        // Trigger daytime range recalculation after a small delay
+        setTimeout(() => {
+          this.cc.sats.checkAndUpdateDaytimeRanges();
+        }, 100);
+      } catch (error) {
+        console.error('Error in timeline zoom in:', error);
+      }
     },
     zoomOutTimeline() {
       if (!this.cc.viewer.timeline) {
         return;
       }
 
-      // Use Cesium's timeline zoom functionality directly
-      // Get current timeline range and zoom out by increasing the range
-      const timeline = this.cc.viewer.timeline;
-      const clock = this.cc.viewer.clock;
+      try {
+        // Use Cesium's timeline zoom functionality directly
+        // Get current timeline range and zoom out by increasing the range
+        const timeline = this.cc.viewer.timeline;
+        const clock = this.cc.viewer.clock;
 
-      const currentStart = clock.startTime;
-      const currentStop = clock.stopTime;
-      const currentTime = clock.currentTime;
+        const currentStart = clock.startTime;
+        const currentStop = clock.stopTime;
+        const currentTime = clock.currentTime;
 
-      // Calculate current range in seconds
-      const totalSeconds = Cesium.JulianDate.secondsDifference(currentStop, currentStart);
+        // Calculate current range in seconds
+        const totalSeconds = Cesium.JulianDate.secondsDifference(currentStop, currentStart);
 
-      // Zoom out by increasing the range to 133% of current
-      const newRangeSeconds = totalSeconds * 1.33;
-      const halfRange = newRangeSeconds / 2;
+        // Zoom out by increasing the range to 133% of current
+        const newRangeSeconds = totalSeconds * 1.33;
+        const halfRange = newRangeSeconds / 2;
 
-      // Center the new range around current time
-      const newStart = Cesium.JulianDate.addSeconds(currentTime, -halfRange, new Cesium.JulianDate());
-      const newStop = Cesium.JulianDate.addSeconds(currentTime, halfRange, new Cesium.JulianDate());
+        // Center the new range around current time
+        const newStart = Cesium.JulianDate.addSeconds(currentTime, -halfRange, new Cesium.JulianDate());
+        const newStop = Cesium.JulianDate.addSeconds(currentTime, halfRange, new Cesium.JulianDate());
 
-      // Update clock and timeline
-      clock.startTime = newStart;
-      clock.stopTime = newStop;
-      timeline.updateFromClock();
-      timeline.zoomTo(newStart, newStop);
+        // Constrain timeline bounds first to prevent invalid dates
+        if (this.cc.constrainTimelineBounds) {
+          this.cc.constrainTimelineBounds();
+        }
 
-      // Trigger daytime range recalculation if needed
-      this.cc.sats.checkAndUpdateDaytimeRanges();
+        // Update clock and timeline
+        clock.startTime = newStart;
+        clock.stopTime = newStop;
+        timeline.updateFromClock();
+        timeline.zoomTo(newStart, newStop);
+
+        // Trigger daytime range recalculation after a small delay
+        setTimeout(() => {
+          this.cc.sats.checkAndUpdateDaytimeRanges();
+        }, 100);
+      } catch (error) {
+        console.error('Error in timeline zoom out:', error);
+      }
     },
   },
 };

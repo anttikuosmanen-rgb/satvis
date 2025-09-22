@@ -88,6 +88,10 @@ export class SatelliteManager {
       timelineContainer.addEventListener('wheel', () => {
         setTimeout(() => {
           try {
+            // First constrain timeline bounds to prevent invalid dates
+            if (window.cc && window.cc.constrainTimelineBounds) {
+              window.cc.constrainTimelineBounds();
+            }
             this.checkAndUpdateDaytimeRanges();
           } catch (error) {
             console.error('Error in timeline wheel event handler:', error);
@@ -100,6 +104,10 @@ export class SatelliteManager {
         timelineContainer.addEventListener(eventType, () => {
           setTimeout(() => {
             try {
+              // First constrain timeline bounds to prevent invalid dates
+              if (window.cc && window.cc.constrainTimelineBounds) {
+                window.cc.constrainTimelineBounds();
+              }
               this.checkAndUpdateDaytimeRanges();
             } catch (error) {
               console.error(`Error in timeline ${eventType} event handler:`, error);
