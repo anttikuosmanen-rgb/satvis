@@ -1,3 +1,4 @@
+import { ClockStep, JulianDate } from "@cesium/engine";
 import { useSatStore } from "../stores/sat";
 import { SatelliteComponentCollection } from "./SatelliteComponentCollection";
 import { GroundStationEntity } from "./GroundStationEntity";
@@ -28,6 +29,100 @@ export class SatelliteManager {
       }
       useSatStore().trackedSatellite = this.trackedSatellite;
     });
+
+    // Add timeline change listener to recalculate daytime ranges when needed
+    this.setupTimelineChangeListener();
+  }
+
+  setupTimelineChangeListener() {
+    if (!this.viewer.clock) {
+      return;
+    }
+
+    // Listen for clock range changes
+    this.viewer.clock.onTick.addEventListener(() => {
+      // Only check occasionally (every 60 ticks) to avoid performance issues
+      if (this.viewer.clock.clockStep === ClockStep.SYSTEM_CLOCK ||
+          this.viewer.clock.clockStep === ClockStep.TICK_DEPENDENT) {
+        return; // Don't check during normal time progression
+      }
+
+      // Throttle checks - only check every 60 frames
+      if (!this._lastTimelineCheck) {
+        this._lastTimelineCheck = 0;
+      }
+      this._lastTimelineCheck++;
+      if (this._lastTimelineCheck % 60 !== 0) {
+        return;
+      }
+
+      this.checkAndUpdateDaytimeRanges();
+    });
+
+    // Also listen for timeline zoom events by checking start/stop time changes
+    let lastStartTime = this.viewer.clock.startTime;
+    let lastStopTime = this.viewer.clock.stopTime;
+
+    const checkTimelineChange = () => {
+      const currentStart = this.viewer.clock.startTime;
+      const currentStop = this.viewer.clock.stopTime;
+
+      if (!JulianDate.equals(lastStartTime, currentStart) ||
+          !JulianDate.equals(lastStopTime, currentStop)) {
+        lastStartTime = JulianDate.clone(currentStart);
+        lastStopTime = JulianDate.clone(currentStop);
+
+        // Delay the check slightly to avoid multiple rapid updates
+        setTimeout(() => this.checkAndUpdateDaytimeRanges(), 100);
+      }
+    };
+
+    // Check for timeline changes periodically
+    setInterval(checkTimelineChange, 1000);
+
+    // Also add direct event listeners to the timeline widget for more responsive updates
+    if (this.viewer.timeline && this.viewer.timeline.container) {
+      const timelineContainer = this.viewer.timeline.container;
+
+      // Listen for wheel events (scrolling)
+      timelineContainer.addEventListener('wheel', () => {
+        setTimeout(() => {
+          try {
+            this.checkAndUpdateDaytimeRanges();
+          } catch (error) {
+            console.error('Error in timeline wheel event handler:', error);
+          }
+        }, 200);
+      });
+
+      // Listen for mouse events that might change timeline
+      ['mouseup', 'touchend'].forEach(eventType => {
+        timelineContainer.addEventListener(eventType, () => {
+          setTimeout(() => {
+            try {
+              this.checkAndUpdateDaytimeRanges();
+            } catch (error) {
+              console.error(`Error in timeline ${eventType} event handler:`, error);
+            }
+          }, 100);
+        });
+      });
+    }
+  }
+
+  checkAndUpdateDaytimeRanges() {
+    try {
+      if (this.#groundStations.length > 0) {
+        const firstGroundStation = this.#groundStations[0];
+        if (CesiumTimelineHelper.needsRecalculation(this.viewer, firstGroundStation)) {
+          console.log('Timeline moved outside calculated range, recalculating daytime highlights');
+          CesiumTimelineHelper.clearGroundStationDaytimeRanges(this.viewer);
+          CesiumTimelineHelper.addGroundStationDaytimeRanges(this.viewer, firstGroundStation);
+        }
+      }
+    } catch (error) {
+      console.error('Error updating daytime ranges:', error);
+    }
   }
 
   addFromTleUrls(urlTagList) {
