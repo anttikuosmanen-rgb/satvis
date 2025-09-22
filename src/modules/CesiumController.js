@@ -76,6 +76,9 @@ export class CesiumController {
     // Create Satellite Manager
     this.sats = new SatelliteManager(this.viewer);
 
+    // Add event listener to detect when time is set to "now" (today/real-time button)
+    this.setupTimelineResetOnNow();
+
     this.pm = new PushManager({
       icon: satvisIcon,
     });
@@ -339,6 +342,72 @@ export class CesiumController {
     if (typeof this.viewer.timeline !== "undefined") {
       this.viewer.timeline.updateFromClock();
       this.viewer.timeline.zoomTo(this.viewer.clock.startTime, this.viewer.clock.stopTime);
+    }
+  }
+
+  constrainTimelineBounds() {
+    if (!this.viewer.timeline) return;
+
+    // Define safe date bounds (years 1900-2100 to stay well within Cesium's limits)
+    const minDate = Cesium.JulianDate.fromIso8601('1900-01-01T00:00:00Z');
+    const maxDate = Cesium.JulianDate.fromIso8601('2100-12-31T23:59:59Z');
+
+    try {
+      const timeline = this.viewer.timeline;
+
+      // Get current timeline bounds
+      const currentStart = timeline._startJulian;
+      const currentEnd = timeline._endJulian;
+
+      if (currentStart && currentEnd) {
+        let needsUpdate = false;
+        let newStart = currentStart;
+        let newEnd = currentEnd;
+
+        // Check if start time is before minimum allowed date
+        if (Cesium.JulianDate.lessThan(currentStart, minDate)) {
+          newStart = Cesium.JulianDate.clone(minDate);
+          needsUpdate = true;
+        }
+
+        // Check if end time is after maximum allowed date
+        if (Cesium.JulianDate.greaterThan(currentEnd, maxDate)) {
+          newEnd = Cesium.JulianDate.clone(maxDate);
+          needsUpdate = true;
+        }
+
+        // If bounds need updating, safely update them
+        if (needsUpdate) {
+          // Ensure the range makes sense (end > start)
+          const timeDiff = Cesium.JulianDate.secondsDifference(newEnd, newStart);
+          if (timeDiff <= 0) {
+            // If the range is invalid, create a default 7-day range
+            newStart = Cesium.JulianDate.clone(minDate);
+            newEnd = Cesium.JulianDate.addDays(newStart, 7, new Cesium.JulianDate());
+          }
+
+          // Update clock bounds
+          this.viewer.clock.startTime = newStart;
+          this.viewer.clock.stopTime = newEnd;
+
+          // Update timeline to reflect new bounds
+          timeline.zoomTo(newStart, newEnd);
+        }
+      }
+    } catch (error) {
+      // If there's any error with bounds checking, reset to a safe default
+      console.warn('Timeline bounds error, resetting to safe defaults:', error);
+      const safeStart = Cesium.JulianDate.fromIso8601('2024-01-01T00:00:00Z');
+      const safeEnd = Cesium.JulianDate.addDays(safeStart, 7, new Cesium.JulianDate());
+
+      this.viewer.clock.startTime = safeStart;
+      this.viewer.clock.stopTime = safeEnd;
+      this.viewer.clock.currentTime = Cesium.JulianDate.clone(safeStart);
+
+      if (this.viewer.timeline) {
+        this.viewer.timeline.updateFromClock();
+        this.viewer.timeline.zoomTo(safeStart, safeEnd);
+      }
     }
   }
 
@@ -646,6 +715,36 @@ export class CesiumController {
           }
         }
       }
+    });
+  }
+
+  setupTimelineResetOnNow() {
+    if (!this.viewer.timeline || !this.viewer.animation) {
+      return;
+    }
+
+    // Monitor clock changes to detect when current time is set to "now"
+    let lastCurrentTime = this.viewer.clock.currentTime;
+
+    this.viewer.clock.onTick.addEventListener(() => {
+      const currentTime = this.viewer.clock.currentTime;
+      const now = Cesium.JulianDate.now();
+
+      // Check if the current time was just set to very close to "now" (within 1 second)
+      // This typically happens when the real-time/today button is clicked
+      const timeDifference = Math.abs(Cesium.JulianDate.secondsDifference(currentTime, now));
+      const lastTimeDifference = Math.abs(Cesium.JulianDate.secondsDifference(lastCurrentTime, now));
+
+      // If current time just jumped to be very close to "now" (and wasn't close before)
+      if (timeDifference < 1 && lastTimeDifference > 60) {
+        // Reset timeline zoom to show default range (12 hours before to 7 days after current time)
+        const start = dayjs.utc(Cesium.JulianDate.toDate(currentTime)).subtract(12, "hour").toISOString();
+        const stop = dayjs.utc(Cesium.JulianDate.toDate(currentTime)).add(7, "day").toISOString();
+
+        this.setTime(Cesium.JulianDate.toDate(currentTime), start, stop);
+      }
+
+      lastCurrentTime = Cesium.JulianDate.clone(currentTime);
     });
   }
 }

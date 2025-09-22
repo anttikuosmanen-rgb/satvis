@@ -94,3 +94,4 @@ The application detects iOS devices and iframe embedding to adjust UI accordingl
 - Uses Sentry for error tracking in production (satvis.space domain)
 - State synchronization between URL parameters and Pinia stores for bookmarkable views
 - restart dev server
+- use SSH key ~/.ssh/anttis-github-key for github.com
