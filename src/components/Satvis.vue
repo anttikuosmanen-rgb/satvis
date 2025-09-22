@@ -442,6 +442,9 @@ export default {
       clock.stopTime = newStop;
       timeline.updateFromClock();
       timeline.zoomTo(newStart, newStop);
+
+      // Trigger daytime range recalculation if needed
+      this.cc.sats.checkAndUpdateDaytimeRanges();
     },
     zoomOutTimeline() {
       if (!this.cc.viewer.timeline) {
@@ -473,6 +476,9 @@ export default {
       clock.stopTime = newStop;
       timeline.updateFromClock();
       timeline.zoomTo(newStart, newStop);
+
+      // Trigger daytime range recalculation if needed
+      this.cc.sats.checkAndUpdateDaytimeRanges();
     },
   },
 };
