@@ -728,47 +728,57 @@ export class CesiumController {
           const satelliteName = pass.satelliteName || pass.name;
           console.log(`Attempting to track satellite: ${satelliteName}`);
 
-          // Find the satellite entity
-          const entities = this.viewer.entities.values;
+          try {
+            // Find the satellite entity with proper error handling
+            const entities = this.viewer.entities.values;
 
-          // Try different naming patterns to find the satellite entity
-          let satelliteEntity = entities.find((entity) => entity.name && entity.name.includes(satelliteName) && entity.name.includes("Point"));
-
-          // If not found with "Point", try just the satellite name
-          if (!satelliteEntity) {
-            satelliteEntity = entities.find((entity) => entity.name && entity.name === satelliteName);
-          }
-
-          // If still not found, try partial match
-          if (!satelliteEntity) {
-            satelliteEntity = entities.find((entity) => entity.name && entity.name.includes(satelliteName));
-          }
-
-          if (satelliteEntity) {
-            console.log(`Found satellite entity: ${satelliteEntity.name}`);
-
-            // Clear existing tracking
-            this.viewer.trackedEntity = null;
-            this.viewer.selectedEntity = null;
-
-            // Also try to select satellite through satellite manager
-            if (this.sats) {
-              try {
-                console.log(`Tracking satellite through manager: ${satelliteName}`);
-                this.sats.trackedSatellite = satelliteName;
-              } catch (error) {
-                console.warn("Could not use satellite manager:", error);
-              }
+            // Ensure entities is actually an array
+            if (!Array.isArray(entities)) {
+              console.warn('Entities collection is not an array, skipping satellite tracking');
+              return;
             }
 
-            // Set tracking with delay
-            setTimeout(() => {
-              this.viewer.trackedEntity = satelliteEntity;
-              console.log(`Now tracking satellite: ${satelliteEntity.name} for pass`);
-            }, 100);
-          } else {
-            console.warn(`Could not find satellite entity for: ${satelliteName}`);
-            console.log("Available entities:", entities.map((entity) => entity.name).filter((n) => n));
+            // Try different naming patterns to find the satellite entity
+            let satelliteEntity = entities.find((entity) => entity && entity.name && entity.name.includes(satelliteName) && entity.name.includes("Point"));
+
+            // If not found with "Point", try just the satellite name
+            if (!satelliteEntity) {
+              satelliteEntity = entities.find((entity) => entity && entity.name && entity.name === satelliteName);
+            }
+
+            // If still not found, try partial match
+            if (!satelliteEntity) {
+              satelliteEntity = entities.find((entity) => entity && entity.name && entity.name.includes(satelliteName));
+            }
+
+            if (satelliteEntity) {
+              console.log(`Found satellite entity: ${satelliteEntity.name}`);
+
+              // Clear existing tracking
+              this.viewer.trackedEntity = null;
+              this.viewer.selectedEntity = null;
+
+              // Also try to select satellite through satellite manager
+              if (this.sats) {
+                try {
+                  console.log(`Tracking satellite through manager: ${satelliteName}`);
+                  this.sats.trackedSatellite = satelliteName;
+                } catch (error) {
+                  console.warn("Could not use satellite manager:", error);
+                }
+              }
+
+              // Set tracking with delay
+              setTimeout(() => {
+                this.viewer.trackedEntity = satelliteEntity;
+                console.log(`Now tracking satellite: ${satelliteEntity.name} for pass`);
+              }, 100);
+            } else {
+              console.warn(`Could not find satellite entity for: ${satelliteName}`);
+              console.log("Available entities:", entities.map((entity) => entity.name).filter((n) => n));
+            }
+          } catch (error) {
+            console.error('Error while tracking satellite:', error);
           }
         }
       }
