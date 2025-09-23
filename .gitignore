@@ -7,3 +7,7 @@ cypress/videos/
 cypress/fixtures/
 cypress/support/
 report/
+
+# TLE data files
+data/tle/prelaunch.txt
+data/tle/groups/*.txt
