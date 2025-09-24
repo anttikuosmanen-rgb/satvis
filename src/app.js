@@ -13,7 +13,7 @@ import { faGithub } from "@fortawesome/free-brands-svg-icons";
 
 import App from "./App.vue";
 import { router } from "./router";
-import piniaUrlSync from "./modules/util/pinia-plugin-url-sync";
+import piniaUrlSync from "./modules/util/pinia-plugin-url-sync.ts";
 import { CesiumController } from "./modules/CesiumController";
 
 function satvisSetup(customConfig = {}) {

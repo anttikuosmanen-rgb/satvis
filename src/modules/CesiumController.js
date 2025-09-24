@@ -417,7 +417,7 @@ export class CesiumController {
 
   set showUI(enabled) {
     if (enabled) {
-      /* eslint-disable no-underscore-dangle */
+       
       this.viewer._animation.container.style.visibility = "";
       this.viewer._timeline.container.style.visibility = "";
       this.viewer._fullscreenButton._container.style.visibility = "";
@@ -432,22 +432,22 @@ export class CesiumController {
       this.oldBottomContainerStyleLeft = this.viewer._bottomContainer.style.left;
       this.viewer._bottomContainer.style.left = "5px";
       this.viewer._bottomContainer.style.bottom = "0px";
-      /* eslint-enable no-underscore-dangle */
+       
     }
   }
 
   get showUI() {
-    // eslint-disable-next-line
+     
     return this.viewer._timeline.container.style.visibility !== "hidden";
   }
 
   fixLogo() {
     if (this.minimalUI) {
-      // eslint-disable-next-line
+       
       this.viewer._bottomContainer.style.left = "5px";
     }
     if (DeviceDetect.isiPhoneWithNotchVisible()) {
-      // eslint-disable-next-line
+       
       this.viewer._bottomContainer.style.bottom = "20px";
     }
   }

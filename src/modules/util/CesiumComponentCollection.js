@@ -110,7 +110,7 @@ export class CesiumComponentCollection {
       let lastState = -1;
       const readyCallback = this.viewer.clock.onTick.addEventListener(() => {
         if (!primitive.ready) {
-          // eslint-disable-next-line no-underscore-dangle
+           
           const state = primitive._state;
           if (state !== lastState) {
             lastState = state;
