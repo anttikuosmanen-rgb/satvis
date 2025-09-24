@@ -13,6 +13,8 @@ export class SatelliteManager {
 
   #groundStations = [];
 
+  #overpassMode = "elevation";
+
   constructor(viewer) {
     this.viewer = viewer;
 
@@ -76,6 +78,8 @@ export class SatelliteManager {
     if (this.groundStationAvailable) {
       newSat.groundStations = this.#groundStations;
     }
+    // Set overpass mode for newly added satellite
+    newSat.props.overpassMode = this.#overpassMode;
     this.satellites.push(newSat);
 
     if (this.satIsActive(newSat)) {
@@ -292,5 +296,24 @@ export class SatelliteManager {
       lon: gs.position.longitude,
       name: gs.hasName ? gs.name : undefined,
     }));
+  }
+
+  get overpassMode() {
+    return this.#overpassMode;
+  }
+
+  set overpassMode(newMode) {
+    this.#overpassMode = newMode;
+    // Update overpass mode for all satellites
+    this.satellites.forEach((sat) => {
+      sat.props.overpassMode = newMode;
+    });
+    // Clear and update passes for all satellites with ground stations to force recalculation
+    this.satellites.forEach((sat) => {
+      if (sat.props.groundStationAvailable) {
+        sat.props.clearPasses();
+        sat.props.updatePasses(this.viewer.clock.currentTime);
+      }
+    });
   }
 }

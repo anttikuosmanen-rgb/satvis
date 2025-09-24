@@ -14,6 +14,7 @@ export class SatelliteProperties {
     this.orbit = new Orbit(this.name, tle);
     this.satnum = this.orbit.satnum;
     this.tags = tags;
+    this.overpassMode = "elevation";
 
     this.groundStations = [];
     this.passes = [];
@@ -199,7 +200,7 @@ export class SatelliteProperties {
     return { positionFixed, positionInertial: positionInertialICRF };
   }
 
-  groundTrack(julianDate, samplesFwd = 2, samplesBwd = 0, interval = 600) {
+  groundTrack(julianDate, samplesFwd = 1, samplesBwd = 0, interval = 300) {
     const groundTrack = [];
 
     const startTime = -samplesBwd * interval;
@@ -231,11 +232,21 @@ export class SatelliteProperties {
 
     let allPasses = [];
     this.groundStations.forEach((groundStation) => {
-      const passes = this.orbit.computePassesElevation(
-        groundStation.position,
-        Cesium.JulianDate.toDate(this.passInterval.start),
-        Cesium.JulianDate.toDate(this.passInterval.stopPrediction),
-      );
+      let passes;
+      if (this.overpassMode === "swath") {
+        passes = this.orbit.computePassesSwath(
+          groundStation.position,
+          this.swath,
+          Cesium.JulianDate.toDate(this.passInterval.start),
+          Cesium.JulianDate.toDate(this.passInterval.stopPrediction),
+        );
+      } else {
+        passes = this.orbit.computePassesElevation(
+          groundStation.position,
+          Cesium.JulianDate.toDate(this.passInterval.start),
+          Cesium.JulianDate.toDate(this.passInterval.stopPrediction),
+        );
+      }
       passes.forEach((pass) => {
         pass.groundStationName = groundStation.name;
       });

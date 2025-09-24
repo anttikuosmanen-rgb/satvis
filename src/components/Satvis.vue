@@ -53,6 +53,17 @@
           <input type="button" @click="cc.sats.focusGroundStation()" />
           Focus
         </label>
+        <div class="toolbarTitle">Overpass calculation</div>
+        <label class="toolbarSwitch">
+          <input v-model="overpassMode" type="radio" value="elevation" />
+          <span class="slider"></span>
+          Elevation
+        </label>
+        <label class="toolbarSwitch">
+          <input v-model="overpassMode" type="radio" value="swath" />
+          <span class="slider"></span>
+          Swath
+        </label>
       </div>
       <div v-show="menu.map" class="toolbarSwitches">
         <div class="toolbarTitle">Layers</div>
@@ -190,7 +201,7 @@ export default {
   },
   computed: {
     ...mapWritableState(useCesiumStore, ["layers", "terrainProvider", "sceneMode", "cameraMode", "qualityPreset", "showFps", "background", "pickMode"]),
-    ...mapWritableState(useSatStore, ["enabledComponents", "groundStations"]),
+    ...mapWritableState(useSatStore, ["enabledComponents", "groundStations", "overpassMode"]),
   },
   watch: {
     layers: {
@@ -239,6 +250,9 @@ export default {
         return;
       }
       cc.setGroundStations(newGroundStations);
+    },
+    overpassMode(newMode) {
+      cc.sats.overpassMode = newMode;
     },
   },
   mounted() {
