@@ -36,12 +36,14 @@ export class SatelliteManager {
   addFromTleUrl(url, tags, updateStore = true) {
     return fetch(url, {
       mode: "no-cors",
-    }).then((response) => {
-      if (!response.ok) {
-        throw Error(response.statusText);
-      }
-      return response;
-    }).then((response) => response.text())
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw Error(response.statusText);
+        }
+        return response;
+      })
+      .then((response) => response.text())
       .then((data) => {
         const lines = data.split(/\r?\n/);
         for (let i = 3; i < lines.length; i + 3) {

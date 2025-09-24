@@ -1,20 +1,10 @@
 <template>
   <div class="satellite-select">
-    <div class="toolbarTitle">
-      Enabled satellite groups
-    </div>
+    <div class="toolbarTitle">Enabled satellite groups</div>
     <div class="toolbarContent">
-      <vue-multiselect
-        v-model="enabledTags"
-        :options="availableTags"
-        :multiple="true"
-        :searchable="false"
-        placeholder="0 satellite groups selected"
-      />
+      <vue-multiselect v-model="enabledTags" :options="availableTags" :multiple="true" :searchable="false" placeholder="0 satellite groups selected" />
     </div>
-    <div class="toolbarTitle">
-      Enabled satellites
-    </div>
+    <div class="toolbarTitle">Enabled satellites</div>
     <div class="toolbarContent">
       <vue-multiselect
         v-model="allEnabledSatellites"
@@ -26,12 +16,10 @@
         placeholder="Type to search"
         :close-on-select="false"
         :limit="0"
-        :limit-text="count => `${count} satellite${ count > 1 ? 's' : '' } selected`"
+        :limit-text="(count) => `${count} satellite${count > 1 ? 's' : ''} selected`"
         :options-limit="100000"
       >
-        <template #noResult>
-          No matching satellites
-        </template>
+        <template #noResult> No matching satellites </template>
       </vue-multiselect>
     </div>
   </div>
@@ -48,17 +36,10 @@ export default {
     VueMultiselect,
   },
   data() {
-    return {
-    };
+    return {};
   },
   computed: {
-    ...mapWritableState(useSatStore, [
-      "availableSatellitesByTag",
-      "availableTags",
-      "enabledSatellites",
-      "enabledTags",
-      "trackedSatellite",
-    ]),
+    ...mapWritableState(useSatStore, ["availableSatellitesByTag", "availableTags", "enabledSatellites", "enabledTags", "trackedSatellite"]),
     availableSatellites() {
       let satlist = Object.keys(this.availableSatellitesByTag).map((tag) => ({
         tag,

@@ -2,11 +2,10 @@ import * as Cesium from "@cesium/engine";
 
 export class CesiumTimelineHelper {
   static clearHighlightRanges(viewer) {
-     
     if (!viewer.timeline || viewer.timeline._highlightRanges.length === 0) {
       return;
     }
-     
+
     viewer.timeline._highlightRanges = [];
     viewer.timeline.updateFromClock();
     viewer.timeline.zoomTo(viewer.clock.startTime, viewer.clock.stopTime);

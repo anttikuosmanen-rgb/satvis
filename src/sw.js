@@ -32,7 +32,6 @@ registerRoute(
   }),
 );
 
- 
 cleanupOutdatedCaches();
 precacheAndRoute(self.__WB_MANIFEST);
 self.skipWaiting();

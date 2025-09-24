@@ -50,7 +50,8 @@ export class PushManager {
     }
     const optionsMerged = { ...this.options, ...options };
     try {
-      navigator.serviceWorker.getRegistration()
+      navigator.serviceWorker
+        .getRegistration()
         .then((reg) => reg.showNotification(message, optionsMerged))
         .catch((err) => console.log(`Service Worker registration error: ${err}`));
     } catch (err) {
@@ -63,7 +64,9 @@ export class PushManager {
       return;
     }
     console.log(`Notify "${message}" in ${ms / 1000}s`);
-    setTimeout(() => { this.persistentNotification(message, options); }, ms);
+    setTimeout(() => {
+      this.persistentNotification(message, options);
+    }, ms);
   }
 
   notifyAtDate(date, message, options) {
@@ -88,7 +91,9 @@ export class PushManager {
       };
       window.webkit.messageHandlers.iosNotify.postMessage(content);
     } else {
-      const id = setTimeout(() => { this.persistentNotification(message, options); }, waitMs);
+      const id = setTimeout(() => {
+        this.persistentNotification(message, options);
+      }, waitMs);
       this.timers.push({
         id,
         date,

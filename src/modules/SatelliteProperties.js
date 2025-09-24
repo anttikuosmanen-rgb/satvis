@@ -220,8 +220,7 @@ export class SatelliteProperties {
       return false;
     }
     // Check if still inside of current pass interval
-    if (typeof this.passInterval !== "undefined" &&
-        Cesium.TimeInterval.contains(new Cesium.TimeInterval({ start: this.passInterval.start, stop: this.passInterval.stop }), time)) {
+    if (typeof this.passInterval !== "undefined" && Cesium.TimeInterval.contains(new Cesium.TimeInterval({ start: this.passInterval.start, stop: this.passInterval.stop }), time)) {
       return false;
     }
     this.passInterval = {

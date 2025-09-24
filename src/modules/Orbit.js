@@ -54,20 +54,12 @@ export default class Orbit {
       latitude: positionGd.latitude * rad2deg,
       height: positionGd.height * 1000,
       ...(calculateVelocity && {
-        velocity: Math.sqrt(velocityVector.x * velocityVector.x +
-          velocityVector.y * velocityVector.y +
-          velocityVector.z * velocityVector.z),
+        velocity: Math.sqrt(velocityVector.x * velocityVector.x + velocityVector.y * velocityVector.y + velocityVector.z * velocityVector.z),
       }),
     };
   }
 
-  computePassesElevation(
-    groundStationPosition,
-    startDate = dayjs().toDate(),
-    endDate = dayjs(startDate).add(7, "day").toDate(),
-    minElevation = 5,
-    maxPasses = 50,
-  ) {
+  computePassesElevation(groundStationPosition, startDate = dayjs().toDate(), endDate = dayjs(startDate).add(7, "day").toDate(), minElevation = 5, maxPasses = 50) {
     const groundStation = { ...groundStationPosition };
     groundStation.latitude *= deg2rad;
     groundStation.longitude *= deg2rad;

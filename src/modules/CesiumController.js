@@ -81,11 +81,15 @@ export class CesiumController {
     if (!DeviceDetect.inIframe()) {
       this.viewer.creditDisplay.addStaticCredit(new Cesium.Credit(`<a href="/privacy.html" target="_blank"><u>Privacy</u></a>`, true));
     }
-    this.viewer.creditDisplay.addStaticCredit(new Cesium.Credit(`Satellite TLE data provided by <a href="https://celestrak.org/NORAD/elements/" target="_blank"><u>Celestrak</u></a>`));
+    this.viewer.creditDisplay.addStaticCredit(
+      new Cesium.Credit(`Satellite TLE data provided by <a href="https://celestrak.org/NORAD/elements/" target="_blank"><u>Celestrak</u></a>`),
+    );
 
     // Fix Cesium logo in minimal ui mode
     if (this.minimalUI) {
-      setTimeout(() => { this.fixLogo(); }, 2500);
+      setTimeout(() => {
+        this.fixLogo();
+      }, 2500);
     }
 
     this.activeLayers = [];
@@ -99,46 +103,51 @@ export class CesiumController {
         base: true,
       },
       OfflineHighres: {
-        create: () => Cesium.TileMapServiceImageryProvider.fromUrl("data/cesium-assets/imagery/NaturalEarthII", {
-          maximumLevel: 5,
-          credit: "Imagery courtesy Natural Earth",
-        }),
+        create: () =>
+          Cesium.TileMapServiceImageryProvider.fromUrl("data/cesium-assets/imagery/NaturalEarthII", {
+            maximumLevel: 5,
+            credit: "Imagery courtesy Natural Earth",
+          }),
         alpha: 1,
         base: true,
       },
       ArcGis: {
-        create: () => Cesium.ArcGisMapServerImageryProvider.fromUrl("https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer", {
-          enablePickFeatures: false,
-        }),
+        create: () =>
+          Cesium.ArcGisMapServerImageryProvider.fromUrl("https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer", {
+            enablePickFeatures: false,
+          }),
         alpha: 1,
         base: true,
       },
       OSM: {
-        create: () => new Cesium.OpenStreetMapImageryProvider({
-          url: "https://a.tile.openstreetmap.org/",
-        }),
+        create: () =>
+          new Cesium.OpenStreetMapImageryProvider({
+            url: "https://a.tile.openstreetmap.org/",
+          }),
         alpha: 1,
         base: true,
       },
       Topo: {
-        create: () => new Cesium.UrlTemplateImageryProvider({
-          url: "https://api.maptiler.com/maps/topo-v2/{z}/{x}/{y}@2x.png?key=tiHE8Ed08u6ZoFjbE32Z",
-          credit: `<a href="https://www.maptiler.com/copyright/" target="_blank">&copy; MapTiler</a> <a href="https://www.openstreetmap.org/copyright" target="_blank">&copy; OpenStreetMap contributors</a>`,
-        }),
+        create: () =>
+          new Cesium.UrlTemplateImageryProvider({
+            url: "https://api.maptiler.com/maps/topo-v2/{z}/{x}/{y}@2x.png?key=tiHE8Ed08u6ZoFjbE32Z",
+            credit: `<a href="https://www.maptiler.com/copyright/" target="_blank">&copy; MapTiler</a> <a href="https://www.openstreetmap.org/copyright" target="_blank">&copy; OpenStreetMap contributors</a>`,
+          }),
         alpha: 1,
         base: true,
       },
       BlackMarble: {
-        create: () => new Cesium.WebMapServiceImageryProvider({
-          url: "https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi",
-          layers: "VIIRS_Black_Marble",
-          style: "default",
-          tileMatrixSetID: "250m",
-          format: "image/png",
-          tileWidth: 512,
-          tileHeight: 512,
-          credit: "NASA Global Imagery Browse Services for EOSDIS",
-        }),
+        create: () =>
+          new Cesium.WebMapServiceImageryProvider({
+            url: "https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi",
+            layers: "VIIRS_Black_Marble",
+            style: "default",
+            tileMatrixSetID: "250m",
+            format: "image/png",
+            tileWidth: 512,
+            tileHeight: 512,
+            credit: "NASA Global Imagery Browse Services for EOSDIS",
+          }),
         alpha: 1,
         base: true,
       },
@@ -148,28 +157,30 @@ export class CesiumController {
         base: false,
       },
       "GOES-IR": {
-        create: () => new Cesium.WebMapServiceImageryProvider({
-          url: "https://mesonet.agron.iastate.edu/cgi-bin/wms/goes/conus_ir.cgi?",
-          layers: "goes_conus_ir",
-          credit: "Infrared data courtesy Iowa Environmental Mesonet",
-          parameters: {
-            transparent: "true",
-            format: "image/png",
-          },
-        }),
+        create: () =>
+          new Cesium.WebMapServiceImageryProvider({
+            url: "https://mesonet.agron.iastate.edu/cgi-bin/wms/goes/conus_ir.cgi?",
+            layers: "goes_conus_ir",
+            credit: "Infrared data courtesy Iowa Environmental Mesonet",
+            parameters: {
+              transparent: "true",
+              format: "image/png",
+            },
+          }),
         alpha: 0.5,
         base: false,
       },
       Nextrad: {
-        create: () => new Cesium.WebMapServiceImageryProvider({
-          url: "https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0r.cgi?",
-          layers: "nexrad-n0r",
-          credit: "US Radar data courtesy Iowa Environmental Mesonet",
-          parameters: {
-            transparent: "true",
-            format: "image/png",
-          },
-        }),
+        create: () =>
+          new Cesium.WebMapServiceImageryProvider({
+            url: "https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0r.cgi?",
+            layers: "nexrad-n0r",
+            credit: "US Radar data courtesy Iowa Environmental Mesonet",
+            parameters: {
+              transparent: "true",
+              format: "image/png",
+            },
+          }),
         alpha: 0.5,
         base: false,
       },
@@ -179,10 +190,12 @@ export class CesiumController {
         create: () => new Cesium.EllipsoidTerrainProvider(),
       },
       Maptiler: {
-        create: () => Cesium.CesiumTerrainProvider.fromUrl("https://api.maptiler.com/tiles/terrain-quantized-mesh/?key=tiHE8Ed08u6ZoFjbE32Z", {
-          credit: "<a href=\"https://www.maptiler.com/copyright/\" target=\"_blank\">© MapTiler</a> <a href=\"https://www.openstreetmap.org/copyright\" target=\"_blank\">© OpenStreetMap contributors</a>",
-          requestVertexNormals: true,
-        }),
+        create: () =>
+          Cesium.CesiumTerrainProvider.fromUrl("https://api.maptiler.com/tiles/terrain-quantized-mesh/?key=tiHE8Ed08u6ZoFjbE32Z", {
+            credit:
+              '<a href="https://www.maptiler.com/copyright/" target="_blank">© MapTiler</a> <a href="https://www.openstreetmap.org/copyright" target="_blank">© OpenStreetMap contributors</a>',
+            requestVertexNormals: true,
+          }),
       },
       ArcGIS: {
         create: () => Cesium.ArcGISTiledElevationTerrainProvider.fromUrl("https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer"),
@@ -207,11 +220,15 @@ export class CesiumController {
   }
 
   get baseLayers() {
-    return Object.entries(this.imageryProviders).filter(([, val]) => val.base).map(([key]) => key);
+    return Object.entries(this.imageryProviders)
+      .filter(([, val]) => val.base)
+      .map(([key]) => key);
   }
 
   get overlayLayers() {
-    return Object.entries(this.imageryProviders).filter(([, val]) => !val.base).map(([key]) => key);
+    return Object.entries(this.imageryProviders)
+      .filter(([, val]) => !val.base)
+      .map(([key]) => key);
   }
 
   set imageryLayers(newLayerNames) {
@@ -246,7 +263,9 @@ export class CesiumController {
   }
 
   get terrainProviderNames() {
-    return Object.entries(this.terrainProviders).filter(([, val]) => val.visible ?? true).map(([key]) => key);
+    return Object.entries(this.terrainProviders)
+      .filter(([, val]) => val.visible ?? true)
+      .map(([key]) => key);
   }
 
   set terrainProvider(terrainProviderName) {
@@ -417,7 +436,6 @@ export class CesiumController {
 
   set showUI(enabled) {
     if (enabled) {
-       
       this.viewer._animation.container.style.visibility = "";
       this.viewer._timeline.container.style.visibility = "";
       this.viewer._fullscreenButton._container.style.visibility = "";
@@ -432,22 +450,18 @@ export class CesiumController {
       this.oldBottomContainerStyleLeft = this.viewer._bottomContainer.style.left;
       this.viewer._bottomContainer.style.left = "5px";
       this.viewer._bottomContainer.style.bottom = "0px";
-       
     }
   }
 
   get showUI() {
-     
     return this.viewer._timeline.container.style.visibility !== "hidden";
   }
 
   fixLogo() {
     if (this.minimalUI) {
-       
       this.viewer._bottomContainer.style.left = "5px";
     }
     if (DeviceDetect.isiPhoneWithNotchVisible()) {
-       
       this.viewer._bottomContainer.style.bottom = "20px";
     }
   }
@@ -565,20 +579,24 @@ export class CesiumController {
     }
 
     const { frame } = this.viewer.infoBox;
-    frame.addEventListener("load", () => {
-      // Inline infobox css as iframe does not use service worker
-      const { head } = frame.contentDocument;
-      const links = head.getElementsByTagName("link");
-      [...links].forEach((link) => {
-        head.removeChild(link);
-      });
+    frame.addEventListener(
+      "load",
+      () => {
+        // Inline infobox css as iframe does not use service worker
+        const { head } = frame.contentDocument;
+        const links = head.getElementsByTagName("link");
+        [...links].forEach((link) => {
+          head.removeChild(link);
+        });
 
-      const style = frame.contentDocument.createElement("style");
-      const css = infoBoxCss.toString();
-      const node = document.createTextNode(css);
-      style.appendChild(node);
-      head.appendChild(style);
-    }, false);
+        const style = frame.contentDocument.createElement("style");
+        const css = infoBoxCss.toString();
+        const node = document.createTextNode(css);
+        style.appendChild(node);
+        head.appendChild(style);
+      },
+      false,
+    );
 
     // Allow js in infobox
     frame.setAttribute("sandbox", "allow-same-origin allow-popups allow-forms allow-scripts");

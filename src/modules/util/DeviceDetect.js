@@ -26,7 +26,7 @@ export class DeviceDetect {
   }
 
   static isInStandaloneMode() {
-    return ("standalone" in window.navigator) && (window.navigator.standalone);
+    return "standalone" in window.navigator && window.navigator.standalone;
   }
 
   static isiPhoneWithNotch() {
@@ -61,9 +61,9 @@ export class DeviceDetect {
       return "iPhone 6 Plus, 6s Plus , 7 Plus or 8 Plus (display zoom)";
     } else if (window.screen.height / window.screen.width === 1.775) {
       return "iPhone 5, 5C, 5S, SE or 6, 6s, 7 and 8 (display zoom)";
-    } else if ((window.screen.height / window.screen.width === 1.5) && (ratio === 2)) {
+    } else if (window.screen.height / window.screen.width === 1.5 && ratio === 2) {
       return "iPhone 4 or 4s";
-    } else if ((window.screen.height / window.screen.width === 1.5) && (ratio === 1)) {
+    } else if (window.screen.height / window.screen.width === 1.5 && ratio === 1) {
       return "iPhone 1, 3G or 3GS";
     } else {
       return "Not an iPhone";

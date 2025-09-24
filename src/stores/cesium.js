@@ -13,39 +13,47 @@ export const useCesiumStore = defineStore("cesium", {
   }),
   urlsync: {
     enabled: true,
-    config: [{
-      name: "layers",
-      url: "layers",
-      serialize: (v) => v.join(","),
-      deserialize: (v) => v.split(",").filter((e) => e),
-      valid: (v) => v.every((l) => ["Offline", "OfflineHighres", "ArcGis", "OSM", "Topo", "BlackMarble", "Tiles", "GOES-IR", "Nextrad"].includes(l.split("_")[0])),
-      default: ["OfflineHighres"],
-    }, {
-      name: "terrainProvider",
-      url: "terrain",
-      default: "None",
-    }, {
-      name: "sceneMode",
-      url: "scene",
-      default: "3D",
-    }, {
-      name: "cameraMode",
-      url: "camera",
-      default: "Fixed",
-    }, {
-      name: "qualityPreset",
-      url: "quality",
-      default: "high",
-    }, {
-      name: "showFps",
-      url: "fps",
-      default: "false",
-    }, {
-      name: "background",
-      url: "bg",
-      serialize: (v) => `${v}`,
-      deserialize: (v) => v === "true",
-      default: "true",
-    }],
+    config: [
+      {
+        name: "layers",
+        url: "layers",
+        serialize: (v) => v.join(","),
+        deserialize: (v) => v.split(",").filter((e) => e),
+        valid: (v) => v.every((l) => ["Offline", "OfflineHighres", "ArcGis", "OSM", "Topo", "BlackMarble", "Tiles", "GOES-IR", "Nextrad"].includes(l.split("_")[0])),
+        default: ["OfflineHighres"],
+      },
+      {
+        name: "terrainProvider",
+        url: "terrain",
+        default: "None",
+      },
+      {
+        name: "sceneMode",
+        url: "scene",
+        default: "3D",
+      },
+      {
+        name: "cameraMode",
+        url: "camera",
+        default: "Fixed",
+      },
+      {
+        name: "qualityPreset",
+        url: "quality",
+        default: "high",
+      },
+      {
+        name: "showFps",
+        url: "fps",
+        default: "false",
+      },
+      {
+        name: "background",
+        url: "bg",
+        serialize: (v) => `${v}`,
+        deserialize: (v) => v === "true",
+        default: "true",
+      },
+    ],
   },
 });

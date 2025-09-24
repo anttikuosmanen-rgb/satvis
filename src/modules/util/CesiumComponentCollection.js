@@ -3,10 +3,10 @@ import * as Cesium from "@cesium/engine";
 import { CesiumCallbackHelper } from "./CesiumCallbackHelper";
 
 /** CesiumComponentCollection
-  *
-  * A wrapper class for Cesium entities and primitives that all belong to a common object being represented.
-  * The individual entities or primitives are created on demand by the inheriting child class and are added
-  * to a common entity collection or primitive collection shared between all ComponentCollections.
+ *
+ * A wrapper class for Cesium entities and primitives that all belong to a common object being represented.
+ * The individual entities or primitives are created on demand by the inheriting child class and are added
+ * to a common entity collection or primitive collection shared between all ComponentCollections.
  */
 export class CesiumComponentCollection {
   #components = {};
@@ -110,7 +110,6 @@ export class CesiumComponentCollection {
       let lastState = -1;
       const readyCallback = this.viewer.clock.onTick.addEventListener(() => {
         if (!primitive.ready) {
-           
           const state = primitive._state;
           if (state !== lastState) {
             lastState = state;
@@ -175,14 +174,16 @@ export class CesiumComponentCollection {
     const clockRunning = this.viewer.clock.shouldAnimate;
     this.viewer.clock.shouldAnimate = false;
 
-    this.viewer.flyTo(this.defaultEntity, {
-      offset: new Cesium.HeadingPitchRange(0, -Cesium.Math.PI_OVER_FOUR, 1580000),
-    }).then((result) => {
-      if (result) {
-        this.viewer.trackedEntity = this.defaultEntity;
-        this.viewer.clock.shouldAnimate = clockRunning;
-      }
-    });
+    this.viewer
+      .flyTo(this.defaultEntity, {
+        offset: new Cesium.HeadingPitchRange(0, -Cesium.Math.PI_OVER_FOUR, 1580000),
+      })
+      .then((result) => {
+        if (result) {
+          this.viewer.trackedEntity = this.defaultEntity;
+          this.viewer.clock.shouldAnimate = clockRunning;
+        }
+      });
   }
 
   setSelectedOnTickCallback(onTickCallback = () => {}, onUnselectCallback = () => {}) {
@@ -209,18 +210,21 @@ export class CesiumComponentCollection {
 
   artificiallyTrack(onTickCallback = () => {}, onUntrackCallback = () => {}) {
     const cameraTracker = new Cesium.EntityView(this.defaultEntity, this.viewer.scene, this.viewer.scene.globe.ellipsoid);
-    this.setTrackedOnTickCallback((clock) => {
-      cameraTracker.update(clock.currentTime);
-      onTickCallback();
-    }, () => {
-      onUntrackCallback();
-      // Restore default view angle if no new entity is tracked
-      if (typeof this.viewer.trackedEntity === "undefined") {
-        this.viewer.flyTo(this.defaultEntity, {
-          offset: new Cesium.HeadingPitchRange(0, Cesium.Math.toRadians(-90.0), 2000000),
-        });
-      }
-    });
+    this.setTrackedOnTickCallback(
+      (clock) => {
+        cameraTracker.update(clock.currentTime);
+        onTickCallback();
+      },
+      () => {
+        onUntrackCallback();
+        // Restore default view angle if no new entity is tracked
+        if (typeof this.viewer.trackedEntity === "undefined") {
+          this.viewer.flyTo(this.defaultEntity, {
+            offset: new Cesium.HeadingPitchRange(0, Cesium.Math.toRadians(-90.0), 2000000),
+          });
+        }
+      },
+    );
   }
 
   createCesiumEntity(componentName, entityKey, entityValue, name, description, position, moving) {

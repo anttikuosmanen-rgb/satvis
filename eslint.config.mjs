@@ -4,6 +4,7 @@ import importPlugin from "eslint-plugin-import";
 import vueEslintParser from "vue-eslint-parser";
 import babelParser from "@babel/eslint-parser";
 import globals from "globals";
+import prettierConfig from "eslint-config-prettier";
 
 export default [
   {
@@ -12,6 +13,7 @@ export default [
   js.configs.recommended,
   ...vue.configs["flat/recommended"],
   importPlugin.flatConfigs.recommended,
+  prettierConfig,
   {
     files: ["**/*.js", "**/*.vue"],
     languageOptions: {
@@ -35,44 +37,9 @@ export default [
     rules: {
       "no-console": "off",
       "no-param-reassign": ["error", { props: false }],
-      "no-multi-spaces": ["error", { ignoreEOLComments: true }],
-      "object-curly-newline": "off",
-      "operator-linebreak": ["error", "after"],
-      quotes: ["error", "double", { allowTemplateLiterals: true }],
-      "max-len": [
-        "error",
-        170,
-        2,
-        {
-          ignoreUrls: true,
-          ignoreComments: false,
-          ignoreRegExpLiterals: true,
-          ignoreStrings: true,
-          ignoreTemplateLiterals: true,
-        },
-      ],
       "vue/no-unused-components": "off",
       "vue/component-name-in-template-casing": ["error", "kebab-case"],
-      "vue/max-attributes-per-line": [
-        "warn",
-        {
-          singleline: { max: 8 },
-          multiline: { max: 1 },
-        },
-      ],
       "vue/multi-word-component-names": "off",
-      "vue/html-self-closing": [
-        "error",
-        {
-          html: {
-            void: "never",
-            normal: "never",
-            component: "always",
-          },
-          svg: "always",
-          math: "always",
-        },
-      ],
       "import/extensions": [
         "error",
         "ignorePackages",

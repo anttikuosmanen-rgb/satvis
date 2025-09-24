@@ -8,6 +8,5 @@
 import "@cesium/widgets/Source/widgets.css";
 import "./css/main.css";
 
-export default {
-};
+export default {};
 </script>

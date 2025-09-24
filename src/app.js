@@ -27,8 +27,12 @@ function satvisSetup(customConfig = {}) {
   const cc = new CesiumController();
   app.config.globalProperties.cc = cc;
   const pinia = createPinia();
-  pinia.use(({ store }) => { store.router = markRaw(router); });
-  pinia.use(({ store }) => { store.customConfig = markRaw(customConfig); });
+  pinia.use(({ store }) => {
+    store.router = markRaw(router);
+  });
+  pinia.use(({ store }) => {
+    store.customConfig = markRaw(customConfig);
+  });
   pinia.use(piniaUrlSync);
   app.use(pinia);
   app.use(router);

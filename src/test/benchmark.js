@@ -12,14 +12,15 @@ const componentTests = [
 ];
 
 function sleep(s) {
-  return new Promise((r) => { setTimeout(r, s * 1000); });
+  return new Promise((r) => {
+    setTimeout(r, s * 1000);
+  });
 }
 
 async function logPerformance() {
   cc.performanceStats.reset();
   // Wait for performance to settle and stats to be updated
   while (cc.performanceStats.getStats().avgFps === 0) {
-     
     await sleep(1);
   }
   console.log(
@@ -30,14 +31,15 @@ async function logPerformance() {
 }
 
 async function test() {
-   
   for (const components of componentTests) {
-     
     for (const satelliteCount of satelliteCounts) {
       cc.sats.enabledComponents = components;
-      cc.sats.enabledSatellites = cc.sats.getSatellitesWithTag(satelliteTag).slice(0, satelliteCount).map((sat) => sat.props.name);
+      cc.sats.enabledSatellites = cc.sats
+        .getSatellitesWithTag(satelliteTag)
+        .slice(0, satelliteCount)
+        .map((sat) => sat.props.name);
       console.log(cc.sats.enabledSatellites, cc.sats.getSatellitesWithTag(satelliteTag));
-       
+
       await logPerformance();
     }
     cc.sats.enabledSatellites = [];

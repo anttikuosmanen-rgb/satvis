@@ -7,7 +7,7 @@ export class CesiumCleanupHelper {
     const onTickEventRemovalCallback = CesiumCallbackHelper.createPeriodicTickCallback(viewer, 1, () => {
       console.info("Removing leftover Cesium internal data");
       onTickEventRemovalCallback();
-       
+
       const labelCollection = viewer.scene.primitives?._primitives[0]?._primitives[0]._primitives[0]._labelCollection;
       if (labelCollection) {
         labelCollection._spareBillboards.forEach((billboard) => {
@@ -15,7 +15,6 @@ export class CesiumCleanupHelper {
         });
         labelCollection._spareBillboards.length = 0;
       }
-       
     });
   }
 }
