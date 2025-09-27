@@ -90,6 +90,13 @@ export default class Orbit {
     while (date < endDate) {
       // Calculate satellite position and look angles from ground station
       const positionEcf = this.positionECF(date);
+
+      // Skip this time step if position calculation failed
+      if (!positionEcf) {
+        date = new Date(date.getTime() + stepMs);
+        continue;
+      }
+
       const lookAngles = satellitejs.ecfToLookAngles(groundStation, positionEcf);
       const elevation = lookAngles.elevation / deg2rad; // Convert to degrees
 
@@ -177,6 +184,11 @@ export default class Orbit {
     try {
       // Get satellite position in ECF coordinates
       const satEcf = this.positionECF(date);
+
+      // Return false (not eclipsed) if position calculation failed
+      if (!satEcf) {
+        return false;
+      }
 
       // Convert ECF to ECI coordinates for astronomy calculations
       const gmst = satellitejs.gstime(date);
