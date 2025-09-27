@@ -47,6 +47,18 @@ export class CesiumTimelineHelper {
         highlightRange._clickListener = () => {
           console.log(`Pass clicked for satellite: ${satelliteName}`);
 
+          // Get the time range for this pass
+          const passStartTime = startJulian;
+          const passEndTime = endJulian;
+          const currentTime = viewer.clock.currentTime;
+
+          // If current time is outside the pass range, set it to pass start
+          if (Cesium.JulianDate.lessThan(currentTime, passStartTime) ||
+              Cesium.JulianDate.greaterThan(currentTime, passEndTime)) {
+            viewer.clock.currentTime = passStartTime;
+            console.log(`Set time to pass start: ${Cesium.JulianDate.toDate(passStartTime)}`);
+          }
+
           // Find the satellite entity by name and track it
           const entities = viewer.entities.values;
           console.log(`Total entities: ${entities.length}`);
@@ -55,12 +67,16 @@ export class CesiumTimelineHelper {
           const satelliteEntities = entities.filter((entity) => entity.name && entity.name.includes(satelliteName));
           console.log(`Entities for ${satelliteName}:`, satelliteEntities.map((e) => e.name));
 
-          // Try to find the main satellite entity (usually the Point component)
-          let satelliteEntity = entities.find((entity) => entity.name && entity.name.includes(satelliteName) && entity.name.includes("Point"));
+          // Try to find the satellite entity by name
+          // First try exact name match
+          let satelliteEntity = entities.find((entity) => entity && entity.name === satelliteName);
 
-          // If not found with "Point", try the first entity with the satellite name
+          // If not found, try the first entity that matches the satellite name
           if (!satelliteEntity && satelliteEntities.length > 0) {
-            satelliteEntity = satelliteEntities[0];
+            // Prefer entities with position and not ground stations
+            satelliteEntity = satelliteEntities.find((entity) =>
+              entity.position && !entity.name.includes("Ground station")
+            ) || satelliteEntities[0];
           }
 
           if (satelliteEntity) {

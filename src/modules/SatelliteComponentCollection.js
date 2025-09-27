@@ -423,6 +423,16 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       return;
     }
 
+    // Clean up any existing height stick entities for this satellite
+    const maxAltitude = 1000;
+    for (let altitude = 100; altitude <= maxAltitude; altitude += 100) {
+      const tickId = `heightstick-tick-${this.props.satnum}-${altitude}`;
+      const existingEntity = this.viewer.entities.getById(tickId);
+      if (existingEntity) {
+        this.viewer.entities.remove(existingEntity);
+      }
+    }
+
     // Create the main vertical line entity
     const entity = new Cesium.Entity({
       polyline: new Cesium.PolylineGraphics({
@@ -446,7 +456,6 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
 
     // Create static tick marks (simplified approach to avoid clock interference)
     const tickEntities = [];
-    const maxAltitude = 1000; // Max altitude in km for tick marks
 
     // Create tick marks every 100km up to maxAltitude
     for (let altitude = 100; altitude <= maxAltitude; altitude += 100) {

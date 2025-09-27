@@ -681,17 +681,24 @@ export class CesiumController {
               return;
             }
 
-            // Try different naming patterns to find the satellite entity
-            let satelliteEntity = entities.find((entity) => entity && entity.name && entity.name.includes(satelliteName) && entity.name.includes("Point"));
+            // Try to find the satellite entity by name
+            // First try exact name match
+            let satelliteEntity = entities.find((entity) => entity && entity.name === satelliteName);
 
-            // If not found with "Point", try just the satellite name
-            if (!satelliteEntity) {
-              satelliteEntity = entities.find((entity) => entity && entity.name && entity.name === satelliteName);
-            }
-
-            // If still not found, try partial match
+            // If not found, try partial match (for cases with extra characters)
             if (!satelliteEntity) {
               satelliteEntity = entities.find((entity) => entity && entity.name && entity.name.includes(satelliteName));
+            }
+
+            // If still not found, look for any trackable entity with the satellite name
+            if (!satelliteEntity) {
+              satelliteEntity = entities.find((entity) =>
+                entity &&
+                entity.name &&
+                entity.name.includes(satelliteName) &&
+                entity.position &&
+                !entity.name.includes("Ground station")
+              );
             }
 
             if (satelliteEntity) {
