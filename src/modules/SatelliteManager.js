@@ -134,6 +134,20 @@ export class SatelliteManager {
     }
   }
 
+  resetToEarthView() {
+    this.viewer.trackedEntity = undefined;
+    this.viewer.selectedEntity = undefined;
+    this.viewer.camera.setView({
+      destination: Cesium.Cartesian3.fromDegrees(0, 0, 15000000), // 15,000 km above Earth center
+      orientation: {
+        heading: 0,
+        pitch: -Cesium.Math.PI_OVER_TWO, // Look straight down
+        roll: 0,
+      },
+    });
+    console.log('Reset view to default Earth view');
+  }
+
   addFromTleUrls(urlTagList) {
     // Initiate async download of all TLE URLs and update store afterwards
     const promises = urlTagList.map(([url, tags]) => this.addFromTleUrl(url, tags, false));
@@ -289,6 +303,12 @@ export class SatelliteManager {
     this.#updatingSatellites = true;
 
     try {
+      // Check if currently tracked satellite would be removed
+      const currentTrackedSatellite = this.trackedSatellite;
+      const trackingWillBeLost = currentTrackedSatellite &&
+        this.#enabledSatellites.includes(currentTrackedSatellite) &&
+        !newSats.includes(currentTrackedSatellite);
+
       // Validate that all satellites exist before setting them
       const availableSatelliteNames = this.satellites.map(sat => sat.props.name);
       const validSatellites = newSats.filter(satName => {
@@ -306,6 +326,15 @@ export class SatelliteManager {
       }
 
       this.#enabledSatellites = validSatellites;
+
+      // Reset view if tracked satellite was removed from selection
+      if (trackingWillBeLost) {
+        console.log(`Tracked satellite ${currentTrackedSatellite} removed from selection, resetting view`);
+        this.resetToEarthView();
+        const satStore = useSatStore();
+        satStore.trackedSatellite = "";
+      }
+
       this.showEnabledSatellites();
 
       const satStore = useSatStore();
@@ -389,9 +418,7 @@ export class SatelliteManager {
 
     // Reset view to Earth if tracked satellite was removed
     if (needsViewReset) {
-      this.viewer.trackedEntity = undefined;
-      this.viewer.selectedEntity = undefined;
-      console.log('Reset view to default Earth view');
+      this.resetToEarthView();
     }
 
     return {
@@ -419,6 +446,23 @@ export class SatelliteManager {
     this.#updatingTags = true;
 
     try {
+      // Check if currently tracked satellite would be removed due to tag changes
+      const currentTrackedSatellite = this.trackedSatellite;
+      let trackingWillBeLost = false;
+
+      if (currentTrackedSatellite) {
+        const trackedSat = this.getSatellite(currentTrackedSatellite);
+        if (trackedSat) {
+          // Check if tracked satellite was enabled by tags that are being removed
+          const wasEnabledByOldTags = this.#enabledTags.some(tag => trackedSat.props.hasTag(tag));
+          const willBeEnabledByNewTags = newTags.some(tag => trackedSat.props.hasTag(tag));
+          const enabledByName = this.#enabledSatellites.includes(currentTrackedSatellite);
+
+          // Will lose tracking if it was enabled by old tags but not by new tags or name
+          trackingWillBeLost = wasEnabledByOldTags && !willBeEnabledByNewTags && !enabledByName;
+        }
+      }
+
       // Validate that all tags exist before setting them
       const availableTags = this.tags;
       const validTags = newTags.filter(tagName => {
@@ -436,6 +480,15 @@ export class SatelliteManager {
       }
 
       this.#enabledTags = validTags;
+
+      // Reset view if tracked satellite was removed due to tag changes
+      if (trackingWillBeLost) {
+        console.log(`Tracked satellite ${currentTrackedSatellite} removed due to tag changes, resetting view`);
+        this.resetToEarthView();
+        const satStore = useSatStore();
+        satStore.trackedSatellite = "";
+      }
+
       this.showEnabledSatellites();
 
       const satStore = useSatStore();
