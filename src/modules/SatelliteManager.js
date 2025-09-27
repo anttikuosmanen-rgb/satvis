@@ -272,11 +272,27 @@ export class SatelliteManager {
   }
 
   set enabledSatellites(newSats) {
-    this.#enabledSatellites = newSats;
+    // Validate that all satellites exist before setting them
+    const availableSatelliteNames = this.satellites.map(sat => sat.props.name);
+    const validSatellites = newSats.filter(satName => {
+      const exists = availableSatelliteNames.includes(satName);
+      if (!exists) {
+        console.warn(`Ignoring non-existent satellite in selection: ${satName}`);
+      }
+      return exists;
+    });
+
+    // Only log if satellites were filtered out
+    if (validSatellites.length !== newSats.length) {
+      const removedCount = newSats.length - validSatellites.length;
+      console.log(`Filtered out ${removedCount} non-existent satellites from selection`);
+    }
+
+    this.#enabledSatellites = validSatellites;
     this.showEnabledSatellites();
 
     const satStore = useSatStore();
-    satStore.enabledSatellites = newSats;
+    satStore.enabledSatellites = validSatellites;
   }
 
   get tags() {
@@ -335,9 +351,10 @@ export class SatelliteManager {
 
     // Check tracked satellite
     let needsViewReset = false;
-    if (this.#trackedSatellite && !availableSatelliteNames.includes(this.#trackedSatellite)) {
-      console.warn(`Tracked satellite no longer exists: ${this.#trackedSatellite}, resetting view`);
-      this.#trackedSatellite = "";
+    const currentTrackedSatellite = this.trackedSatellite;
+    if (currentTrackedSatellite && !availableSatelliteNames.includes(currentTrackedSatellite)) {
+      console.warn(`Tracked satellite no longer exists: ${currentTrackedSatellite}, resetting view`);
+      this.trackedSatellite = "";
       satStore.trackedSatellite = "";
       needsViewReset = true;
     }
@@ -368,11 +385,27 @@ export class SatelliteManager {
   }
 
   set enabledTags(newTags) {
-    this.#enabledTags = newTags;
+    // Validate that all tags exist before setting them
+    const availableTags = this.tags;
+    const validTags = newTags.filter(tagName => {
+      const exists = availableTags.includes(tagName);
+      if (!exists) {
+        console.warn(`Ignoring non-existent tag in selection: ${tagName}`);
+      }
+      return exists;
+    });
+
+    // Only log if tags were filtered out
+    if (validTags.length !== newTags.length) {
+      const removedCount = newTags.length - validTags.length;
+      console.log(`Filtered out ${removedCount} non-existent tags from selection`);
+    }
+
+    this.#enabledTags = validTags;
     this.showEnabledSatellites();
 
     const satStore = useSatStore();
-    satStore.enabledTags = newTags;
+    satStore.enabledTags = validTags;
   }
 
   get components() {
