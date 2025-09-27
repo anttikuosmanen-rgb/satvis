@@ -17,6 +17,7 @@ export class SatelliteManager {
 
   #updatingSatellites = false;
   #updatingTags = false;
+  #initializingFromUrl = false;
 
   constructor(viewer) {
     this.viewer = viewer;
@@ -146,6 +147,10 @@ export class SatelliteManager {
       },
     });
     console.log('Reset view to default Earth view');
+  }
+
+  setUrlInitializationMode(isInitializing) {
+    this.#initializingFromUrl = isInitializing;
   }
 
   addFromTleUrls(urlTagList) {
@@ -303,6 +308,16 @@ export class SatelliteManager {
     this.#updatingSatellites = true;
 
     try {
+      // During URL initialization, accept satellites as-is to prevent loops
+      // Invalid satellites will be filtered out later when satellites are loaded
+      if (this.#initializingFromUrl) {
+        this.#enabledSatellites = newSats;
+        this.showEnabledSatellites();
+        const satStore = useSatStore();
+        satStore.enabledSatellites = newSats;
+        return;
+      }
+
       // Check if currently tracked satellite would be removed
       const currentTrackedSatellite = this.trackedSatellite;
       const trackingWillBeLost = currentTrackedSatellite &&
@@ -446,6 +461,16 @@ export class SatelliteManager {
     this.#updatingTags = true;
 
     try {
+      // During URL initialization, accept tags as-is to prevent loops
+      // Invalid tags will be filtered out later when satellites are loaded
+      if (this.#initializingFromUrl) {
+        this.#enabledTags = newTags;
+        this.showEnabledSatellites();
+        const satStore = useSatStore();
+        satStore.enabledTags = newTags;
+        return;
+      }
+
       // Check if currently tracked satellite would be removed due to tag changes
       const currentTrackedSatellite = this.trackedSatellite;
       let trackingWillBeLost = false;

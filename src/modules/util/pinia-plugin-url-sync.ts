@@ -83,7 +83,21 @@ function createUrlSync({ options, store }: PiniaPluginContext): void {
 
   // Set state from url params on page load
   store.router.isReady().then(() => {
+    // Notify SatelliteManager that we're initializing from URL to prevent validation loops
+    const globalWindow = window as any;
+    if (globalWindow.cc && globalWindow.cc.sats && globalWindow.cc.sats.setUrlInitializationMode) {
+      globalWindow.cc.sats.setUrlInitializationMode(true);
+    }
+
     urlToState(store, options.urlsync.config);
+
+    // Re-enable validation after URL initialization is complete
+    if (globalWindow.cc && globalWindow.cc.sats && globalWindow.cc.sats.setUrlInitializationMode) {
+      // Use setTimeout to ensure all state updates from URL are processed first
+      setTimeout(() => {
+        globalWindow.cc.sats.setUrlInitializationMode(false);
+      }, 100);
+    }
   });
 
   // Subscribe to store updates and sync them to url params
