@@ -15,6 +15,9 @@ export class SatelliteManager {
 
   #groundStations = [];
 
+  #updatingSatellites = false;
+  #updatingTags = false;
+
   constructor(viewer) {
     this.viewer = viewer;
 
@@ -272,27 +275,44 @@ export class SatelliteManager {
   }
 
   set enabledSatellites(newSats) {
-    // Validate that all satellites exist before setting them
-    const availableSatelliteNames = this.satellites.map(sat => sat.props.name);
-    const validSatellites = newSats.filter(satName => {
-      const exists = availableSatelliteNames.includes(satName);
-      if (!exists) {
-        console.warn(`Ignoring non-existent satellite in selection: ${satName}`);
-      }
-      return exists;
-    });
-
-    // Only log if satellites were filtered out
-    if (validSatellites.length !== newSats.length) {
-      const removedCount = newSats.length - validSatellites.length;
-      console.log(`Filtered out ${removedCount} non-existent satellites from selection`);
+    // Prevent recursive updates
+    if (this.#updatingSatellites) {
+      return;
     }
 
-    this.#enabledSatellites = validSatellites;
-    this.showEnabledSatellites();
+    // Check if the value actually changed
+    const currentSats = this.#enabledSatellites;
+    if (JSON.stringify(currentSats.sort()) === JSON.stringify(newSats.sort())) {
+      return;
+    }
 
-    const satStore = useSatStore();
-    satStore.enabledSatellites = validSatellites;
+    this.#updatingSatellites = true;
+
+    try {
+      // Validate that all satellites exist before setting them
+      const availableSatelliteNames = this.satellites.map(sat => sat.props.name);
+      const validSatellites = newSats.filter(satName => {
+        const exists = availableSatelliteNames.includes(satName);
+        if (!exists) {
+          console.warn(`Ignoring non-existent satellite in selection: ${satName}`);
+        }
+        return exists;
+      });
+
+      // Only log if satellites were filtered out
+      if (validSatellites.length !== newSats.length) {
+        const removedCount = newSats.length - validSatellites.length;
+        console.log(`Filtered out ${removedCount} non-existent satellites from selection`);
+      }
+
+      this.#enabledSatellites = validSatellites;
+      this.showEnabledSatellites();
+
+      const satStore = useSatStore();
+      satStore.enabledSatellites = validSatellites;
+    } finally {
+      this.#updatingSatellites = false;
+    }
   }
 
   get tags() {
@@ -385,27 +405,44 @@ export class SatelliteManager {
   }
 
   set enabledTags(newTags) {
-    // Validate that all tags exist before setting them
-    const availableTags = this.tags;
-    const validTags = newTags.filter(tagName => {
-      const exists = availableTags.includes(tagName);
-      if (!exists) {
-        console.warn(`Ignoring non-existent tag in selection: ${tagName}`);
-      }
-      return exists;
-    });
-
-    // Only log if tags were filtered out
-    if (validTags.length !== newTags.length) {
-      const removedCount = newTags.length - validTags.length;
-      console.log(`Filtered out ${removedCount} non-existent tags from selection`);
+    // Prevent recursive updates
+    if (this.#updatingTags) {
+      return;
     }
 
-    this.#enabledTags = validTags;
-    this.showEnabledSatellites();
+    // Check if the value actually changed
+    const currentTags = this.#enabledTags;
+    if (JSON.stringify(currentTags.sort()) === JSON.stringify(newTags.sort())) {
+      return;
+    }
 
-    const satStore = useSatStore();
-    satStore.enabledTags = validTags;
+    this.#updatingTags = true;
+
+    try {
+      // Validate that all tags exist before setting them
+      const availableTags = this.tags;
+      const validTags = newTags.filter(tagName => {
+        const exists = availableTags.includes(tagName);
+        if (!exists) {
+          console.warn(`Ignoring non-existent tag in selection: ${tagName}`);
+        }
+        return exists;
+      });
+
+      // Only log if tags were filtered out
+      if (validTags.length !== newTags.length) {
+        const removedCount = newTags.length - validTags.length;
+        console.log(`Filtered out ${removedCount} non-existent tags from selection`);
+      }
+
+      this.#enabledTags = validTags;
+      this.showEnabledSatellites();
+
+      const satStore = useSatStore();
+      satStore.enabledTags = validTags;
+    } finally {
+      this.#updatingTags = false;
+    }
   }
 
   get components() {
