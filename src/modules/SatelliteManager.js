@@ -134,7 +134,11 @@ export class SatelliteManager {
   addFromTleUrls(urlTagList) {
     // Initiate async download of all TLE URLs and update store afterwards
     const promises = urlTagList.map(([url, tags]) => this.addFromTleUrl(url, tags, false));
-    Promise.all(promises).then(() => this.updateStore());
+    Promise.all(promises).then(() => {
+      this.updateStore();
+      // Validate that selected satellites still exist after loading TLE data
+      this.validateSelectedSatellites();
+    });
   }
 
   addFromTleUrl(url, tags, updateStore = true) {
@@ -310,6 +314,53 @@ export class SatelliteManager {
     if (this.visibleSatellites.length === 0) {
       CesiumCleanupHelper.cleanup(this.viewer);
     }
+  }
+
+  /**
+   * Validates that selected satellites still exist in the current TLE data
+   * Removes non-existent satellites and resets view if necessary
+   */
+  validateSelectedSatellites() {
+    const satStore = useSatStore();
+    const availableSatelliteNames = this.satellites.map(sat => sat.props.name);
+
+    // Check enabled satellites by name
+    const validEnabledSatellites = this.#enabledSatellites.filter(satName => {
+      const exists = availableSatelliteNames.includes(satName);
+      if (!exists) {
+        console.warn(`Removing non-existent satellite from selection: ${satName}`);
+      }
+      return exists;
+    });
+
+    // Check tracked satellite
+    let needsViewReset = false;
+    if (this.#trackedSatellite && !availableSatelliteNames.includes(this.#trackedSatellite)) {
+      console.warn(`Tracked satellite no longer exists: ${this.#trackedSatellite}, resetting view`);
+      this.#trackedSatellite = "";
+      satStore.trackedSatellite = "";
+      needsViewReset = true;
+    }
+
+    // Update enabled satellites if any were removed
+    const removedCount = this.#enabledSatellites.length - validEnabledSatellites.length;
+    if (validEnabledSatellites.length !== this.#enabledSatellites.length) {
+      this.#enabledSatellites = validEnabledSatellites;
+      satStore.enabledSatellites = validEnabledSatellites;
+      console.log(`Updated enabled satellites, removed ${removedCount} non-existent satellites`);
+    }
+
+    // Reset view to Earth if tracked satellite was removed
+    if (needsViewReset) {
+      this.viewer.trackedEntity = undefined;
+      this.viewer.selectedEntity = undefined;
+      console.log('Reset view to default Earth view');
+    }
+
+    return {
+      removedSatellites: removedCount,
+      viewReset: needsViewReset
+    };
   }
 
   get enabledTags() {
