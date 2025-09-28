@@ -5,7 +5,7 @@
 </template>
 
 <script>
-import "@cesium/widgets/Source/widgets.css";
+import "cesium/Build/Cesium/Widgets/widgets.css";
 import "./css/main.css";
 
 export default {};

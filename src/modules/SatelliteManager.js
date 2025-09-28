@@ -1,7 +1,7 @@
+import { useSatStore } from "../stores/sat";
 import { SatelliteComponentCollection } from "./SatelliteComponentCollection";
 import { GroundStationEntity } from "./GroundStationEntity";
 
-import { useSatStore } from "../stores/sat";
 import { CesiumCleanupHelper } from "./util/CesiumCleanupHelper";
 
 export class SatelliteManager {

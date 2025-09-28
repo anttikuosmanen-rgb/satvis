@@ -1,4 +1,4 @@
-@import url("../../node_modules/cesium/Source/Widgets/InfoBox/InfoBoxDescription.css");
+@import url("../../node_modules/cesium/Build/Cesium/Widgets/InfoBox/InfoBoxDescription.css");
 
 .ib h3 {
     text-align: center;

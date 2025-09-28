@@ -2,7 +2,6 @@ import js from "@eslint/js";
 import vue from "eslint-plugin-vue";
 import importPlugin from "eslint-plugin-import";
 import vueEslintParser from "vue-eslint-parser";
-import babelParser from "@babel/eslint-parser";
 import globals from "globals";
 import prettierConfig from "eslint-config-prettier";
 
@@ -15,7 +14,7 @@ export default [
   importPlugin.flatConfigs.recommended,
   prettierConfig,
   {
-    files: ["**/*.js", "**/*.vue"],
+    files: ["src/**/*.{js,vue}"],
     languageOptions: {
       globals: {
         ...globals.browser,
@@ -24,15 +23,9 @@ export default [
       },
       parser: vueEslintParser,
       parserOptions: {
-        parser: babelParser,
-        requireConfigFile: false,
-        babelOptions: {
-          presets: ["@babel/preset-env", "@babel/preset-typescript"],
-        },
+        ecmaVersion: 2024,
+        sourceType: "module",
       },
-    },
-    plugins: {
-      vue,
     },
     rules: {
       "no-console": "off",
@@ -50,6 +43,26 @@ export default [
       ],
       "import/prefer-default-export": "off",
       "import/no-extraneous-dependencies": "off",
+      "import/namespace": "off",
+      "import/default": "off",
+      "import/named": "off",
+      "import/no-named-as-default": "off",
+      "import/no-named-as-default-member": "off",
+      "import/no-unresolved": [
+        "error",
+        {
+          ignore: [
+            "\\?raw$", // Ignore ?raw imports (Vite feature)
+          ],
+        },
+      ],
+      "import/order": [
+        "error",
+        {
+          groups: ["builtin", "external", "internal", "parent", "sibling", "index"],
+          //"newlines-between": "never"
+        },
+      ],
     },
   },
 ];

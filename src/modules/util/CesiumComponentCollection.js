@@ -1,4 +1,4 @@
-import * as Cesium from "@cesium/engine";
+import * as Cesium from "cesium";
 
 import { CesiumCallbackHelper } from "./CesiumCallbackHelper";
 

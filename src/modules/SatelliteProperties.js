@@ -1,4 +1,4 @@
-import * as Cesium from "@cesium/engine";
+import * as Cesium from "cesium";
 
 import Orbit from "./Orbit";
 import "./util/CesiumSampledPositionRawValueAccess";

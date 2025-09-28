@@ -1,19 +1,18 @@
-import * as Cesium from "@cesium/engine";
-import { Viewer } from "@cesium/widgets";
+import * as Cesium from "cesium";
+import { Viewer } from "cesium";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 import * as Sentry from "@sentry/browser";
 import { icon } from "@fortawesome/fontawesome-svg-core";
 import { faBell, faInfo } from "@fortawesome/free-solid-svg-icons";
 import { useToast } from "vue-toastification";
-import satvisIcon from "../assets/android-chrome-192x192.png";
 
+import { useCesiumStore } from "../stores/cesium";
+import infoBoxCss from "../css/infobox.css?raw";
 import { DeviceDetect } from "./util/DeviceDetect";
 import { PushManager } from "./util/PushManager";
 import { CesiumPerformanceStats } from "./util/CesiumPerformanceStats";
 import { SatelliteManager } from "./SatelliteManager";
-import { useCesiumStore } from "../stores/cesium";
-import infoBoxCss from "../css/infobox.ecss";
 
 dayjs.extend(utc);
 
@@ -73,9 +72,7 @@ export class CesiumController {
     // Create Satellite Manager
     this.sats = new SatelliteManager(this.viewer);
 
-    this.pm = new PushManager({
-      icon: satvisIcon,
-    });
+    this.pm = new PushManager();
 
     // Add privacy policy to credits when not running in iframe
     if (!DeviceDetect.inIframe()) {
@@ -98,7 +95,7 @@ export class CesiumController {
   initConstants() {
     this.imageryProviders = {
       Offline: {
-        create: () => Cesium.TileMapServiceImageryProvider.fromUrl(Cesium.buildModuleUrl("Assets/Textures/NaturalEarthII")),
+        create: () => Cesium.TileMapServiceImageryProvider.fromUrl("/cesium/Assets/Textures/NaturalEarthII"),
         alpha: 1,
         base: true,
       },
@@ -590,7 +587,7 @@ export class CesiumController {
         });
 
         const style = frame.contentDocument.createElement("style");
-        const css = infoBoxCss.toString();
+        const css = infoBoxCss; // Already a string with ?raw import
         const node = document.createTextNode(css);
         style.appendChild(node);
         head.appendChild(style);

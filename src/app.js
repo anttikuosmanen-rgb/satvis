@@ -1,6 +1,5 @@
 import { createApp, markRaw } from "vue";
 import { createPinia } from "pinia";
-import { Workbox } from "workbox-window";
 import PrimeVue from "primevue/config";
 import Aura from "@primevue/themes/aura";
 import Tooltip from "primevue/tooltip";
@@ -48,18 +47,6 @@ function satvisSetup(customConfig = {}) {
   library.add(faLayerGroup, faGlobeAfrica, faMobileAlt, faHammer, faEye, faGithub);
   app.component("FontAwesomeIcon", FontAwesomeIcon);
   app.mount("#app");
-
-  // Register service worker
-  if ("serviceWorker" in navigator && !window.location.href.includes("localhost")) {
-    const wb = new Workbox("sw.js");
-    wb.addEventListener("controlling", (evt) => {
-      if (evt.isUpdate) {
-        console.log("Reloading page for latest content");
-        window.location.reload();
-      }
-    });
-    wb.register();
-  }
 
   return { app, cc };
 }

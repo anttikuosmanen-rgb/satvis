@@ -1,4 +1,4 @@
-import * as Cesium from "@cesium/engine";
+import * as Cesium from "cesium";
 
 export class CesiumTimelineHelper {
   static clearHighlightRanges(viewer) {

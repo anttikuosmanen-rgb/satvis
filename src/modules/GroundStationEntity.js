@@ -1,9 +1,8 @@
-import * as Cesium from "@cesium/engine";
+import * as Cesium from "cesium";
 import dayjs from "dayjs";
+import icon from "../images/icons/dish.svg";
 import { CesiumComponentCollection } from "./util/CesiumComponentCollection";
 import { DescriptionHelper } from "./util/DescriptionHelper";
-
-import icon from "../images/icons/dish.svg";
 
 export class GroundStationEntity extends CesiumComponentCollection {
   constructor(viewer, sats, position, givenName = "") {

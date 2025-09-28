@@ -1,4 +1,4 @@
-import * as Cesium from "@cesium/engine";
+import * as Cesium from "cesium";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import utc from "dayjs/plugin/utc";
