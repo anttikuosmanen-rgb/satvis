@@ -119,6 +119,21 @@ export default defineConfig({
         theme_color: "#0B222D",
       },
       pwaAssets: {
+        htmlPreset: "2023",
+        preset: {
+          transparent: {
+            sizes: [64, 192, 512],
+            favicons: [[48, "favicon.ico"]],
+          },
+          maskable: {
+            sizes: [512],
+            padding: 0,
+          },
+          apple: {
+            sizes: [180],
+            padding: 0,
+          },
+        },
         image: "public/logo.svg",
       },
       devOptions: {

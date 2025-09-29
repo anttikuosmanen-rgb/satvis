@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" style="background:#0B222D">
+  <!-- Background -->
+  <rect width="512" height="512" fill="#0B222D"/>
+
+  <!-- Satellite main body -->
+  <rect x="226" y="220" width="60" height="72" rx="4" fill="#D8D9D9"/>
+  <rect x="230" y="224" width="52" height="64" rx="2" fill="#E6E6E6"/>
+
+  <!-- Solar panels -->
+  <rect x="170" y="235" width="50" height="42" rx="2" fill="#4082A0"/>
+  <rect x="292" y="235" width="50" height="42" rx="2" fill="#4082A0"/>
+
+  <!-- Solar panel grid lines -->
+  <line x1="175" y1="240" x2="215" y2="240" stroke="#0B222D" stroke-width="1"/>
+  <line x1="175" y1="250" x2="215" y2="250" stroke="#0B222D" stroke-width="1"/>
+  <line x1="175" y1="260" x2="215" y2="260" stroke="#0B222D" stroke-width="1"/>
+  <line x1="175" y1="270" x2="215" y2="270" stroke="#0B222D" stroke-width="1"/>
+
+  <line x1="297" y1="240" x2="337" y2="240" stroke="#0B222D" stroke-width="1"/>
+  <line x1="297" y1="250" x2="337" y2="250" stroke="#0B222D" stroke-width="1"/>
+  <line x1="297" y1="260" x2="337" y2="260" stroke="#0B222D" stroke-width="1"/>
+  <line x1="297" y1="270" x2="337" y2="270" stroke="#0B222D" stroke-width="1"/>
+
+  <!-- Satellite antenna -->
+  <line x1="256" y1="220" x2="256" y2="180" stroke="#E6E6E6" stroke-width="3"/>
+  <circle cx="256" cy="175" r="8" fill="none" stroke="#E6E6E6" stroke-width="2"/>
+  <circle cx="256" cy="175" r="12" fill="none" stroke="#4082A0" stroke-width="1" opacity="0.6"/>
+
+  <!-- Communication dish -->
+  <ellipse cx="256" cy="300" rx="16" ry="8" fill="#E6E6E6"/>
+  <ellipse cx="256" cy="300" rx="12" ry="6" fill="#4082A0"/>
+  <line x1="256" y1="292" x2="256" y2="310" stroke="#D8D9D9" stroke-width="2"/>
+
+  <!-- Satellite body details -->
+  <rect x="235" y="235" width="8" height="8" rx="1" fill="#4082A0"/>
+  <rect x="245" y="235" width="8" height="8" rx="1" fill="#CF4D27"/>
+  <rect x="255" y="235" width="8" height="8" rx="1" fill="#4082A0"/>
+  <rect x="265" y="235" width="8" height="8" rx="1" fill="#4082A0"/>
+
+  <!-- Orbit rings -->
+  <circle cx="256" cy="256" r="140" fill="none" stroke="#4082A0" stroke-width="3" opacity="0.8"/>
+  <circle cx="256" cy="256" r="100" fill="none" stroke="#4082A0" stroke-width="2" opacity="0.6"/>
+  <circle cx="256" cy="256" r="180" fill="none" stroke="#4082A0" stroke-width="2" opacity="0.4"/>
+
+  <!-- Small orbital objects -->
+  <circle cx="180" cy="180" r="3" fill="#4082A0"/>
+  <circle cx="350" cy="320" r="3" fill="#4082A0"/>
+  <circle cx="160" cy="350" r="2" fill="#CF4D27"/>
+  <circle cx="380" cy="160" r="2" fill="#CF4D27"/>
+
+  <!-- Stars -->
+  <circle cx="120" cy="120" r="1.5" fill="#FFF3E0"/>
+  <circle cx="400" cy="100" r="1.5" fill="#FFF3E0"/>
+  <circle cx="100" cy="300" r="1" fill="#FFF3E0"/>
+  <circle cx="420" cy="350" r="1" fill="#FFF3E0"/>
+  <circle cx="150" cy="420" r="1.5" fill="#FFF3E0"/>
+  <circle cx="380" cy="400" r="1.5" fill="#FFF3E0"/>
+  <circle cx="80" cy="200" r="1" fill="#FFF3E0"/>
+  <circle cx="450" cy="250" r="1" fill="#FFF3E0"/>
+
+  <!-- Signal waves from satellite -->
+  <!--<path d="M 256 175 Q 230 150 200 140" fill="none" stroke="#4082A0" stroke-width="1" opacity="0.4"/>-->
+  <!--<path d="M 256 175 Q 282 150 312 140" fill="none" stroke="#4082A0" stroke-width="1" opacity="0.4"/>-->
+  <!--<path d="M 256 175 Q 230 200 200 210" fill="none" stroke="#4082A0" stroke-width="1" opacity="0.4"/>-->
+  <!--<path d="M 256 175 Q 282 200 312 210" fill="none" stroke="#4082A0" stroke-width="1" opacity="0.4"/>-->
+</svg>
