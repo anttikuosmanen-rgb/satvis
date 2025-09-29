@@ -6,9 +6,10 @@ import * as Sentry from "@sentry/browser";
 import { icon } from "@fortawesome/fontawesome-svg-core";
 import { faBell, faInfo } from "@fortawesome/free-solid-svg-icons";
 import { useToast } from "vue-toastification";
+import infoBoxCss from "cesium/Build/Cesium/Widgets/InfoBox/InfoBoxDescription.css?raw";
 
 import { useCesiumStore } from "../stores/cesium";
-import infoBoxCss from "../css/infobox.css?raw";
+import infoBoxOverrideCss from "../css/infobox.css?raw";
 import { DeviceDetect } from "./util/DeviceDetect";
 import { PushManager } from "./util/PushManager";
 import { CesiumPerformanceStats } from "./util/CesiumPerformanceStats";
@@ -585,10 +586,8 @@ export class CesiumController {
         [...links].forEach((link) => {
           head.removeChild(link);
         });
-
         const style = frame.contentDocument.createElement("style");
-        const css = infoBoxCss; // Already a string with ?raw import
-        const node = document.createTextNode(css);
+        const node = document.createTextNode(infoBoxCss + "\n" + infoBoxOverrideCss);
         style.appendChild(node);
         head.appendChild(style);
       },
