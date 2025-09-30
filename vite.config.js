@@ -15,8 +15,6 @@ export default defineConfig({
     rollupOptions: {
       input: {
         index: path.resolve(__dirname, "index.html"),
-        move: path.resolve(__dirname, "move.html"),
-        ot: path.resolve(__dirname, "ot.html"),
         embedded: path.resolve(__dirname, "embedded.html"),
         test: path.resolve(__dirname, "test.html"),
       },
@@ -69,6 +67,8 @@ export default defineConfig({
         skipWaiting: true,
         clientsClaim: true,
         cleanupOutdatedCaches: true,
+        navigateFallback: "/index.html",
+        navigateFallbackDenylist: [/\.(css|js|png|svg|jpg|jpeg|gif|ico|woff|woff2|ttf|eot)$/],
         runtimeCaching: [
           {
             urlPattern: /cesium\/(Assets|Widgets|Workers)\/.*\.(css|js|json|jpg)$/,
@@ -94,8 +94,7 @@ export default defineConfig({
           },
           {
             urlPattern: /data\/tle\/.*\.txt$/,
-            handler: "CacheFirst",
-            // handler: "StaleWhileRevalidate",
+            handler: "StaleWhileRevalidate",
             options: {
               cacheName: "satellite-data-cache",
               expiration: {
@@ -137,7 +136,7 @@ export default defineConfig({
         image: "public/logo.svg",
       },
       devOptions: {
-        enabled: true,
+        // enabled: true,
         type: "module",
       },
     }),

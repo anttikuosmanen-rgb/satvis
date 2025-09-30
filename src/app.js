@@ -11,44 +11,52 @@ import { faLayerGroup, faGlobeAfrica, faMobileAlt, faHammer, faEye } from "@fort
 import { faGithub } from "@fortawesome/free-brands-svg-icons";
 
 import App from "./App.vue";
-import { router } from "./router";
+import { router, setupRouterGuards } from "./router";
 import piniaUrlSync from "./modules/util/pinia-plugin-url-sync.ts";
 import { CesiumController } from "./modules/CesiumController";
+import { getConfigPreset } from "./config/presets";
 
-function satvisSetup(customConfig = {}) {
-  // Enable sentry for production version
-  if (window.location.href.includes("satvis.space")) {
-    Sentry.init({ dsn: "https://6c17c8b3e731026b3e9e0df0ecfc1b83@o294643.ingest.us.sentry.io/1541793" });
-  }
-
-  // Setup and init app
-  const app = createApp(App);
-  const cc = new CesiumController();
-  app.config.globalProperties.cc = cc;
-  const pinia = createPinia();
-  pinia.use(({ store }) => {
-    store.router = markRaw(router);
-  });
-  pinia.use(({ store }) => {
-    store.customConfig = markRaw(customConfig);
-  });
-  pinia.use(piniaUrlSync);
-  app.use(pinia);
-  app.use(router);
-  app.use(PrimeVue, {
-    theme: {
-      preset: Aura,
-    },
-  });
-  app.directive("tooltip", Tooltip);
-  app.use(Toast, {
-    position: "bottom-right",
-  });
-  library.add(faLayerGroup, faGlobeAfrica, faMobileAlt, faHammer, faEye, faGithub);
-  app.component("FontAwesomeIcon", FontAwesomeIcon);
-  app.mount("#app");
-
-  return { app, cc };
+// Enable sentry for production version
+if (window.location.href.includes("satvis.space")) {
+  Sentry.init({ dsn: "https://6c17c8b3e731026b3e9e0df0ecfc1b83@o294643.ingest.us.sentry.io/1541793" });
 }
 
-export default satvisSetup;
+// Get initial configuration based on current route
+const initialPreset = getConfigPreset();
+
+// Setup Vue app
+const app = createApp(App);
+const cc = new CesiumController();
+app.config.globalProperties.cc = cc;
+
+// Setup Pinia with customConfig from preset
+const pinia = createPinia();
+pinia.use(({ store }) => {
+  store.router = markRaw(router);
+});
+pinia.use(({ store }) => {
+  store.customConfig = markRaw(initialPreset.config);
+});
+pinia.use(piniaUrlSync);
+app.use(pinia);
+
+// Setup router guards to handle configuration changes on route changes
+setupRouterGuards(router, cc);
+app.use(router);
+
+app.use(PrimeVue, {
+  theme: {
+    preset: Aura,
+  },
+});
+
+// Setup directives and components
+app.directive("tooltip", Tooltip);
+app.use(Toast, {
+  position: "bottom-right",
+});
+library.add(faLayerGroup, faGlobeAfrica, faMobileAlt, faHammer, faEye, faGithub);
+app.component("FontAwesomeIcon", FontAwesomeIcon);
+
+// Mount the app
+app.mount("#app");
