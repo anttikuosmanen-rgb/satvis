@@ -5,11 +5,11 @@ import utc from "dayjs/plugin/utc";
 import * as Sentry from "@sentry/browser";
 import { icon } from "@fortawesome/fontawesome-svg-core";
 import { faBell, faInfo } from "@fortawesome/free-solid-svg-icons";
-import { useToast } from "vue-toastification";
 import infoBoxCss from "cesium/Build/Cesium/Widgets/InfoBox/InfoBoxDescription.css?raw";
 
 import { useCesiumStore } from "../stores/cesium";
 import infoBoxOverrideCss from "../css/infobox.css?raw";
+import { useToastProxy } from "../composables/useToastProxy";
 import { DeviceDetect } from "./util/DeviceDetect";
 import { PushManager } from "./util/PushManager";
 import { CesiumPerformanceStats } from "./util/CesiumPerformanceStats";
@@ -286,7 +286,12 @@ export class CesiumController {
       return;
     }
     if (this.sats.enabledComponents.includes("Orbit")) {
-      useToast().warning("Disable the Orbit satellite element for 2D mode");
+      useToastProxy().add({
+        severity: "warn",
+        summary: "Warning",
+        detail: "Disable the Orbit satellite element for 2D mode",
+        life: 3000,
+      });
       return;
     }
     if (sceneMode === "2D") {
@@ -540,9 +545,14 @@ export class CesiumController {
       notifyButton.innerHTML = icon(faBell).html;
       notifyButton.addEventListener("click", () => {
         let passes = [];
-        const toast = useToast();
+        const toast = useToastProxy();
         if (!this.sats.groundStationAvailable) {
-          toast.warning("Ground station required to notify for passes");
+          toast.add({
+            severity: "warn",
+            summary: "Warning",
+            detail: "Ground station required to notify for passes",
+            life: 3000,
+          });
           return;
         }
         const selectedGroundstation = this.sats.groundStations.find((gs) => gs.isSelected);
@@ -552,11 +562,21 @@ export class CesiumController {
           passes = selectedGroundstation.passes(this.viewer.clock.currentTime);
         }
         if (!passes) {
-          toast.info(`No passes available`);
+          toast.add({
+            severity: "info",
+            summary: "Info",
+            detail: `No passes available`,
+            life: 3000,
+          });
           return;
         }
         passes.forEach((pass) => notifyForPass(pass));
-        toast.success(`Notifying for ${passes.length} passes`);
+        toast.add({
+          severity: "success",
+          summary: "Success",
+          detail: `Notifying for ${passes.length} passes`,
+          life: 3000,
+        });
       });
       container.appendChild(notifyButton);
 

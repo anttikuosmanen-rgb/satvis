@@ -3,7 +3,7 @@ import { createPinia } from "pinia";
 import PrimeVue from "primevue/config";
 import Aura from "@primevue/themes/aura";
 import Tooltip from "primevue/tooltip";
-import Toast from "vue-toastification";
+import ToastService from "primevue/toastservice";
 import * as Sentry from "@sentry/browser";
 import { library } from "@fortawesome/fontawesome-svg-core";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
@@ -47,9 +47,7 @@ app.use(PrimeVue, {
 
 // Setup directives and components
 app.directive("tooltip", Tooltip);
-app.use(Toast, {
-  position: "bottom-right",
-});
+app.use(ToastService);
 library.add(faLayerGroup, faGlobeAfrica, faMobileAlt, faHammer, faEye, faGithub);
 app.component("FontAwesomeIcon", FontAwesomeIcon);
 
