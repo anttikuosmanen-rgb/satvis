@@ -21,9 +21,6 @@ if (window.location.href.includes("satvis.space")) {
   Sentry.init({ dsn: "https://6c17c8b3e731026b3e9e0df0ecfc1b83@o294643.ingest.us.sentry.io/1541793" });
 }
 
-// Get initial configuration based on current route
-const initialPreset = getConfigPreset();
-
 // Setup Vue app
 const app = createApp(App);
 const cc = new CesiumController();
@@ -33,9 +30,7 @@ app.config.globalProperties.cc = cc;
 const pinia = createPinia();
 pinia.use(({ store }) => {
   store.router = markRaw(router);
-});
-pinia.use(({ store }) => {
-  store.customConfig = markRaw(initialPreset.config);
+  store.customConfig = markRaw(getConfigPreset().config);
 });
 pinia.use(piniaUrlSync);
 app.use(pinia);

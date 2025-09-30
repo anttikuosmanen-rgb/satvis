@@ -62,8 +62,11 @@ export const presets = {
  * Get configuration preset based on current route/path
  */
 export function getConfigPreset(path = window.location.pathname) {
-  // Remove leading slash and .html extension for matching
-  const routeName = path.replace(/^\//, "").replace(/\.html$/, "");
+  // Extract the last path segment, removing .html extension if present
+  const routeName = path
+    .split("/")
+    .pop()
+    .replace(/\.html$/, "");
 
   switch (routeName) {
     case "move":
