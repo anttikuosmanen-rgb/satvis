@@ -77,8 +77,8 @@ export default defineConfig({
         globPatterns: ["**/*.{css,html,js,png,svg}", "cesium/Assets/**/*.{jpg,png,xml,json}"],
         globIgnores: ["cesium/ThirdParty/**/*", "cesium/Widgets/**/*", "cesium/Workers/**/*", "cesium/Assets/Textures/maki/*", "**/*.map"],
         sourcemap: true,
-        // navigateFallback: "/index.html",
-        // navigateFallbackDenylist: [/\.(css|js|png|svg|jpg|jpeg|gif|ico|woff|woff2|ttf|eot)$/],
+        navigateFallback: "/index.html",
+        navigateFallbackDenylist: [/\.(css|js|png|svg|jpg|jpeg|gif|ico|woff|woff2|ttf|eot|txt)$/],
         runtimeCaching: [
           {
             urlPattern: /cesium\/(Assets|Widgets|Workers)\/.*\.(css|js|json|jpg)$/,
