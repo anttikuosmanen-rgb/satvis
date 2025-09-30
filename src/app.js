@@ -15,11 +15,16 @@ import { router, setupRouterGuards } from "./router";
 import piniaUrlSync from "./modules/util/pinia-plugin-url-sync.ts";
 import { CesiumController } from "./modules/CesiumController";
 import { getConfigPreset } from "./config/presets";
+import { usePWAUpdate } from "./composables/usePWAUpdate.ts";
 
 // Enable sentry for production version
 if (window.location.href.includes("satvis.space")) {
   Sentry.init({ dsn: "https://6c17c8b3e731026b3e9e0df0ecfc1b83@o294643.ingest.us.sentry.io/1541793" });
 }
+
+// Register Service Worker with automatic reload on update
+const { registerPWA } = usePWAUpdate({ autoUpdate: true });
+registerPWA();
 
 // Setup Vue app
 const app = createApp(App);
