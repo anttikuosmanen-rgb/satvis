@@ -1,15 +1,15 @@
 import { PiniaPluginContext } from "pinia";
 
 export interface SyncConfigEntry {
-  name: String;           // Object name/path in pinia store
-  url?: String;           // Alternative name of url param, defaults to name
-  serialize?: Function;   // Convert state to url string
-  deserialize?: Function; // Convert url string to state
-  valid?: Function;       // Run validation function after deserialization to filter invalid values
-  default?: Any;          // Default value (removes this value from url)
+  name: string; // Object name/path in pinia store
+  url?: string; // Alternative name of url param, defaults to name
+  serialize?: (value: unknown) => string; // Convert state to url string
+  deserialize?: (value: string) => unknown; // Convert url string to state
+  valid?: (value: unknown) => boolean; // Run validation function after deserialization to filter invalid values
+  default?: unknown; // Default value (removes this value from url)
 }
-const defaultSerialize = (v) => String(v);
-const defaultDeserialize = (v) => String(v);
+const defaultSerialize = (v: unknown) => String(v);
+const defaultDeserialize = (v: string) => String(v);
 
 function resolve(path, obj, separator = ".") {
   const properties = Array.isArray(path) ? path : path.split(separator);
@@ -26,7 +26,7 @@ function urlToState(store: Store, syncConfig: SyncConfigEntry[]): void {
     Object.entries(customConfig[store.$id]).forEach(([key, val]) => {
       store[key] = val;
     });
-  };
+  }
 
   syncConfig.forEach((config: SyncConfigEntry) => {
     const param = config.url || config.name;
@@ -57,7 +57,7 @@ function urlToState(store: Store, syncConfig: SyncConfigEntry[]): void {
 
 function stateToUrl(store: Store, syncConfig: SyncConfigEntry[]): void {
   const { router } = store;
-  const route = router.currentRoute.value;
+  const _route = router.currentRoute.value;
 
   const params = new URLSearchParams(location.search);
   syncConfig.forEach((config: SyncConfigEntry) => {

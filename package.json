@@ -1,5 +1,5 @@
 {
-  "name": "SatVis",
+  "name": "satvis",
   "version": "1.0.0",
   "description": "Satellite orbit visualization with CesiumJS",
   "type": "module",
@@ -8,8 +8,9 @@
     "dev": "vite",
     "preview": "vite preview",
     "clean": "rimraf dist",
-    "lint": "eslint --ext js,vue src && prettier --check \"src/**/*.{js,vue}\"",
-    "lint:fix": "eslint --ext js,vue --fix src && prettier --write \"src/**/*.{js,vue}\"",
+    "type-check": "vue-tsc --noEmit",
+    "lint": "eslint src && prettier --check \"src/**/*.{js,ts,vue}\"",
+    "lint:fix": "eslint --fix src && prettier --write \"src/**/*.{js,ts,vue}\"",
     "serve": "npm run build && npm run preview",
     "start": "vite",
     "start:anyhost": "vite --host 0.0.0.0",
@@ -25,7 +26,7 @@
     "@fortawesome/free-solid-svg-icons": "^7.0.1",
     "@fortawesome/vue-fontawesome": "^3.1.2",
     "@primevue/themes": "^4.3.9",
-    "@sentry/browser": "^10.16.0",
+    "@sentry/browser": "^10.17.0",
     "cesium": "^1.133.1",
     "cesium-sensor-volumes": "github:Flowm/cesium-sensor-volumes#1.133.0",
     "dayjs": "^1.11.18",
@@ -47,10 +48,12 @@
     "globals": "^16.4.0",
     "prettier": "^3.6.2",
     "rimraf": "^6.0.1",
-    "typescript": "^5.9.2",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.45.0",
     "vite": "^7.1.7",
     "vite-plugin-pwa": "^1.0.3",
     "vite-plugin-static-copy": "^3.1.2",
-    "vue-eslint-parser": "^10.2.0"
+    "vue-eslint-parser": "^10.2.0",
+    "vue-tsc": "^3.1.0"
   }
 }

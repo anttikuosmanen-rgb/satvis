@@ -2,19 +2,37 @@
   "compilerOptions": {
     "target": "esnext",
     "module": "esnext",
+
+    /* Bundler mode */
     "moduleResolution": "bundler",
-    "strict": true,
     "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
     "noEmit": true,
     "skipLibCheck": true,
+
+    /* Linting */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+
+    /* Vue & Vite */
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
-    "isolatedModules": true,
-    "jsx": "preserve",
-    "types": ["vite/client"]
+    "resolveJsonModule": true,
+    "types": ["vite/client"],
+
+    /* Path mapping */
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    }
   },
   "include": [
-    "src/**/*",
+    "src/**/*.ts",
+    "src/**/*.vue",
     "vite.config.js"
   ],
   "exclude": [
