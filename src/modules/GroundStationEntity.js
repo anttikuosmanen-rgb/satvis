@@ -1,4 +1,4 @@
-import * as Cesium from "cesium";
+import { BillboardGraphics, HorizontalOrigin, NearFarScalar, VerticalOrigin } from "cesium";
 import dayjs from "dayjs";
 import icon from "../images/icons/dish.svg";
 import { CesiumComponentCollection } from "./util/CesiumComponentCollection";
@@ -20,11 +20,11 @@ export class GroundStationEntity extends CesiumComponentCollection {
   }
 
   createGroundStation() {
-    const billboard = new Cesium.BillboardGraphics({
+    const billboard = new BillboardGraphics({
       image: icon,
-      horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
-      verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-      scaleByDistance: new Cesium.NearFarScalar(1e2, 0.2, 4e7, 0.1),
+      horizontalOrigin: HorizontalOrigin.CENTER,
+      verticalOrigin: VerticalOrigin.BOTTOM,
+      scaleByDistance: new NearFarScalar(1e2, 0.2, 4e7, 0.1),
     });
     this.createCesiumEntity("Groundstation", "billboard", billboard, this.name, this.description, this.position.cartesian, false);
   }

@@ -1,4 +1,4 @@
-import * as Cesium from "cesium";
+import { CallbackProperty, JulianDate } from "cesium";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import utc from "dayjs/plugin/utc";
@@ -15,8 +15,8 @@ export class DescriptionHelper {
    */
   static cachedCallbackProperty(callback, updateTreshold = 1, usageTreshold = 1000) {
     let cache;
-    return new Cesium.CallbackProperty((time) => {
-      if (cache && Cesium.JulianDate.equalsEpsilon(time, cache.time, updateTreshold) && cache.usage < usageTreshold) {
+    return new CallbackProperty((time) => {
+      if (cache && JulianDate.equalsEpsilon(time, cache.time, updateTreshold) && cache.usage < usageTreshold) {
         // console.log("Cached callback", time, cache.usage);
         cache.usage += 1;
         return cache.content;
@@ -173,7 +173,7 @@ export class DescriptionHelper {
   static renderTLE(tle, julianDate) {
     const julianDayNumber = Math.floor(julianDate);
     const secondsOfDay = (julianDate - julianDayNumber) * 60 * 60 * 24;
-    const tleDate = new Cesium.JulianDate(julianDayNumber, secondsOfDay);
+    const tleDate = new JulianDate(julianDayNumber, secondsOfDay);
     const formattedDate = dayjs.utc(tleDate).format("YYYY-MM-DD HH:mm:ss");
     const html = `
       <h3>TLE (Epoch ${formattedDate})</h3>
