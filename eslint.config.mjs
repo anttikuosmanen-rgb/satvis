@@ -127,9 +127,6 @@ export default [
           varsIgnorePattern: "^_",
         },
       ],
-      "@typescript-eslint/no-wrapper-object-types": "off",
-      "@typescript-eslint/no-unsafe-function-type": "off",
-      "@typescript-eslint/no-empty-object-type": "off",
       "import/order": [
         "error",
         {
