@@ -11,6 +11,7 @@ import satvisIcon from "../assets/android-chrome-192x192.png";
 import { DeviceDetect } from "./util/DeviceDetect";
 import { PushManager } from "./util/PushManager";
 import { CesiumPerformanceStats } from "./util/CesiumPerformanceStats";
+import { CesiumTimelineHelper } from "./util/CesiumTimelineHelper";
 import { SatelliteManager } from "./SatelliteManager";
 import { useCesiumStore } from "../stores/cesium";
 import infoBoxCss from "../css/infobox.ecss";
@@ -692,6 +693,27 @@ export class CesiumController {
 
         // Set time to pass start without changing timeline zoom
         this.setCurrentTimeOnly(pass.start);
+
+        // Show highlights for all passes of this satellite
+        const satelliteName = pass.satelliteName || pass.name;
+        if (satelliteName && this.sats) {
+          // Find the satellite object
+          const satellite = this.sats.getSatellite(satelliteName);
+          if (satellite) {
+            // Update passes for this satellite and show all its pass highlights
+            satellite.props.updatePasses(this.viewer.clock.currentTime);
+            CesiumTimelineHelper.clearHighlightRanges(this.viewer);
+            CesiumTimelineHelper.addHighlightRanges(this.viewer, satellite.props.passes, satelliteName);
+          } else {
+            // Fallback to showing just the clicked pass if satellite not found
+            CesiumTimelineHelper.clearHighlightRanges(this.viewer);
+            CesiumTimelineHelper.addHighlightRanges(this.viewer, [pass], satelliteName);
+          }
+        } else {
+          // Fallback to showing just the clicked pass
+          CesiumTimelineHelper.clearHighlightRanges(this.viewer);
+          CesiumTimelineHelper.addHighlightRanges(this.viewer, [pass], pass.satelliteName || pass.name);
+        }
 
         // Track the satellite for this pass
         if (pass.satelliteName || pass.name) {

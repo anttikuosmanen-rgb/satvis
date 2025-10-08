@@ -121,10 +121,16 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
 
     // Set up event listeners
     this.eventListeners.selectedEntity = this.viewer.selectedEntityChanged.addEventListener((entity) => {
-      if (!entity || entity?.name === "Ground station") {
+      if (!entity) {
         CesiumTimelineHelper.clearHighlightRanges(this.viewer);
         return;
       }
+
+      if (entity?.name?.includes("Groundstation")) {
+        this.handleGroundStationHighlights(entity, "selected");
+        return;
+      }
+
       if (this.isSelected) {
         this.props.updatePasses(this.viewer.clock.currentTime);
         CesiumTimelineHelper.updateHighlightRanges(this.viewer, this.props.passes, this.props.name);
@@ -132,6 +138,13 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     });
 
     this.eventListeners.trackedEntity = this.viewer.trackedEntityChanged.addEventListener(() => {
+      // Handle ground station tracking (double-click to focus)
+      const trackedEntity = this.viewer.trackedEntity;
+      if (trackedEntity?.name?.includes("Groundstation")) {
+        this.handleGroundStationHighlights(trackedEntity, "tracked");
+        return;
+      }
+
       if (this.isTracked) {
         this.artificiallyTrack();
       }
@@ -141,6 +154,44 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
         this.enableComponent("Orbit");
       }
     });
+  }
+
+  handleGroundStationHighlights(entity, eventType) {
+    // Handle ground station selection/tracking - show all passes for that ground station
+    // Find the ground station that owns this entity
+    const groundStation = window.cc?.sats?.groundStations?.find(gs =>
+      gs.components && Object.values(gs.components).includes(entity)
+    );
+
+    if (groundStation) {
+      console.log(`Ground station ${eventType}:`, groundStation.name);
+      const passes = groundStation.passes(this.viewer.clock.currentTime);
+      console.log("Ground station passes:", passes.length);
+
+      if (passes.length > 0) {
+        // Show highlights for all passes from this ground station, grouped by satellite
+        const passesBySatellite = passes.reduce((acc, pass) => {
+          const satelliteName = pass.name || pass.satelliteName;
+          if (!acc[satelliteName]) acc[satelliteName] = [];
+          acc[satelliteName].push(pass);
+          return acc;
+        }, {});
+
+        console.log("Passes by satellite:", Object.keys(passesBySatellite));
+
+        // Clear existing highlights and add new ones
+        CesiumTimelineHelper.clearHighlightRanges(this.viewer);
+        Object.entries(passesBySatellite).forEach(([satelliteName, satellitePasses]) => {
+          CesiumTimelineHelper.addHighlightRanges(this.viewer, satellitePasses, satelliteName);
+        });
+      } else {
+        console.log("No passes found for ground station");
+        CesiumTimelineHelper.clearHighlightRanges(this.viewer);
+      }
+    } else {
+      console.log(`Could not find ${eventType} ground station`);
+      CesiumTimelineHelper.clearHighlightRanges(this.viewer);
+    }
   }
 
   deinit() {
