@@ -185,7 +185,7 @@
         <font-awesome-icon icon="fas fa-eye" />
       </button>
     </div>
-    <div v-show="showUI" id="timelineControls">
+    <div v-show="showUI && !isIos" id="timelineControls">
       <button v-tooltip="'Zoom In Timeline'" type="button" class="cesium-button cesium-toolbar-button timeline-button" @click="zoomInTimeline">
         +
       </button>
@@ -240,6 +240,9 @@ export default {
       "hideSunlightPasses",
       "showOnlyLitPasses",
     ]),
+    isIos() {
+      return DeviceDetect.isIos();
+    },
   },
   watch: {
     layers: {
