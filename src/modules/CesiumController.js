@@ -345,6 +345,33 @@ export class CesiumController {
     }
   }
 
+  setCurrentTimeOnly(current) {
+    const newCurrentTime = Cesium.JulianDate.fromIso8601(dayjs.utc(current).toISOString());
+    this.viewer.clock.currentTime = newCurrentTime;
+
+    if (typeof this.viewer.timeline !== "undefined") {
+      // Get current timeline visible range duration
+      const timeline = this.viewer.timeline;
+      const currentStart = timeline._startJulian;
+      const currentEnd = timeline._endJulian;
+
+      if (currentStart && currentEnd) {
+        // Calculate the duration of the current visible range
+        const rangeDurationSeconds = Cesium.JulianDate.secondsDifference(currentEnd, currentStart);
+        const halfDuration = rangeDurationSeconds / 2;
+
+        // Center the timeline around the new current time with the same zoom level
+        const newStart = Cesium.JulianDate.addSeconds(newCurrentTime, -halfDuration, new Cesium.JulianDate());
+        const newEnd = Cesium.JulianDate.addSeconds(newCurrentTime, halfDuration, new Cesium.JulianDate());
+
+        // Use zoomTo to move the timeline view while maintaining the zoom level
+        timeline.zoomTo(newStart, newEnd);
+      }
+
+      this.viewer.timeline.updateFromClock();
+    }
+  }
+
   constrainTimelineBounds() {
     if (!this.viewer.timeline) return;
 
@@ -663,8 +690,8 @@ export class CesiumController {
       if ("start" in pass) {
         console.log("Ground station pass clicked:", pass);
 
-        // Set time to pass start
-        this.setTime(pass.start);
+        // Set time to pass start without changing timeline zoom
+        this.setCurrentTimeOnly(pass.start);
 
         // Track the satellite for this pass
         if (pass.satelliteName || pass.name) {
@@ -746,11 +773,8 @@ export class CesiumController {
 
       // If current time just jumped to be very close to "now" (and wasn't close before)
       if (timeDifference < 1 && lastTimeDifference > 60) {
-        // Reset timeline zoom to show default range (12 hours before to 7 days after current time)
-        const start = dayjs.utc(Cesium.JulianDate.toDate(currentTime)).subtract(12, "hour").toISOString();
-        const stop = dayjs.utc(Cesium.JulianDate.toDate(currentTime)).add(7, "day").toISOString();
-
-        this.setTime(Cesium.JulianDate.toDate(currentTime), start, stop);
+        // Move timeline to show current time while preserving zoom level
+        this.setCurrentTimeOnly(Cesium.JulianDate.toDate(currentTime));
       }
 
       lastCurrentTime = Cesium.JulianDate.clone(currentTime);
