@@ -697,9 +697,8 @@ export class CesiumController {
             if (satelliteEntity) {
               console.log(`Found satellite entity: ${satelliteEntity.name}`);
 
-              // Clear existing tracking
+              // Clear existing tracking but keep selection to maintain highlights
               this.viewer.trackedEntity = null;
-              this.viewer.selectedEntity = null;
 
               // Also try to select satellite through satellite manager
               if (this.sats) {
