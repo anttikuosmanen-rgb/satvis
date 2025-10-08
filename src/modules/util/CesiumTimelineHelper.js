@@ -65,9 +65,8 @@ export class CesiumTimelineHelper {
           if (satelliteEntity) {
             console.log(`Found entity to track: ${satelliteEntity.name}`);
 
-            // Force clear tracking and camera
+            // Force clear tracking but keep selection to maintain highlights
             viewer.trackedEntity = null;
-            viewer.selectedEntity = null;
 
             // Also try to trigger tracking through the satellite manager
             // This should ensure proper satellite switching
