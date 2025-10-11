@@ -189,35 +189,38 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     });
   }
 
-  handleGroundStationHighlights(entity, eventType) {
+  async handleGroundStationHighlights(entity, eventType) {
     // Handle ground station selection/tracking - show all passes for that ground station
     // Find the ground station that owns this entity
     const groundStation = window.cc?.sats?.groundStations?.find(gs =>
       gs.components && Object.values(gs.components).includes(entity)
     );
 
-    if (groundStation) {
-      const passes = groundStation.passes(this.viewer.clock.currentTime);
-
-      if (passes.length > 0) {
-        // Show highlights for all passes from this ground station, grouped by satellite
-        const passesBySatellite = passes.reduce((acc, pass) => {
-          const satelliteName = pass.name || pass.satelliteName;
-          if (!acc[satelliteName]) acc[satelliteName] = [];
-          acc[satelliteName].push(pass);
-          return acc;
-        }, {});
-
-        // Clear existing highlights and add new ones
-        CesiumTimelineHelper.clearHighlightRanges(this.viewer);
-        Object.entries(passesBySatellite).forEach(([satelliteName, satellitePasses]) => {
-          CesiumTimelineHelper.addHighlightRanges(this.viewer, satellitePasses, satelliteName);
-        });
-      } else {
-        CesiumTimelineHelper.clearHighlightRanges(this.viewer);
-      }
-    } else {
+    if (!groundStation) {
       CesiumTimelineHelper.clearHighlightRanges(this.viewer);
+      return;
+    }
+
+    // Clear existing highlights immediately for responsive feedback
+    CesiumTimelineHelper.clearHighlightRanges(this.viewer);
+
+    // Yield to browser to keep UI responsive
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    // Calculate passes asynchronously
+    const passes = await groundStation.passesAsync(this.viewer.clock.currentTime);
+
+    if (passes.length > 0) {
+      // Show highlights for all passes from this ground station, grouped by satellite
+      const passesBySatellite = passes.reduce((acc, pass) => {
+        const satelliteName = pass.name || pass.satelliteName;
+        if (!acc[satelliteName]) acc[satelliteName] = [];
+        acc[satelliteName].push(pass);
+        return acc;
+      }, {});
+
+      // Add highlights asynchronously to avoid blocking
+      await CesiumTimelineHelper.addHighlightRangesAsync(this.viewer, passesBySatellite);
     }
   }
 

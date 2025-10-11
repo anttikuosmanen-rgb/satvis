@@ -295,6 +295,14 @@ export default {
     overpassMode(newMode) {
       cc.sats.overpassMode = newMode;
     },
+    hideSunlightPasses() {
+      // Invalidate pass cache and refresh highlights when filter changes
+      this.refreshGroundStationHighlights();
+    },
+    showOnlyLitPasses() {
+      // Invalidate pass cache and refresh highlights when filter changes
+      this.refreshGroundStationHighlights();
+    },
   },
   mounted() {
     if (this.$route.query.time) {
@@ -364,6 +372,26 @@ export default {
     formatTime(timestamp) {
       const date = new Date(timestamp);
       return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    },
+    refreshGroundStationHighlights() {
+      // Invalidate cache on all ground stations
+      if (this.cc && this.cc.sats && this.cc.sats.groundStations) {
+        this.cc.sats.groundStations.forEach((gs) => {
+          if (gs.invalidatePassCache) {
+            gs.invalidatePassCache();
+          }
+        });
+      }
+
+      // Refresh highlights if a ground station is currently selected/tracked
+      const selectedEntity = this.cc.viewer.selectedEntity;
+      if (selectedEntity && selectedEntity.name && selectedEntity.name.includes("Groundstation")) {
+        // Trigger a refresh by setting the selected entity again
+        this.cc.viewer.selectedEntity = undefined;
+        setTimeout(() => {
+          this.cc.viewer.selectedEntity = selectedEntity;
+        }, 10);
+      }
     },
     clearAllGroundStations() {
       // Check if we're currently tracking a ground station and unfocus first

@@ -398,6 +398,13 @@ export class SatelliteManager {
   }
 
   set groundStations(newGroundStations) {
+    // Invalidate pass cache on all existing ground stations
+    this.#groundStations.forEach((gs) => {
+      if (gs.invalidatePassCache) {
+        gs.invalidatePassCache();
+      }
+    });
+
     this.#groundStations = newGroundStations;
 
     // Set groundstation for all satellites
@@ -410,6 +417,9 @@ export class SatelliteManager {
     if (this.#groundStations.length > 0) {
       CesiumTimelineHelper.addGroundStationDaytimeRanges(this.viewer, this.#groundStations[0]);
     }
+
+    // Clear highlights when ground stations change
+    CesiumTimelineHelper.clearHighlightRanges(this.viewer);
 
     // Update store for url state
     const satStore = useSatStore();
