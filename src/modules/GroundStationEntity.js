@@ -192,6 +192,19 @@ export class GroundStationEntity extends CesiumComponentCollection {
         pass.groundStationDarkAtStart || pass.groundStationDarkAtEnd);
     }
 
+    // Filter out passes where satellite is eclipsed for the entire pass if option is enabled
+    if (satStore.showOnlyLitPasses) {
+      filtered = filtered.filter((pass) => {
+        // Show pass if satellite is lit at start OR end OR has any eclipse transitions
+        // (transitions mean it goes from lit to eclipsed or vice versa during the pass)
+        const litAtStart = !pass.satelliteEclipsedAtStart;
+        const litAtEnd = !pass.satelliteEclipsedAtEnd;
+        const hasTransitions = pass.eclipseTransitions && pass.eclipseTransitions.length > 0;
+
+        return litAtStart || litAtEnd || hasTransitions;
+      });
+    }
+
     // Sort passes by time
     filtered = filtered.sort((a, b) => a.start - b.start);
     return filtered;
