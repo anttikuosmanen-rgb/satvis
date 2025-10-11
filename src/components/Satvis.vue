@@ -309,6 +309,21 @@ export default {
       cc.setTime(this.$route.query.time);
     }
     this.showUI = !DeviceDetect.inIframe();
+
+    // Set lighting fade distances - very high so lighting always visible
+    this.$nextTick(() => {
+      if (cc.viewer && cc.viewer.scene && cc.viewer.scene.globe) {
+        const lightingFadeOut = 100000000; // 100,000 km
+        const lightingFadeIn = 50000000;   // 50,000 km
+        cc.viewer.scene.globe.lightingFadeOutDistance = lightingFadeOut;
+        cc.viewer.scene.globe.lightingFadeInDistance = lightingFadeIn;
+
+        // Set night imagery fade distances - keep higher for visibility
+        const nightFadeDistance = 10000000;
+        cc.viewer.scene.globe.nightFadeOutDistance = nightFadeDistance;
+        cc.viewer.scene.globe.nightFadeInDistance = nightFadeDistance * 0.5;
+      }
+    });
   },
   methods: {
     toggleMenu(name) {
