@@ -277,6 +277,9 @@ export class SatelliteManager {
     this.#enabledSatellites = newSats;
     this.showEnabledSatellites();
 
+    // Invalidate pass cache since visible satellites changed
+    this.invalidateGroundStationCaches();
+
     const satStore = useSatStore();
     satStore.enabledSatellites = newSats;
   }
@@ -326,6 +329,9 @@ export class SatelliteManager {
     this.#enabledTags = newTags;
     this.showEnabledSatellites();
 
+    // Invalidate pass cache since visible satellites changed
+    this.invalidateGroundStationCaches();
+
     const satStore = useSatStore();
     satStore.enabledTags = newTags;
   }
@@ -371,6 +377,31 @@ export class SatelliteManager {
 
   get groundStationAvailable() {
     return this.#groundStations.length > 0;
+  }
+
+  invalidateGroundStationCaches() {
+    // Invalidate pass cache on all ground stations when satellite visibility changes
+    this.#groundStations.forEach((gs) => {
+      if (gs.invalidatePassCache) {
+        gs.invalidatePassCache();
+      }
+    });
+
+    // Always clear highlights when satellite visibility changes
+    CesiumTimelineHelper.clearHighlightRanges(this.viewer);
+
+    // Refresh highlights if a ground station is currently selected
+    const selectedEntity = this.viewer.selectedEntity;
+    if (selectedEntity && selectedEntity.name && selectedEntity.name.includes("Groundstation")) {
+      // Trigger recalculation by temporarily clearing and restoring selection
+      setTimeout(() => {
+        const entity = selectedEntity;
+        this.viewer.selectedEntity = undefined;
+        setTimeout(() => {
+          this.viewer.selectedEntity = entity;
+        }, 10);
+      }, 10);
+    }
   }
 
   focusGroundStation() {

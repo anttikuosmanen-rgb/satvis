@@ -28,6 +28,18 @@ export class GroundStationEntity extends CesiumComponentCollection {
   invalidatePassCache() {
     this._passesCache = null;
     this._passesCacheTime = null;
+
+    // Force description refresh by recreating it
+    // This ensures the passes list in the info panel updates
+    this.refreshDescription();
+  }
+
+  refreshDescription() {
+    // Recreate the description to force it to recalculate with new passes
+    if (this.components && this.components.Groundstation) {
+      this.createDescription();
+      this.components.Groundstation.description = this.description;
+    }
   }
 
   createGroundStation() {
