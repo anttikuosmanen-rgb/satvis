@@ -68,7 +68,7 @@ export class GroundStationEntity extends CesiumComponentCollection {
     const satStore = useSatStore();
     if (satStore.hideSunlightPasses) {
       passes = passes.filter((pass) =>
-        // Show pass if either start or end is in darkness
+        // Show pass if either start or end in darkness
         pass.groundStationDarkAtStart || pass.groundStationDarkAtEnd);
     }
 

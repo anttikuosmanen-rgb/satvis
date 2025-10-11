@@ -27,7 +27,31 @@ export class CesiumTimelineHelper {
     if (!viewer.timeline) {
       return;
     }
-    ranges.forEach((range) => {
+
+    if (ranges.length === 0) {
+      return;
+    }
+
+    // Get current timeline range - DO NOT modify it
+    const timelineStart = Cesium.JulianDate.toDate(viewer.clock.startTime);
+    const timelineStop = Cesium.JulianDate.toDate(viewer.clock.stopTime);
+
+    // Filter ranges to only those visible in current timeline (with some overlap)
+    const timelineStartMs = timelineStart.getTime();
+    const timelineStopMs = timelineStop.getTime();
+
+    const visibleRanges = ranges.filter(range => {
+      const rangeStart = new Date(range.start).getTime();
+      const rangeEnd = new Date(range.end).getTime();
+      // Include range if it overlaps with timeline at all
+      return rangeEnd >= timelineStartMs && rangeStart <= timelineStopMs;
+    });
+
+    // Limit to 30 passes for performance
+    const maxPasses = 30;
+    const limitedRanges = visibleRanges.slice(0, maxPasses);
+
+    limitedRanges.forEach((range) => {
       const startJulian = Cesium.JulianDate.fromDate(new Date(range.start));
       const endJulian = Cesium.JulianDate.fromDate(new Date(range.end));
       const highlightRange = viewer.timeline.addHighlightRange(Cesium.Color.BLUE, 100, 0);
