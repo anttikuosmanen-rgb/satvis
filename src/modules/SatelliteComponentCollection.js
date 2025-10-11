@@ -197,9 +197,7 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     );
 
     if (groundStation) {
-      console.log(`Ground station ${eventType}:`, groundStation.name);
       const passes = groundStation.passes(this.viewer.clock.currentTime);
-      console.log("Ground station passes:", passes.length);
 
       if (passes.length > 0) {
         // Show highlights for all passes from this ground station, grouped by satellite
@@ -210,19 +208,15 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
           return acc;
         }, {});
 
-        console.log("Passes by satellite:", Object.keys(passesBySatellite));
-
         // Clear existing highlights and add new ones
         CesiumTimelineHelper.clearHighlightRanges(this.viewer);
         Object.entries(passesBySatellite).forEach(([satelliteName, satellitePasses]) => {
           CesiumTimelineHelper.addHighlightRanges(this.viewer, satellitePasses, satelliteName);
         });
       } else {
-        console.log("No passes found for ground station");
         CesiumTimelineHelper.clearHighlightRanges(this.viewer);
       }
     } else {
-      console.log(`Could not find ${eventType} ground station`);
       CesiumTimelineHelper.clearHighlightRanges(this.viewer);
     }
   }
