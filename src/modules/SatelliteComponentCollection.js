@@ -132,6 +132,8 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       }
 
       if (this.isSelected) {
+        // Force recalculation of passes when satellite is selected
+        this.props.clearPasses();
         this.props.updatePasses(this.viewer.clock.currentTime);
         CesiumTimelineHelper.updateHighlightRanges(this.viewer, this.props.passes, this.props.name);
       }
@@ -258,6 +260,10 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
 
   createDescription() {
     this.description = DescriptionHelper.cachedCallbackProperty((time) => {
+      // Update passes if needed when time changes significantly
+      if (this.props.groundStationAvailable) {
+        this.props.updatePasses(time);
+      }
       const cartographic = this.props.orbit.positionGeodetic(Cesium.JulianDate.toDate(time), true);
       const content = DescriptionHelper.renderSatelliteDescription(time, cartographic, this.props);
       return content;
