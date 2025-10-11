@@ -69,37 +69,25 @@ export class CesiumTimelineHelper {
 
         // Add click listener to track the satellite
         highlightRange._clickListener = () => {
-          console.log(`Pass clicked for satellite: ${satelliteName}`);
-
           // Find the satellite entity by name and track it
           const entities = viewer.entities.values;
-          console.log(`Total entities: ${entities.length}`);
-
-          // Debug: log all satellite-related entities
-          const satelliteEntities = entities.filter((entity) => entity.name && entity.name.includes(satelliteName));
-          console.log(`Entities for ${satelliteName}:`, satelliteEntities.map((e) => e.name));
 
           // Try to find the main satellite entity (usually the Point component)
           let satelliteEntity = entities.find((entity) => entity.name && entity.name.includes(satelliteName) && entity.name.includes("Point"));
 
-          // If not found with "Point", try the first entity with the satellite name
-          if (!satelliteEntity && satelliteEntities.length > 0) {
-            satelliteEntity = satelliteEntities[0];
+          // If not found with "Point", try any entity with the satellite name
+          if (!satelliteEntity) {
+            satelliteEntity = entities.find((entity) => entity.name && entity.name.includes(satelliteName));
           }
 
           if (satelliteEntity) {
-            console.log(`Found entity to track: ${satelliteEntity.name}`);
-
             // Force clear tracking but keep selection to maintain highlights
             viewer.trackedEntity = null;
 
             // Also try to trigger tracking through the satellite manager
-            // This should ensure proper satellite switching
             if (window.cc && window.cc.sats) {
               try {
-                const satManager = window.cc.sats;
-                console.log(`Tracking satellite through manager: ${satelliteName}`);
-                satManager.trackedSatellite = satelliteName;
+                window.cc.sats.trackedSatellite = satelliteName;
               } catch (error) {
                 console.warn("Could not use satellite manager:", error);
               }
@@ -108,25 +96,49 @@ export class CesiumTimelineHelper {
             // Small delay to ensure the selection is processed
             setTimeout(() => {
               viewer.trackedEntity = satelliteEntity;
-              console.log(`Now tracking: ${satelliteEntity.name}`);
             }, 100);
-          } else {
-            console.warn(`Could not find satellite entity for ${satelliteName}`);
-            console.log("All available entities:", entities.map((e) => e.name).filter((n) => n));
           }
         };
 
         highlightRange._element.addEventListener("click", highlightRange._clickListener);
       }
-
-      viewer.timeline.updateFromClock();
-      viewer.timeline.zoomTo(viewer.clock.startTime, viewer.clock.stopTime);
     });
+
+    // Update timeline ONCE after adding all ranges (not in the loop)
+    viewer.timeline.updateFromClock();
+    viewer.timeline.zoomTo(viewer.clock.startTime, viewer.clock.stopTime);
   }
 
   static updateHighlightRanges(viewer, ranges, satelliteName) {
     this.clearHighlightRanges(viewer);
     this.addHighlightRanges(viewer, ranges, satelliteName);
+  }
+
+  static async addHighlightRangesAsync(viewer, passesBySatellite) {
+    if (!viewer.timeline) {
+      return;
+    }
+
+    const satellites = Object.entries(passesBySatellite);
+    if (satellites.length === 0) {
+      return;
+    }
+
+    // Process satellites in chunks to avoid blocking
+    const chunkSize = 3;
+    for (let i = 0; i < satellites.length; i += chunkSize) {
+      const chunk = satellites.slice(i, i + chunkSize);
+
+      // Add highlights for this chunk
+      chunk.forEach(([satelliteName, satellitePasses]) => {
+        this.addHighlightRanges(viewer, satellitePasses, satelliteName);
+      });
+
+      // Yield to browser after each chunk
+      if (i + chunkSize < satellites.length) {
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+    }
   }
 
   static needsRecalculation(viewer, groundStation) {
