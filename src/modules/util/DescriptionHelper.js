@@ -4,6 +4,7 @@ import relativeTime from "dayjs/plugin/relativeTime";
 import utc from "dayjs/plugin/utc";
 import { GroundStationConditions } from "./GroundStationConditions.js";
 import { useSatStore } from "../../stores/sat";
+import { TimeFormatHelper } from "./TimeFormatHelper";
 
 dayjs.extend(relativeTime);
 dayjs.extend(utc);
@@ -283,6 +284,14 @@ export class DescriptionHelper {
   }
 
   static renderPassCard(time, pass, passNameField = "name") {
+    const satStore = useSatStore();
+    const useLocalTime = satStore.useLocalTime;
+
+    // Get first ground station position for timezone
+    const groundStationPosition = satStore.groundStations.length > 0
+      ? { latitude: satStore.groundStations[0].lat, longitude: satStore.groundStations[0].lon }
+      : null;
+
     function pad2(num) {
       return String(num).padStart(2, "0");
     }
@@ -331,7 +340,7 @@ export class DescriptionHelper {
         transitionText = ` (${transitionCount} transition${transitionCount > 1 ? "s" : ""})`;
 
         const transitionTimes = pass.eclipseTransitions.map((transition) => {
-          const time = dayjs.utc(transition.time).format("HH:mm:ss");
+          const time = TimeFormatHelper.formatTransitionTime(transition.time, useLocalTime, groundStationPosition);
           const direction = transition.toShadow ? "→🌑" : "→☀️";
           const description = transition.toShadow ? "enters eclipse" : "exits eclipse";
           return `${time} ${direction} (${description})`;
@@ -353,7 +362,7 @@ export class DescriptionHelper {
     let transitionsDisplay = "";
     if (pass.eclipseTransitions && pass.eclipseTransitions.length > 0) {
       const transitionList = pass.eclipseTransitions.map((transition) => {
-        const time = dayjs.utc(transition.time).format("HH:mm:ss");
+        const time = TimeFormatHelper.formatTransitionTime(transition.time, useLocalTime, groundStationPosition);
         const icon = transition.toShadow ? "🌑" : "☀️";
         const desc = transition.toShadow ? "eclipse" : "sunlit";
         return `${time} ${icon} ${desc}`;
@@ -364,10 +373,11 @@ export class DescriptionHelper {
     const baseName = passNameField ? pass[passNameField] : "";
     const displayName = baseName && pass.epochInFuture ? `${baseName} *` : baseName;
     const passName = displayName ? `${displayName} - ` : "";
+    const formattedPassStart = TimeFormatHelper.formatPassTime(pass.start, useLocalTime, groundStationPosition);
     const html = `
       <div class="pass-card" onclick='parent.postMessage(${JSON.stringify(pass)}, "*")'>
         <div class="pass-line-1">
-          <strong>${passName}${dayjs.utc(pass.start).format("DD.MM HH:mm:ss")}</strong>
+          <strong>${passName}${formattedPassStart}</strong>
           <span class="pass-countdown">${countdown}</span>
         </div>
         <div class="pass-line-2">
@@ -381,6 +391,14 @@ export class DescriptionHelper {
   }
 
   static renderPass(time, pass, passNameField = "name", overpassMode = "elevation", epochInFuture = false) {
+    const satStore = useSatStore();
+    const useLocalTime = satStore.useLocalTime;
+
+    // Get first ground station position for timezone
+    const groundStationPosition = satStore.groundStations.length > 0
+      ? { latitude: satStore.groundStations[0].lat, longitude: satStore.groundStations[0].lon }
+      : null;
+
     function pad2(num) {
       return String(num).padStart(2, "0");
     }
@@ -432,7 +450,7 @@ export class DescriptionHelper {
 
         // Create detailed transition time information
         const transitionTimes = pass.eclipseTransitions.map((transition) => {
-          const time = dayjs.utc(transition.time).format("HH:mm:ss");
+          const time = TimeFormatHelper.formatTransitionTime(transition.time, useLocalTime, groundStationPosition);
           const direction = transition.toShadow ? "→🌑" : "→☀️";
           const description = transition.toShadow ? "enters eclipse" : "exits eclipse";
           return `${time} ${direction} (${description})`;
@@ -456,7 +474,7 @@ export class DescriptionHelper {
     let transitionsHtml = "—";
     if (pass.eclipseTransitions && pass.eclipseTransitions.length > 0) {
       const transitionList = pass.eclipseTransitions.map((transition) => {
-        const time = dayjs.utc(transition.time).format("HH:mm:ss");
+        const time = TimeFormatHelper.formatTransitionTime(transition.time, useLocalTime, groundStationPosition);
         const icon = transition.toShadow ? "🌑" : "☀️";
         return `${time} ${icon}`;
       }).join("<br>");
@@ -478,12 +496,14 @@ export class DescriptionHelper {
       elevationCell = `${pass.maxElevation.toFixed(0)}&deg`;
       azimuthCell = `${pass.azimuthApex.toFixed(2)}&deg`;
     }
+    const formattedPassStart = TimeFormatHelper.formatPassTime(pass.start, useLocalTime, groundStationPosition);
+    const formattedPassEnd = TimeFormatHelper.formatTime(pass.end, useLocalTime, "HH:mm:ss", true, groundStationPosition);
     const html = `
       <tr>
         ${htmlName}
         <td>${countdown}</td>
-        <td><a onclick='parent.postMessage(${JSON.stringify(pass)}, "*")'>${dayjs.utc(pass.start).format("DD.MM HH:mm:ss")}</td>
-        <td>${dayjs.utc(pass.end).format("HH:mm:ss")}</td>
+        <td><a onclick='parent.postMessage(${JSON.stringify(pass)}, "*")'>${formattedPassStart}</td>
+        <td>${formattedPassEnd}</td>
         <td class="ibt-center">${formatDuration(pass.duration)}</td>
         <td class="ibt-right">${elevationCell}</td>
         <td class="ibt-right">${azimuthCell}</td>
@@ -499,7 +519,7 @@ export class DescriptionHelper {
     const julianDayNumber = Math.floor(julianDate);
     const secondsOfDay = (julianDate - julianDayNumber) * 60 * 60 * 24;
     const tleDate = new JulianDate(julianDayNumber, secondsOfDay);
-    const formattedDate = dayjs.utc(tleDate).format("YYYY-MM-DD HH:mm:ss");
+    const formattedDate = TimeFormatHelper.formatTLEEpoch(tleDate);
     const html = `
       <h3>TLE (Epoch ${formattedDate})</h3>
       <div class="ib-code"><code>${tle.slice(1, 3).join("\n")}</code></div>`;

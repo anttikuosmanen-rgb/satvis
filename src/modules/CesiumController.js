@@ -105,6 +105,9 @@ export class CesiumController {
     // Add event listener to detect when time is set to "now" (today/real-time button)
     this.setupTimelineResetOnNow();
 
+    // Setup local time formatting for clock and timeline
+    this.setupLocalTimeFormatting();
+
     this.pm = new PushManager();
 
     // Add privacy policy to credits when not running in iframe
@@ -858,5 +861,156 @@ export class CesiumController {
 
       lastCurrentTime = JulianDate.clone(currentTime);
     });
+  }
+
+  setupLocalTimeFormatting() {
+    if (!this.viewer.timeline || !this.viewer.animation) {
+      return;
+    }
+
+    const { useSatStore } = require("../stores/sat");
+    const { TimeFormatHelper } = require("./util/TimeFormatHelper");
+
+    // Store original makeLabel function and its context for timeline
+    const timeline = this.viewer.timeline;
+    const originalTimelineMakeLabel = timeline.makeLabel.bind(timeline);
+
+    // Override timeline makeLabel to support local time
+    this.viewer.timeline.makeLabel = function(time) {
+      try {
+        const satStore = useSatStore();
+
+        if (satStore.useLocalTime && satStore.groundStations.length > 0) {
+          // Get first ground station position for timezone
+          const groundStationPosition = {
+            latitude: satStore.groundStations[0].lat,
+            longitude: satStore.groundStations[0].lon
+          };
+
+          // Format in ground station's local time
+          const date = JulianDate.toDate(time);
+          const timezone = TimeFormatHelper.getTimezoneFromCoordinates(
+            groundStationPosition.latitude,
+            groundStationPosition.longitude
+          );
+
+          const tzOffset = TimeFormatHelper.getTimezoneOffset(timezone, date);
+
+          // Format in DD.MM HH:MM:SS format for timeline
+          const formatter = new Intl.DateTimeFormat('en-GB', {
+            timeZone: timezone,
+            day: '2-digit',
+            month: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+          });
+
+          const formatted = formatter.format(date);
+          // Format is "DD/MM/YYYY, HH:MM:SS" - convert to "DD.MM HH:MM:SS"
+          const parts = formatted.split(', ');
+          const datePart = parts[0].substring(0, 5).replace('/', '.'); // Get DD.MM only
+          const timePart = parts[1];
+          return `${datePart} ${timePart} ${tzOffset}`;
+        }
+      } catch (error) {
+        // Pinia store not ready yet or error accessing it, fall back to UTC
+      }
+
+      // Use original UTC formatting with proper context
+      return originalTimelineMakeLabel(time);
+    };
+
+    // Store original animation time formatter
+    const animation = this.viewer.animation;
+    const originalAnimationTimeFormatter = animation.viewModel.timeFormatter;
+
+    // Store original animation date formatter
+    const originalAnimationDateFormatter = animation.viewModel.dateFormatter;
+
+    // Override animation date formatter to support local time
+    animation.viewModel.dateFormatter = function(date, viewModel) {
+      try {
+        const satStore = useSatStore();
+
+        if (satStore && satStore.useLocalTime && satStore.groundStations && satStore.groundStations.length > 0) {
+          // Convert to JavaScript Date if needed
+          const jsDate = date instanceof Date ? date : new Date(date);
+
+          // Get first ground station position for timezone
+          const groundStationPosition = {
+            latitude: satStore.groundStations[0].lat,
+            longitude: satStore.groundStations[0].lon
+          };
+
+          // Format in ground station's local time
+          const timezone = TimeFormatHelper.getTimezoneFromCoordinates(
+            groundStationPosition.latitude,
+            groundStationPosition.longitude
+          );
+
+          // Format in MMM DD YYYY format (without timezone, that goes with time)
+          const formatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: timezone,
+            month: 'short',
+            day: '2-digit',
+            year: 'numeric'
+          });
+
+          return formatter.format(jsDate);
+        }
+      } catch (error) {
+        // Pinia store not ready yet or error accessing it, fall back to UTC
+      }
+
+      // Use original UTC formatting
+      return originalAnimationDateFormatter(date, viewModel);
+    };
+
+    // Override animation time formatter to support local time
+    animation.viewModel.timeFormatter = function(date, viewModel) {
+      try {
+        const satStore = useSatStore();
+
+        if (satStore && satStore.useLocalTime && satStore.groundStations && satStore.groundStations.length > 0) {
+          // Convert to JavaScript Date if needed (Cesium may pass JulianDate or other formats)
+          const jsDate = date instanceof Date ? date : new Date(date);
+
+          // Get first ground station position for timezone
+          const groundStationPosition = {
+            latitude: satStore.groundStations[0].lat,
+            longitude: satStore.groundStations[0].lon
+          };
+
+          // Format in ground station's local time
+          const timezone = TimeFormatHelper.getTimezoneFromCoordinates(
+            groundStationPosition.latitude,
+            groundStationPosition.longitude
+          );
+
+          const tzOffset = TimeFormatHelper.getTimezoneOffset(timezone, jsDate);
+
+          // Format in HH:MM:SS UTC+x format
+          const formatter = new Intl.DateTimeFormat('en-GB', {
+            timeZone: timezone,
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+          });
+
+          return `${formatter.format(jsDate)} ${tzOffset}`;
+        }
+      } catch (error) {
+        // Pinia store not ready yet or error accessing it, fall back to UTC
+      }
+
+      // Use original UTC formatting
+      return originalAnimationTimeFormatter(date, viewModel);
+    };
+
+    // Update timeline when local time setting changes
+    this.viewer.timeline.updateFromClock();
   }
 }

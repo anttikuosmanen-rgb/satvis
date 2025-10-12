@@ -12,10 +12,10 @@ export const useSatStore = defineStore("sat", {
     overpassMode: "elevation",
     hideSunlightPasses: true,
     showOnlyLitPasses: true,
+    useLocalTime: false,
   }),
   urlsync: {
     enabled: true,
-<<<<<<< HEAD
     config: [
       {
         name: "enabledComponents",
@@ -88,6 +88,13 @@ export const useSatStore = defineStore("sat", {
         serialize: (v) => (v ? "1" : "0"),
         deserialize: (v) => v === "1",
         default: true,
+      },
+      {
+        name: "useLocalTime",
+        url: "localTime",
+        serialize: (v) => (v ? "1" : "0"),
+        deserialize: (v) => v === "1",
+        default: false,
       },
     ],
   },

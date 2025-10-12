@@ -78,6 +78,11 @@
           <span class="slider"></span>
           Show only lit satellites
         </label>
+        <label class="toolbarSwitch">
+          <input v-model="useLocalTime" type="checkbox" :disabled="!canUseLocalTime">
+          <span class="slider"></span>
+          Use local time
+        </label>
       </div>
       <div v-show="menu.map" class="toolbarSwitches">
         <div class="toolbarTitle">Layers</div>
@@ -239,9 +244,13 @@ export default {
       "overpassMode",
       "hideSunlightPasses",
       "showOnlyLitPasses",
+      "useLocalTime",
     ]),
     isIos() {
       return DeviceDetect.isIos();
+    },
+    canUseLocalTime() {
+      return this.groundStations && this.groundStations.length > 0;
     },
   },
   watch: {
@@ -291,6 +300,11 @@ export default {
         return;
       }
       cc.setGroundStations(newGroundStations);
+
+      // Disable local time if no ground stations exist
+      if (newGroundStations.length === 0 && this.useLocalTime) {
+        this.useLocalTime = false;
+      }
     },
     overpassMode(newMode) {
       cc.sats.overpassMode = newMode;
@@ -301,6 +315,30 @@ export default {
     },
     showOnlyLitPasses() {
       // Invalidate pass cache and refresh highlights when filter changes
+      this.refreshGroundStationHighlights();
+    },
+    useLocalTime() {
+      // Update timeline and clock formatting when local time setting changes
+      if (cc.viewer && cc.viewer.timeline) {
+        cc.viewer.timeline.updateFromClock();
+        // Force timeline to re-render labels
+        if (cc.viewer.timeline._makeTics) {
+          cc.viewer.timeline._makeTics();
+        }
+      }
+      // Force animation widget to update - the clock naturally updates every tick
+      // so we just need to make sure the next tick happens soon
+      if (cc.viewer && cc.viewer.clock) {
+        // Store current animation state
+        const wasAnimating = cc.viewer.clock.shouldAnimate;
+        // Temporarily enable animation for one frame to trigger formatter
+        cc.viewer.clock.shouldAnimate = true;
+        setTimeout(() => {
+          // Restore original state
+          cc.viewer.clock.shouldAnimate = wasAnimating;
+        }, 100);
+      }
+      // Refresh info boxes to update time display
       this.refreshGroundStationHighlights();
     },
   },
