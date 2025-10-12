@@ -37,6 +37,9 @@ export class DescriptionHelper {
     const { name, passes, orbit, overpassMode } = props;
     const { tle, julianDate } = orbit;
 
+    // Name already has asterisk if epoch is in future (set in constructor)
+    const epochInFuture = name.endsWith(" *");
+
     // Get current eclipse status if orbit object is available
     let eclipseStatus = "—";
     if (orbit && typeof orbit.isInEclipse === "function") {
@@ -118,7 +121,7 @@ export class DescriptionHelper {
             </tr>
           </tbody>
         </table>
-        ${this.renderPasses(passes, time, false, overpassMode)}
+        ${this.renderPasses(passes, time, false, overpassMode, epochInFuture)}
         ${this.renderTLE(tle, julianDate)}
       </div>
     `;
@@ -201,25 +204,36 @@ export class DescriptionHelper {
     return description;
   }
 
-  static renderPasses(passes, time, isGroundStation, overpassMode) {
+  static renderPasses(passes, time, isGroundStation, overpassMode, epochInFuture = false) {
+    const epochNote = epochInFuture ? ' (* Epoch in future)' : '';
     if (passes.length === 0) {
       if (isGroundStation) {
         return `
-          <h3>Passes</h3>
+          <h3>Passes${epochNote}</h3>
           <div class="ib-text">No passes available</div>
           `;
       }
       return `
-        <h3>Passes</h3>
+        <h3>Passes${epochNote}</h3>
         <div class="ib-text">No ground station set</div>
         `;
     }
 
+    // Filter out passes before epoch - 90 minutes for future epoch satellites
+    // Note: For ground stations, this filtering also happens in GroundStationEntity._filterAndSortPasses
+    let filteredPasses = passes.filter((pass) => {
+      if (pass.epochInFuture && pass.epochTime) {
+        const epochMinus90 = new Date(pass.epochTime.getTime() - 90 * 60 * 1000);
+        const passStart = new Date(pass.start);
+        return passStart >= epochMinus90;
+      }
+      return true;
+    });
+
     // Apply sunlight filtering if enabled
     const satStore = useSatStore();
-    let filteredPasses = passes;
     if (satStore.hideSunlightPasses) {
-      filteredPasses = passes.filter((pass) =>
+      filteredPasses = filteredPasses.filter((pass) =>
         // Show pass if either start or end is in darkness
         pass.groundStationDarkAtStart || pass.groundStationDarkAtEnd);
     }
@@ -244,7 +258,7 @@ export class DescriptionHelper {
     const passNameField = isGroundStation ? "name" : null;
     const htmlName = passNameField ? "<th>Name</th>\n" : "";
     const html = `
-      <h3>Passes (${overpassMode.charAt(0).toUpperCase() + overpassMode.slice(1)})</h3>
+      <h3>Passes (${overpassMode.charAt(0).toUpperCase() + overpassMode.slice(1)})${epochNote}</h3>
       <table class="ibt">
         <thead>
           <tr>
@@ -261,7 +275,7 @@ export class DescriptionHelper {
           </tr>
         </thead>
         <tbody>
-          ${upcomingPasses.map((pass) => this.renderPass(start, pass, passNameField, overpassMode)).join("")}
+          ${upcomingPasses.map((pass) => this.renderPass(start, pass, passNameField, overpassMode, epochInFuture)).join("")}
         </tbody>
       </table>
     `;
@@ -347,7 +361,9 @@ export class DescriptionHelper {
       transitionsDisplay = ` | ${transitionList}`;
     }
 
-    const passName = passNameField ? `${pass[passNameField]} - ` : "";
+    const baseName = passNameField ? pass[passNameField] : "";
+    const displayName = baseName && pass.epochInFuture ? `${baseName} *` : baseName;
+    const passName = displayName ? `${displayName} - ` : "";
     const html = `
       <div class="pass-card" onclick='parent.postMessage(${JSON.stringify(pass)}, "*")'>
         <div class="pass-line-1">
@@ -364,7 +380,7 @@ export class DescriptionHelper {
     return html;
   }
 
-  static renderPass(time, pass, passNameField = "name", overpassMode = "elevation") {
+  static renderPass(time, pass, passNameField = "name", overpassMode = "elevation", epochInFuture = false) {
     function pad2(num) {
       return String(num).padStart(2, "0");
     }
@@ -448,7 +464,9 @@ export class DescriptionHelper {
       transitionsHtml = `<div class="transition-times" title="Eclipse transition times during pass">${transitionList}</div>`;
     }
 
-    const htmlName = passNameField ? `<td>${pass[passNameField]}</td>\n` : "";
+    const baseName = passNameField ? pass[passNameField] : "";
+    const displayName = baseName && pass.epochInFuture ? `${baseName} *` : baseName;
+    const htmlName = displayName ? `<td>${displayName}</td>\n` : "";
 
     // Handle different pass types based on overpass mode
     let elevationCell, azimuthCell;
@@ -460,7 +478,6 @@ export class DescriptionHelper {
       elevationCell = `${pass.maxElevation.toFixed(0)}&deg`;
       azimuthCell = `${pass.azimuthApex.toFixed(2)}&deg`;
     }
-
     const html = `
       <tr>
         ${htmlName}
