@@ -185,6 +185,17 @@ export class GroundStationEntity extends CesiumComponentCollection {
     // Filter passes based on time
     let filtered = passes.filter((pass) => dayjs(pass.start).diff(time, "hours") < deltaHours);
 
+    // Filter out passes before epoch - 90 minutes for future epoch satellites
+    // This must happen BEFORE sunlight filtering to ensure correct filtering order
+    filtered = filtered.filter((pass) => {
+      if (pass.epochInFuture && pass.epochTime) {
+        const epochMinus90 = new Date(pass.epochTime.getTime() - 90 * 60 * 1000);
+        const passStart = new Date(pass.start);
+        return passStart >= epochMinus90;
+      }
+      return true;
+    });
+
     // Filter out passes in sunlight if option is enabled
     const satStore = useSatStore();
     if (satStore.hideSunlightPasses) {

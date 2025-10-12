@@ -15,6 +15,12 @@ export class SatelliteProperties {
     this.satnum = this.orbit.satnum;
     this.tags = tags;
 
+    // Check if epoch is in the future and add asterisk to name if so
+    this.baseName = this.name;
+    if (this.isEpochInFuture()) {
+      this.name = `${this.name} *`;
+    }
+
     this.groundStations = [];
     this.passes = [];
     this.passInterval = undefined;
@@ -27,6 +33,15 @@ export class SatelliteProperties {
 
   addTags(tags) {
     this.tags = [...new Set(this.tags.concat(tags))];
+  }
+
+  isEpochInFuture() {
+    const { julianDate } = this.orbit;
+    const julianDayNumber = Math.floor(julianDate);
+    const secondsOfDay = (julianDate - julianDayNumber) * 60 * 60 * 24;
+    const tleDate = new Cesium.JulianDate(julianDayNumber, secondsOfDay);
+    const now = Cesium.JulianDate.now();
+    return Cesium.JulianDate.compare(tleDate, now) > 0;
   }
 
   position(time) {
@@ -301,6 +316,15 @@ export class SatelliteProperties {
     };
 
     let allPasses = [];
+    const epochInFuture = this.isEpochInFuture();
+
+    // Get epoch time for filtering
+    const { julianDate } = this.orbit;
+    const julianDayNumber = Math.floor(julianDate);
+    const secondsOfDay = (julianDate - julianDayNumber) * 60 * 60 * 24;
+    const epochJulianDate = new Cesium.JulianDate(julianDayNumber, secondsOfDay);
+    const epochTime = Cesium.JulianDate.toDate(epochJulianDate);
+
     this.groundStations.forEach((groundStation) => {
       const passes = this.orbit.computePassesElevation(
         groundStation.position,
@@ -309,6 +333,8 @@ export class SatelliteProperties {
       );
       passes.forEach((pass) => {
         pass.groundStationName = groundStation.name;
+        pass.epochInFuture = epochInFuture;
+        pass.epochTime = epochTime;
       });
       allPasses.push(...passes);
     });
