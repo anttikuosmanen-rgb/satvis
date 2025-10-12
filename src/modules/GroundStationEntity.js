@@ -1,9 +1,10 @@
-import { BillboardGraphics, HorizontalOrigin, NearFarScalar, VerticalOrigin } from "@cesium/engine";
+import { BillboardGraphics, HorizontalOrigin, JulianDate, NearFarScalar, VerticalOrigin } from "@cesium/engine";
 import dayjs from "dayjs";
 import icon from "../images/icons/dish.svg";
 import { CesiumComponentCollection } from "./util/CesiumComponentCollection";
 import { DescriptionHelper } from "./util/DescriptionHelper";
 import { useSatStore } from "../stores/sat";
+import { filterAndSortPasses } from "./util/PassFilter";
 
 export class GroundStationEntity extends CesiumComponentCollection {
   constructor(viewer, sats, position, givenName = "") {
@@ -89,14 +90,14 @@ export class GroundStationEntity extends CesiumComponentCollection {
     }
 
     // Check if we can use cached results
-    const currentTimeMs = Cesium.JulianDate.toDate(time).getTime();
+    const currentTimeMs = JulianDate.toDate(time).getTime();
     const cacheValidityMs = 60 * 1000; // Cache valid for 60 seconds
 
     if (this._passesCache && this._passesCacheTime) {
       const cacheAge = currentTimeMs - this._passesCacheTime;
       if (cacheAge < cacheValidityMs) {
         // Return cached passes, filtered by current time window
-        return this._filterAndSortPasses(this._passesCache, time, deltaHours);
+        return filterAndSortPasses(this._passesCache, time, deltaHours);
       }
     }
 
@@ -116,7 +117,7 @@ export class GroundStationEntity extends CesiumComponentCollection {
     this._passesCacheTime = currentTimeMs;
 
     // Filter and return
-    return this._filterAndSortPasses(passes, time, deltaHours);
+    return filterAndSortPasses(passes, time, deltaHours);
   }
 
   async passesAsync(time, deltaHours = 48) {
@@ -137,14 +138,14 @@ export class GroundStationEntity extends CesiumComponentCollection {
     }
 
     // Check if we can use cached results
-    const currentTimeMs = Cesium.JulianDate.toDate(time).getTime();
+    const currentTimeMs = JulianDate.toDate(time).getTime();
     const cacheValidityMs = 60 * 1000; // Cache valid for 60 seconds
 
     if (this._passesCache && this._passesCacheTime) {
       const cacheAge = currentTimeMs - this._passesCacheTime;
       if (cacheAge < cacheValidityMs) {
         // Return cached passes, filtered by current time window
-        return this._filterAndSortPasses(this._passesCache, time, deltaHours);
+        return filterAndSortPasses(this._passesCache, time, deltaHours);
       }
     }
 
@@ -177,47 +178,6 @@ export class GroundStationEntity extends CesiumComponentCollection {
     this._passesCacheTime = currentTimeMs;
 
     // Filter and return
-    return this._filterAndSortPasses(passes, time, deltaHours);
-  }
-
-  _filterAndSortPasses(passes, time, deltaHours) {
-    // Filter passes based on time
-    let filtered = passes.filter((pass) => dayjs(pass.start).diff(time, "hours") < deltaHours);
-
-    // Filter out passes before epoch - 90 minutes for future epoch satellites
-    // This must happen BEFORE sunlight filtering to ensure correct filtering order
-    filtered = filtered.filter((pass) => {
-      if (pass.epochInFuture && pass.epochTime) {
-        const epochMinus90 = new Date(pass.epochTime.getTime() - 90 * 60 * 1000);
-        const passStart = new Date(pass.start);
-        return passStart >= epochMinus90;
-      }
-      return true;
-    });
-
-    // Filter out passes in sunlight if option is enabled
-    const satStore = useSatStore();
-    if (satStore.hideSunlightPasses) {
-      filtered = filtered.filter((pass) =>
-        // Show pass if either start or end in darkness
-        pass.groundStationDarkAtStart || pass.groundStationDarkAtEnd);
-    }
-
-    // Filter out passes where satellite is eclipsed for the entire pass if option is enabled
-    if (satStore.showOnlyLitPasses) {
-      filtered = filtered.filter((pass) => {
-        // Show pass if satellite is lit at start OR end OR has any eclipse transitions
-        // (transitions mean it goes from lit to eclipsed or vice versa during the pass)
-        const litAtStart = !pass.satelliteEclipsedAtStart;
-        const litAtEnd = !pass.satelliteEclipsedAtEnd;
-        const hasTransitions = pass.eclipseTransitions && pass.eclipseTransitions.length > 0;
-
-        return litAtStart || litAtEnd || hasTransitions;
-      });
-    }
-
-    // Sort passes by time
-    filtered = filtered.sort((a, b) => a.start - b.start);
-    return filtered;
+    return filterAndSortPasses(passes, time, deltaHours);
   }
 }

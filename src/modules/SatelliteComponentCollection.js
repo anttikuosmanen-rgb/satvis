@@ -42,6 +42,7 @@ import { CesiumComponentCollection } from "./util/CesiumComponentCollection";
 import { CesiumTimelineHelper } from "./util/CesiumTimelineHelper";
 import { DescriptionHelper } from "./util/DescriptionHelper";
 import { CesiumCallbackHelper } from "./util/CesiumCallbackHelper";
+import { filterAndSortPasses } from "./util/PassFilter";
 
 export class SatelliteComponentCollection extends CesiumComponentCollection {
   constructor(viewer, tle, tags) {
@@ -168,7 +169,10 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
         // Force recalculation of passes when satellite is selected
         this.props.clearPasses();
         this.props.updatePasses(this.viewer.clock.currentTime);
-        CesiumTimelineHelper.updateHighlightRanges(this.viewer, this.props.passes, this.props.name);
+        // Filter passes based on current filter settings (sunlight/eclipse)
+        const filteredPasses = filterAndSortPasses(this.props.passes, this.viewer.clock.currentTime);
+        // Use baseName to match the name in pass objects (without asterisk for future epochs)
+        CesiumTimelineHelper.updateHighlightRanges(this.viewer, filteredPasses, this.props.baseName);
       }
     });
 
@@ -704,7 +708,10 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     if (this.isSelected || this.isTracked) {
       this.props.updatePasses(this.viewer.clock.currentTime);
       if (this.isSelected) {
-        CesiumTimelineHelper.updateHighlightRanges(this.viewer, this.props.passes, this.props.name);
+        // Filter passes based on current filter settings (sunlight/eclipse)
+        const filteredPasses = filterAndSortPasses(this.props.passes, this.viewer.clock.currentTime);
+        // Use baseName to match the name in pass objects (without asterisk for future epochs)
+        CesiumTimelineHelper.updateHighlightRanges(this.viewer, filteredPasses, this.props.baseName);
       }
     }
     if (this.created) {
