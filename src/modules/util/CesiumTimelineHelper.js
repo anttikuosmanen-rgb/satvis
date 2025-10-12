@@ -20,6 +20,12 @@ export class CesiumTimelineHelper {
       range._base === -1
     );
     viewer.timeline.updateFromClock();
+    // Force timeline to re-render by calling _makeTics directly
+    // eslint-disable-next-line
+    if (viewer.timeline._makeTics) {
+      // eslint-disable-next-line
+      viewer.timeline._makeTics();
+    }
   }
 
   static addHighlightRanges(viewer, ranges, satelliteName) {
@@ -105,6 +111,12 @@ export class CesiumTimelineHelper {
 
     // Update timeline ONCE after adding all ranges (not in the loop)
     viewer.timeline.updateFromClock();
+    // Force timeline to re-render by calling _makeTics directly
+    // eslint-disable-next-line
+    if (viewer.timeline._makeTics) {
+      // eslint-disable-next-line
+      viewer.timeline._makeTics();
+    }
   }
 
   static updateHighlightRanges(viewer, ranges, satelliteName) {
@@ -127,9 +139,10 @@ export class CesiumTimelineHelper {
     for (let i = 0; i < satellites.length; i += chunkSize) {
       const chunk = satellites.slice(i, i + chunkSize);
 
-      // Add highlights for this chunk
+      // Add highlights for this chunk (without resize to avoid redundant calls)
       chunk.forEach(([satelliteName, satellitePasses]) => {
-        this.addHighlightRanges(viewer, satellitePasses, satelliteName);
+        // Call addHighlightRanges without its internal resize
+        this._addHighlightRangesWithoutResize(viewer, satellitePasses, satelliteName);
       });
 
       // Yield to browser after each chunk
@@ -137,6 +150,77 @@ export class CesiumTimelineHelper {
         await new Promise(resolve => setTimeout(resolve, 0));
       }
     }
+
+    // Trigger single re-render at the end to show all highlights
+    viewer.timeline.updateFromClock();
+    // Force timeline to re-render by calling _makeTics directly
+    // eslint-disable-next-line
+    if (viewer.timeline._makeTics) {
+      // eslint-disable-next-line
+      viewer.timeline._makeTics();
+    }
+  }
+
+  static _addHighlightRangesWithoutResize(viewer, ranges, satelliteName) {
+    if (!viewer.timeline || ranges.length === 0) {
+      return;
+    }
+
+    // Get current timeline range - DO NOT modify it
+    const timelineStart = Cesium.JulianDate.toDate(viewer.clock.startTime);
+    const timelineStop = Cesium.JulianDate.toDate(viewer.clock.stopTime);
+    const timelineStartMs = timelineStart.getTime();
+    const timelineStopMs = timelineStop.getTime();
+
+    const visibleRanges = ranges.filter(range => {
+      const rangeStart = new Date(range.start).getTime();
+      const rangeEnd = new Date(range.end).getTime();
+      return rangeEnd >= timelineStartMs && rangeStart <= timelineStopMs;
+    });
+
+    // Limit to 30 passes for performance
+    const maxPasses = 30;
+    const limitedRanges = visibleRanges.slice(0, maxPasses);
+
+    limitedRanges.forEach((range) => {
+      const startJulian = Cesium.JulianDate.fromDate(new Date(range.start));
+      const endJulian = Cesium.JulianDate.fromDate(new Date(range.end));
+      const highlightRange = viewer.timeline.addHighlightRange(Cesium.Color.BLUE, 100, 0);
+      highlightRange.setRange(startJulian, endJulian);
+
+      // Add click functionality
+      if (satelliteName && highlightRange._element) {
+        highlightRange._element.style.cursor = "pointer";
+        highlightRange._element.title = `Click to track ${satelliteName} during this pass`;
+
+        if (highlightRange._clickListener) {
+          highlightRange._element.removeEventListener("click", highlightRange._clickListener);
+        }
+
+        highlightRange._clickListener = () => {
+          const entities = viewer.entities.values;
+          let satelliteEntity = entities.find((entity) => entity.name && entity.name.includes(satelliteName) && entity.name.includes("Point"));
+          if (!satelliteEntity) {
+            satelliteEntity = entities.find((entity) => entity.name && entity.name.includes(satelliteName));
+          }
+          if (satelliteEntity) {
+            viewer.trackedEntity = null;
+            if (window.cc && window.cc.sats) {
+              try {
+                window.cc.sats.trackedSatellite = satelliteName;
+              } catch (error) {
+                console.warn("Could not use satellite manager:", error);
+              }
+            }
+            setTimeout(() => {
+              viewer.trackedEntity = satelliteEntity;
+            }, 100);
+          }
+        };
+
+        highlightRange._element.addEventListener("click", highlightRange._clickListener);
+      }
+    });
   }
 
   static needsRecalculation(viewer, groundStation) {
@@ -604,6 +688,12 @@ export class CesiumTimelineHelper {
     }
 
     viewer.timeline.updateFromClock();
+    // Force timeline to re-render by calling _makeTics directly
+    // eslint-disable-next-line
+    if (viewer.timeline._makeTics) {
+      // eslint-disable-next-line
+      viewer.timeline._makeTics();
+    }
   }
 
   static clearGroundStationDaytimeRanges(viewer) {
@@ -621,5 +711,11 @@ export class CesiumTimelineHelper {
     );
 
     viewer.timeline.updateFromClock();
+    // Force timeline to re-render by calling _makeTics directly
+    // eslint-disable-next-line
+    if (viewer.timeline._makeTics) {
+      // eslint-disable-next-line
+      viewer.timeline._makeTics();
+    }
   }
 }
