@@ -1,26 +1,37 @@
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
+import tzlookup from "tz-lookup";
 
 dayjs.extend(utc);
 
 export class TimeFormatHelper {
   /**
-   * Get timezone from ground station coordinates using Intl API
+   * Get timezone from ground station coordinates
+   * Uses tz-lookup library to accurately determine IANA timezone including DST rules
    * @param {number} lat - Latitude
    * @param {number} lon - Longitude
-   * @returns {string} IANA timezone identifier (e.g., "America/New_York")
+   * @returns {string} IANA timezone identifier (e.g., "Europe/Helsinki", "America/New_York")
    */
   static getTimezoneFromCoordinates(lat, lon) {
-    // This is a simple approximation based on longitude
-    // For a production app, you'd want to use a proper timezone lookup library
-    const timezoneOffset = Math.round(lon / 15);
-
-    // Try to get timezone using Intl API with the coordinates
     try {
-      // Intl doesn't support coordinate-based lookup, so we use browser's timezone
-      return Intl.DateTimeFormat().resolvedOptions().timeZone;
-    } catch {
+      // Use tz-lookup to find the timezone for the given coordinates
+      // Returns a single IANA timezone identifier
+      const timezone = tzlookup(lat, lon);
+      if (timezone) {
+        return timezone;
+      }
+    } catch (error) {
+      console.warn('Error looking up timezone for coordinates:', lat, lon, error);
+    }
+
+    // Fallback to simple longitude-based calculation if tz-lookup fails
+    const offsetHours = Math.round(lon / 15);
+    if (offsetHours === 0) {
       return 'UTC';
+    } else if (offsetHours > 0) {
+      return `Etc/GMT-${offsetHours}`;
+    } else {
+      return `Etc/GMT+${Math.abs(offsetHours)}`;
     }
   }
 
