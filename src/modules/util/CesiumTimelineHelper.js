@@ -20,7 +20,6 @@ export class CesiumTimelineHelper {
       range._base === -1
     );
     viewer.timeline.updateFromClock();
-    viewer.timeline.zoomTo(viewer.clock.startTime, viewer.clock.stopTime);
   }
 
   static addHighlightRanges(viewer, ranges, satelliteName) {
@@ -106,7 +105,6 @@ export class CesiumTimelineHelper {
 
     // Update timeline ONCE after adding all ranges (not in the loop)
     viewer.timeline.updateFromClock();
-    viewer.timeline.zoomTo(viewer.clock.startTime, viewer.clock.stopTime);
   }
 
   static updateHighlightRanges(viewer, ranges, satelliteName) {
@@ -606,7 +604,6 @@ export class CesiumTimelineHelper {
     }
 
     viewer.timeline.updateFromClock();
-    viewer.timeline.zoomTo(viewer.clock.startTime, viewer.clock.stopTime);
   }
 
   static clearGroundStationDaytimeRanges(viewer) {
@@ -624,6 +621,5 @@ export class CesiumTimelineHelper {
     );
 
     viewer.timeline.updateFromClock();
-    viewer.timeline.zoomTo(viewer.clock.startTime, viewer.clock.stopTime);
   }
 }
