@@ -718,7 +718,7 @@ export class CesiumController {
           CesiumTimelineHelper.addHighlightRanges(this.viewer, [pass], pass.satelliteName || pass.name);
         }
 
-        // Track the satellite for this pass
+        // Track or point at the satellite for this pass
         if (pass.satelliteName || pass.name) {
           const satelliteName = pass.satelliteName || pass.name;
           console.log(`Attempting to track satellite: ${satelliteName}`);
@@ -749,24 +749,46 @@ export class CesiumController {
             if (satelliteEntity) {
               console.log(`Found satellite entity: ${satelliteEntity.name}`);
 
-              // Clear existing tracking but keep selection to maintain highlights
-              this.viewer.trackedEntity = null;
+              // Check if we're in zenith view
+              const isInZenithView = this.sats && this.sats.isInZenithView;
 
-              // Also try to select satellite through satellite manager
-              if (this.sats) {
-                try {
-                  console.log(`Tracking satellite through manager: ${satelliteName}`);
-                  this.sats.trackedSatellite = satelliteName;
-                } catch (error) {
-                  console.warn("Could not use satellite manager:", error);
+              if (isInZenithView) {
+                // In zenith view: point camera at satellite without moving position, and select it
+                // Use a small delay to ensure satellite position is calculated at the new time
+                setTimeout(() => {
+                  const satellitePosition = satelliteEntity.position.getValue(this.viewer.clock.currentTime);
+                  if (satellitePosition) {
+                    const cameraPosition = this.viewer.camera.positionWC;
+                    const direction = Cesium.Cartesian3.subtract(satellitePosition, cameraPosition, new Cesium.Cartesian3());
+                    Cesium.Cartesian3.normalize(direction, direction);
+                    this.viewer.camera.direction = direction;
+                    // Select the satellite to show its info
+                    this.viewer.selectedEntity = satelliteEntity;
+                    // Request render to update the view
+                    this.viewer.scene.requestRender();
+                    console.log(`Pointed camera at satellite: ${satelliteEntity.name} for pass (zenith view)`);
+                  }
+                }, 100);
+              } else {
+                // Normal mode: track the satellite
+                this.viewer.trackedEntity = null;
+
+                // Also try to select satellite through satellite manager
+                if (this.sats) {
+                  try {
+                    console.log(`Tracking satellite through manager: ${satelliteName}`);
+                    this.sats.trackedSatellite = satelliteName;
+                  } catch (error) {
+                    console.warn("Could not use satellite manager:", error);
+                  }
                 }
-              }
 
-              // Set tracking with delay
-              setTimeout(() => {
-                this.viewer.trackedEntity = satelliteEntity;
-                console.log(`Now tracking satellite: ${satelliteEntity.name} for pass`);
-              }, 100);
+                // Set tracking with delay
+                setTimeout(() => {
+                  this.viewer.trackedEntity = satelliteEntity;
+                  console.log(`Now tracking satellite: ${satelliteEntity.name} for pass`);
+                }, 100);
+              }
             } else {
               console.warn(`Could not find satellite entity for: ${satelliteName}`);
               console.log("Available entities:", entities.map((entity) => entity.name).filter((n) => n));

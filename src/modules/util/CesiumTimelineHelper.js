@@ -74,7 +74,7 @@ export class CesiumTimelineHelper {
 
         // Add click listener to track the satellite
         highlightRange._clickListener = () => {
-          // Find the satellite entity by name and track it
+          // Find the satellite entity by name
           const entities = viewer.entities.values;
 
           // Try to find the main satellite entity (usually the Point component)
@@ -86,22 +86,36 @@ export class CesiumTimelineHelper {
           }
 
           if (satelliteEntity) {
-            // Force clear tracking but keep selection to maintain highlights
-            viewer.trackedEntity = null;
+            // Check if we're in zenith view
+            const isInZenithView = window.cc && window.cc.sats && window.cc.sats.isInZenithView;
 
-            // Also try to trigger tracking through the satellite manager
-            if (window.cc && window.cc.sats) {
-              try {
-                window.cc.sats.trackedSatellite = satelliteName;
-              } catch (error) {
-                console.warn("Could not use satellite manager:", error);
+            if (isInZenithView) {
+              // In zenith view: point camera at satellite without moving position
+              const satellitePosition = satelliteEntity.position.getValue(viewer.clock.currentTime);
+              if (satellitePosition) {
+                const cameraPosition = viewer.camera.positionWC;
+                const direction = Cesium.Cartesian3.subtract(satellitePosition, cameraPosition, new Cesium.Cartesian3());
+                Cesium.Cartesian3.normalize(direction, direction);
+                viewer.camera.direction = direction;
               }
-            }
+            } else {
+              // Normal mode: track the satellite
+              viewer.trackedEntity = null;
 
-            // Small delay to ensure the selection is processed
-            setTimeout(() => {
-              viewer.trackedEntity = satelliteEntity;
-            }, 100);
+              // Also try to trigger tracking through the satellite manager
+              if (window.cc && window.cc.sats) {
+                try {
+                  window.cc.sats.trackedSatellite = satelliteName;
+                } catch (error) {
+                  console.warn("Could not use satellite manager:", error);
+                }
+              }
+
+              // Small delay to ensure the selection is processed
+              setTimeout(() => {
+                viewer.trackedEntity = satelliteEntity;
+              }, 100);
+            }
           }
         };
 
@@ -204,17 +218,32 @@ export class CesiumTimelineHelper {
             satelliteEntity = entities.find((entity) => entity.name && entity.name.includes(satelliteName));
           }
           if (satelliteEntity) {
-            viewer.trackedEntity = null;
-            if (window.cc && window.cc.sats) {
-              try {
-                window.cc.sats.trackedSatellite = satelliteName;
-              } catch (error) {
-                console.warn("Could not use satellite manager:", error);
+            // Check if we're in zenith view
+            const isInZenithView = window.cc && window.cc.sats && window.cc.sats.isInZenithView;
+
+            if (isInZenithView) {
+              // In zenith view: point camera at satellite without moving position
+              const satellitePosition = satelliteEntity.position.getValue(viewer.clock.currentTime);
+              if (satellitePosition) {
+                const cameraPosition = viewer.camera.positionWC;
+                const direction = Cesium.Cartesian3.subtract(satellitePosition, cameraPosition, new Cesium.Cartesian3());
+                Cesium.Cartesian3.normalize(direction, direction);
+                viewer.camera.direction = direction;
               }
+            } else {
+              // Normal mode: track the satellite
+              viewer.trackedEntity = null;
+              if (window.cc && window.cc.sats) {
+                try {
+                  window.cc.sats.trackedSatellite = satelliteName;
+                } catch (error) {
+                  console.warn("Could not use satellite manager:", error);
+                }
+              }
+              setTimeout(() => {
+                viewer.trackedEntity = satelliteEntity;
+              }, 100);
             }
-            setTimeout(() => {
-              viewer.trackedEntity = satelliteEntity;
-            }, 100);
           }
         };
 
