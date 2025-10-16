@@ -410,6 +410,333 @@ export class SatelliteManager {
     }
   }
 
+  get isInZenithView() {
+    return !!this.zenithViewCleanup;
+  }
+
+  exitZenithView() {
+    if (this.zenithViewCleanup) {
+      this.zenithViewCleanup();
+    }
+    // Return to a reasonable view of Earth from distance
+    this.viewer.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(0, 20, 20000000), // 20,000 km away
+      orientation: {
+        heading: 0,
+        pitch: -Cesium.Math.PI_OVER_TWO, // Look down at Earth
+        roll: 0,
+      },
+      duration: 1.5,
+    });
+  }
+
+  zenithViewFromGroundStation() {
+    if (!this.groundStationAvailable) {
+      return;
+    }
+
+    const groundStation = this.#groundStations[0];
+    const position = groundStation.position;
+
+    // Convert lat/lon/height to Cartesian3 for ground station position
+    const groundStationPosition = Cesium.Cartesian3.fromDegrees(
+      position.longitude,
+      position.latitude,
+      position.height
+    );
+
+    // Check if camera is already at ground station position
+    const currentCameraPosition = this.viewer.camera.positionWC;
+    const distanceToGroundStation = Cesium.Cartesian3.distance(currentCameraPosition, groundStationPosition);
+
+    // If camera is more than 1km from ground station, focus on it first
+    if (distanceToGroundStation > 1000) {
+      // Clear any tracking
+      this.viewer.trackedEntity = undefined;
+      this.viewer.selectedEntity = groundStation.entity;
+      groundStation.track();
+
+      // Enter zenith view after camera movement completes
+      setTimeout(() => {
+        this.enterZenithViewImmediate();
+      }, 1500);
+      return;
+    }
+
+    // Camera is already at ground station, enter zenith view immediately
+    this.enterZenithViewImmediate();
+  }
+
+  enterZenithViewImmediate() {
+    if (!this.groundStationAvailable) {
+      return;
+    }
+
+    const groundStation = this.#groundStations[0];
+    const position = groundStation.position;
+
+    // Convert lat/lon/height to Cartesian3 for camera position
+    const cameraPosition = Cesium.Cartesian3.fromDegrees(
+      position.longitude,
+      position.latitude,
+      position.height
+    );
+
+    // Clear any tracked entity
+    this.viewer.trackedEntity = undefined;
+
+    // Clean up any existing zenith view handler
+    if (this.zenithViewCleanup) {
+      this.zenithViewCleanup();
+    }
+
+    // Set camera to ground station position looking straight up (zenith)
+    this.viewer.camera.setView({
+      destination: cameraPosition,
+      orientation: {
+        heading: 0, // North
+        pitch: Cesium.Math.toRadians(90), // 90 degrees = straight up (zenith)
+        roll: 0,
+      },
+    });
+
+    // Lock camera position at ground station, only allow looking around
+    const controller = this.viewer.scene.screenSpaceCameraController;
+    const originalZoomEnabled = controller.enableZoom;
+    const originalTranslateEnabled = controller.enableTranslate;
+    const originalRotateEnabled = controller.enableRotate;
+
+    // Store original event type mappings before modifying
+    const originalLookEventTypes = controller.lookEventTypes;
+    const originalTiltEventTypes = controller.tiltEventTypes;
+
+    // Replace default double-click behavior with ground station selection
+    const screenSpaceEventHandler = this.viewer.screenSpaceEventHandler;
+    const originalLeftDoubleClick = screenSpaceEventHandler.getInputAction(Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
+
+    // Custom double-click handler for zenith view
+    const zenithDoubleClickHandler = (click) => {
+      // Select ground station entity when double-clicking
+      const groundStationEntity = groundStation.components.Groundstation;
+      if (groundStationEntity) {
+        this.viewer.selectedEntity = groundStationEntity;
+      }
+    };
+
+    screenSpaceEventHandler.setInputAction(zenithDoubleClickHandler, Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
+
+    controller.enableZoom = false;        // Disable default zoom (we use custom wheel handler)
+    controller.enableTranslate = false;   // Disable panning/moving position
+    controller.enableRotate = false;      // Disable orbiting which moves camera position
+    controller.enableTilt = true;         // Allow tilting camera up/down
+    controller.enableLook = true;         // Allow looking around from fixed position
+
+    // Remap left mouse drag to look instead of rotate (which moves camera position)
+    controller.lookEventTypes = [
+      Cesium.CameraEventType.LEFT_DRAG,
+      Cesium.CameraEventType.RIGHT_DRAG,
+    ];
+    controller.tiltEventTypes = [
+      Cesium.CameraEventType.MIDDLE_DRAG,
+      {
+        eventType: Cesium.CameraEventType.LEFT_DRAG,
+        modifier: Cesium.KeyboardEventModifier.SHIFT,
+      },
+    ];
+
+    // Store original FOV and apply zenith view FOV
+    const originalFov = this.viewer.camera.frustum.fov;
+
+    // FOV settings (in degrees)
+    const minFov = 30;   // Maximum zoom (narrowest field of view)
+    const maxFov = 150;  // Maximum wide view
+    let currentFov = 90; // Start with 90 degree FOV (medium view)
+
+    // Apply initial FOV
+    this.viewer.camera.frustum.fov = Cesium.Math.toRadians(currentFov);
+
+    // Create FOV readout display
+    const viewReadout = document.createElement('div');
+    viewReadout.id = 'zenithViewReadout';
+    viewReadout.style.cssText = `
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 14px;
+      z-index: 1000;
+      pointer-events: none;
+    `;
+    viewReadout.textContent = `FOV: ${currentFov.toFixed(0)}°`;
+    this.viewer.container.appendChild(viewReadout);
+
+    // Create azimuth scale markers on the horizon
+    const zenithEntities = [];
+    const horizonRadius = 50000; // 50 km from ground station
+    const tickLength = 5000; // 5 km tick marks
+
+    // Cardinal directions mapping
+    const cardinals = {
+      0: 'N',
+      90: 'E',
+      180: 'S',
+      270: 'W',
+    };
+
+    // Create markers every 30 degrees
+    for (let azimuth = 0; azimuth < 360; azimuth += 30) {
+      const azimuthRad = Cesium.Math.toRadians(azimuth);
+
+      // Calculate position at horizon for this azimuth
+      const dx = Math.sin(azimuthRad) * horizonRadius;
+      const dy = Math.cos(azimuthRad) * horizonRadius;
+
+      // Convert to lat/lon offset (approximate for small distances)
+      const latOffset = dy / 111000; // degrees latitude
+      const lonOffset = dx / (111000 * Math.cos(Cesium.Math.toRadians(position.latitude))); // degrees longitude
+
+      const markerLat = position.latitude + latOffset;
+      const markerLon = position.longitude + lonOffset;
+
+      // Create tick mark (short line extending outward)
+      const tickStart = Cesium.Cartesian3.fromDegrees(markerLon, markerLat, position.height);
+      const tickDx = Math.sin(azimuthRad) * tickLength;
+      const tickDy = Math.cos(azimuthRad) * tickLength;
+      const tickLatOffset = (dy + tickDy) / 111000;
+      const tickLonOffset = (dx + tickDx) / (111000 * Math.cos(Cesium.Math.toRadians(position.latitude)));
+      const tickEnd = Cesium.Cartesian3.fromDegrees(
+        position.longitude + tickLonOffset,
+        position.latitude + tickLatOffset,
+        position.height
+      );
+
+      const tickEntity = this.viewer.entities.add({
+        polyline: {
+          positions: [tickStart, tickEnd],
+          width: 2,
+          material: Cesium.Color.WHITE,
+          clampToGround: false,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY, // Always render on top
+        },
+      });
+      zenithEntities.push(tickEntity);
+
+      // Create label with degree marking
+      let labelText = `${azimuth}°`;
+      if (cardinals[azimuth]) {
+        labelText = `${cardinals[azimuth]} (${azimuth}°)`;
+      }
+
+      // Position label slightly beyond the tick mark
+      const labelDistance = horizonRadius + tickLength + 3000;
+      const labelDx = Math.sin(azimuthRad) * labelDistance;
+      const labelDy = Math.cos(azimuthRad) * labelDistance;
+      const labelLatOffset = labelDy / 111000;
+      const labelLonOffset = labelDx / (111000 * Math.cos(Cesium.Math.toRadians(position.latitude)));
+
+      const labelEntity = this.viewer.entities.add({
+        position: Cesium.Cartesian3.fromDegrees(
+          position.longitude + labelLonOffset,
+          position.latitude + labelLatOffset,
+          position.height
+        ),
+        label: {
+          text: labelText,
+          font: '14px sans-serif',
+          fillColor: Cesium.Color.WHITE,
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 2,
+          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+          pixelOffset: new Cesium.Cartesian2(0, 0),
+          horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+          verticalOrigin: Cesium.VerticalOrigin.CENTER,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY, // Always render on top
+        },
+      });
+      zenithEntities.push(labelEntity);
+    }
+
+    // Add custom mouse wheel handler for FOV zoom
+    const canvas = this.viewer.scene.canvas;
+    const wheelHandler = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      // Reversed: scroll down (deltaY > 0) = zoom in (decrease FOV)
+      //           scroll up (deltaY < 0) = zoom out (increase FOV)
+      const zoomFactor = event.deltaY > 0 ? 0.95 : 1.05;
+      currentFov = currentFov * zoomFactor;
+
+      // Clamp FOV between min and max
+      currentFov = Math.max(minFov, Math.min(maxFov, currentFov));
+
+      // Update camera FOV
+      this.viewer.camera.frustum.fov = Cesium.Math.toRadians(currentFov);
+
+      // Update readout
+      viewReadout.textContent = `FOV: ${currentFov.toFixed(0)}°`;
+
+      // Request render to update the view
+      this.viewer.scene.requestRender();
+    };
+
+    canvas.addEventListener('wheel', wheelHandler, { passive: false, capture: true });
+
+    // Add post-render event to keep horizon level (roll = 0)
+    const postRenderListener = this.viewer.scene.postRender.addEventListener(() => {
+      // Force camera roll to 0 to keep horizon level
+      if (this.viewer.camera.roll !== 0) {
+        const heading = this.viewer.camera.heading;
+        const pitch = this.viewer.camera.pitch;
+        this.viewer.camera.setView({
+          orientation: {
+            heading: heading,
+            pitch: pitch,
+            roll: 0,
+          },
+        });
+      }
+    });
+
+    // Cleanup function
+    this.zenithViewCleanup = () => {
+      canvas.removeEventListener('wheel', wheelHandler, { capture: true });
+      postRenderListener(); // Remove post-render listener
+      controller.enableZoom = originalZoomEnabled;
+      controller.enableTranslate = originalTranslateEnabled;
+      controller.enableRotate = originalRotateEnabled;
+      controller.lookEventTypes = originalLookEventTypes;
+      controller.tiltEventTypes = originalTiltEventTypes;
+      // Restore double-click behavior
+      if (originalLeftDoubleClick) {
+        screenSpaceEventHandler.setInputAction(originalLeftDoubleClick, Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
+      }
+      // Restore original FOV
+      this.viewer.camera.frustum.fov = originalFov;
+      // Remove view readout
+      if (viewReadout && viewReadout.parentNode) {
+        viewReadout.parentNode.removeChild(viewReadout);
+      }
+      // Remove all azimuth entities
+      zenithEntities.forEach((entity) => {
+        this.viewer.entities.remove(entity);
+      });
+      this.zenithViewCleanup = null;
+    };
+
+    // Also cleanup when tracked entity changes
+    const trackedEntityListener = this.viewer.trackedEntityChanged.addEventListener(() => {
+      if (this.zenithViewCleanup) {
+        this.zenithViewCleanup();
+      }
+      trackedEntityListener();
+    });
+  }
+
   createGroundstation(position, name) {
     const groundStation = new GroundStationEntity(this.viewer, this, position, name);
     groundStation.show();
@@ -420,8 +747,35 @@ export class SatelliteManager {
     if (position.height < 1) {
       position.height = 0;
     }
+
+    // Remove existing ground station if one exists (only support one station at a time)
+    if (this.#groundStations.length > 0) {
+      const existingStation = this.#groundStations[0];
+
+      // Use hide() method to properly remove components
+      existingStation.hide();
+
+      // Remove all entities associated with the ground station from viewer
+      Object.values(existingStation.components).forEach((component) => {
+        if (component instanceof Cesium.Entity && this.viewer.entities.contains(component)) {
+          this.viewer.entities.remove(component);
+        }
+      });
+    }
+
+    // Additional safety cleanup: remove any remaining ground station entities
+    const entitiesToRemove = [];
+    this.viewer.entities.values.forEach((entity) => {
+      if (entity.name && entity.name.includes("Groundstation")) {
+        entitiesToRemove.push(entity);
+      }
+    });
+    entitiesToRemove.forEach((entity) => {
+      this.viewer.entities.remove(entity);
+    });
+
     const groundStation = this.createGroundstation(position, name);
-    this.groundStations = [...this.#groundStations, groundStation];
+    this.groundStations = [groundStation]; // Replace with single station
   }
 
   get groundStations() {

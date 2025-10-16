@@ -41,16 +41,16 @@
       <div v-show="menu.gs" class="toolbarSwitches">
         <div class="toolbarTitle">Ground station</div>
         <label class="toolbarSwitch">
-          <input v-model="pickMode" type="checkbox" />
+          <input v-model="pickMode" type="checkbox" :disabled="isInZenithView" />
           <span class="slider"></span>
           Pick on globe
         </label>
         <label class="toolbarSwitch">
-          <input type="button" @click="cc.setGroundStationFromGeolocation()" />
+          <input type="button" @click="cc.setGroundStationFromGeolocation()" :disabled="isInZenithView" />
           Set from geolocation
         </label>
         <label class="toolbarSwitch">
-          <input type="button" @click="cc.sats.focusGroundStation()" />
+          <input type="button" @click="cc.sats.focusGroundStation()" :disabled="isInZenithView" />
           Focus
         </label>
         <div class="toolbarTitle">Overpass calculation</div>
@@ -65,8 +65,8 @@
           Swath
         </label>
         <label class="toolbarSwitch">
-          <input type="button" @click="clearAllGroundStations()">
-          Clear all stations
+          <input type="button" @click="toggleZenithView()">
+          {{ isInZenithView ? 'Normal view' : 'Zenith view' }}
         </label>
         <label class="toolbarSwitch">
           <input v-model="hideSunlightPasses" type="checkbox">
@@ -82,6 +82,10 @@
           <input v-model="useLocalTime" type="checkbox" :disabled="!canUseLocalTime">
           <span class="slider"></span>
           Use local time
+        </label>
+        <label class="toolbarSwitch">
+          <input type="button" @click="removeGroundStation()" :disabled="isInZenithView">
+          Remove ground station
         </label>
       </div>
       <div v-show="menu.map" class="toolbarSwitches">
@@ -225,6 +229,7 @@ export default {
         dbg: false,
       },
       showUI: true,
+      inZenithView: false,
     };
   },
   computed: {
@@ -251,6 +256,9 @@ export default {
     },
     canUseLocalTime() {
       return this.groundStations && this.groundStations.length > 0;
+    },
+    isInZenithView() {
+      return this.inZenithView;
     },
   },
   watch: {
@@ -446,7 +454,24 @@ export default {
         }, 10);
       }
     },
-    clearAllGroundStations() {
+    toggleZenithView() {
+      if (this.inZenithView) {
+        // Exit zenith view
+        this.cc.sats.exitZenithView();
+        this.inZenithView = false;
+      } else {
+        // Enter zenith view
+        this.cc.sats.zenithViewFromGroundStation();
+        this.inZenithView = true;
+      }
+    },
+    removeGroundStation() {
+      // Exit zenith view if active
+      if (this.inZenithView) {
+        this.cc.sats.exitZenithView();
+        this.inZenithView = false;
+      }
+
       // Check if we're currently tracking a ground station and unfocus first
       const currentTrackedEntity = this.cc.viewer.trackedEntity;
       const isTrackingGroundStation = currentTrackedEntity &&
@@ -467,7 +492,7 @@ export default {
         });
       }
 
-      // Properly remove all ground station entities from Cesium viewer
+      // Remove ground station entities from Cesium viewer
       this.cc.sats.groundStations.forEach((groundStation) => {
         // Hide components first
         groundStation.hide();
@@ -492,7 +517,7 @@ export default {
         this.cc.viewer.entities.remove(entity);
       });
 
-      // Clear all ground stations by setting empty array
+      // Remove ground station by setting empty array
       this.cc.sats.groundStations = [];
     },
     zoomInTimeline() {
