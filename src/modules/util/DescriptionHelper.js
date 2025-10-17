@@ -35,7 +35,7 @@ export class DescriptionHelper {
   }
 
   static renderSatelliteDescription(time, position, props) {
-    const { name, passes, orbit, overpassMode } = props;
+    const { name, passes, orbit, overpassMode, groundStationAvailable } = props;
     const { tle, julianDate } = orbit;
 
     // Name already has asterisk if epoch is in future (set in constructor)
@@ -122,7 +122,7 @@ export class DescriptionHelper {
             </tr>
           </tbody>
         </table>
-        ${this.renderPasses(passes, time, false, overpassMode, epochInFuture)}
+        ${this.renderPasses(passes, time, false, overpassMode, epochInFuture, orbit.orbitalPeriod, groundStationAvailable)}
         ${this.renderTLE(tle, julianDate)}
       </div>
     `;
@@ -205,7 +205,7 @@ export class DescriptionHelper {
     return description;
   }
 
-  static renderPasses(passes, time, isGroundStation, overpassMode, epochInFuture = false) {
+  static renderPasses(passes, time, isGroundStation, overpassMode, epochInFuture = false, orbitalPeriod = 0, groundStationAvailable = false) {
     const epochNote = epochInFuture ? ' (* Epoch in future)' : '';
     if (passes.length === 0) {
       if (isGroundStation) {
@@ -214,9 +214,26 @@ export class DescriptionHelper {
           <div class="ib-text">No passes available</div>
           `;
       }
+      // Check if ground station is not set
+      if (!groundStationAvailable) {
+        return `
+          <h3>Passes${epochNote}</h3>
+          <div class="ib-text">No ground station set</div>
+          `;
+      }
+      // Check if this is a high-altitude satellite (orbital period > 600 minutes)
+      // These satellites have continuous visibility, not traditional passes
+      if (orbitalPeriod > 600) {
+        return `
+          <h3>Passes${epochNote}</h3>
+          <div class="ib-text">Continuous visibility (no passes)</div>
+          `;
+      }
+      // Ground station is set but no passes found
+      // This can happen with low inclination satellites and high latitude ground stations
       return `
         <h3>Passes${epochNote}</h3>
-        <div class="ib-text">No ground station set</div>
+        <div class="ib-text">No passes found</div>
         `;
     }
 
@@ -385,7 +402,6 @@ export class DescriptionHelper {
           <span class="pass-conditions">Ground: ${groundConditionsHtml} | Sat: ${satelliteConditionsHtml}${transitionsDisplay}</span>
         </div>
       </div>
->>>>>>> cf44ef1 (Enhance satellite pass displays and add dynamic orbit track coloring)
     `;
     return html;
   }
