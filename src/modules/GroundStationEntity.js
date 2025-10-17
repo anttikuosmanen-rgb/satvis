@@ -1,4 +1,4 @@
-import { BillboardGraphics, HorizontalOrigin, NearFarScalar, VerticalOrigin } from "cesium";
+import { BillboardGraphics, HorizontalOrigin, NearFarScalar, VerticalOrigin } from "@cesium/engine";
 import dayjs from "dayjs";
 import icon from "../images/icons/dish.svg";
 import { CesiumComponentCollection } from "./util/CesiumComponentCollection";

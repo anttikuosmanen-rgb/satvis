@@ -4,7 +4,8 @@ import { viteStaticCopy } from "vite-plugin-static-copy";
 import { VitePWA } from "vite-plugin-pwa";
 import path from "path";
 
-const cesiumSource = "node_modules/cesium/Build/Cesium";
+const cesiumEngineSource = "node_modules/@cesium/engine";
+const cesiumWidgetsSource = "node_modules/@cesium/widgets";
 const cesiumBaseUrl = "cesium";
 
 export default defineConfig({
@@ -30,7 +31,7 @@ export default defineConfig({
           if (id.includes("@fortawesome")) {
             return "icons-vendor";
           }
-          if (id.includes("cesium")) {
+          if (id.includes("cesium") || id.includes("@cesium")) {
             return "cesium-vendor";
           }
           if (id.includes("node_modules")) {
@@ -49,10 +50,10 @@ export default defineConfig({
     viteStaticCopy({
       targets: [
         // Copy Cesium Assets, Widgets, and Workers to a static directory
-        { src: `${cesiumSource}/ThirdParty`, dest: cesiumBaseUrl },
-        { src: `${cesiumSource}/Workers`, dest: cesiumBaseUrl },
-        { src: `${cesiumSource}/Assets`, dest: cesiumBaseUrl },
-        { src: `${cesiumSource}/Widgets`, dest: cesiumBaseUrl },
+        { src: `${cesiumEngineSource}/Build/ThirdParty`, dest: cesiumBaseUrl },
+        { src: `${cesiumEngineSource}/Build/Workers`, dest: cesiumBaseUrl },
+        { src: `${cesiumEngineSource}/Source/Assets`, dest: cesiumBaseUrl },
+        { src: `${cesiumWidgetsSource}/Source`, dest: `${cesiumBaseUrl}/Widgets` },
         // Copy data files
         { src: ["data/*", "!data/custom"], dest: "data" },
         { src: ["data/custom/dist/*"], dest: "data" },

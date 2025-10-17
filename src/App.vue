@@ -6,7 +6,7 @@
 </template>
 
 <script>
-import "cesium/Build/Cesium/Widgets/widgets.css";
+import "@cesium/widgets/Source/widgets.css";
 import "./css/main.css";
 import Toast from "primevue/toast";
 import { useToast } from "primevue/usetoast";

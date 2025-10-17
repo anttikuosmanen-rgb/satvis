@@ -1,4 +1,4 @@
-import { Color, JulianDate } from "cesium";
+import { Color, JulianDate } from "@cesium/engine";
 
 export class CesiumTimelineHelper {
   static clearHighlightRanges(viewer) {

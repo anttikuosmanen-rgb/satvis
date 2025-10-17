@@ -20,16 +20,16 @@ import {
   TimeInterval,
   Transforms,
   UrlTemplateImageryProvider,
-  Viewer,
   WebMapServiceImageryProvider,
   defined,
-} from "cesium";
+} from "@cesium/engine";
+import { Viewer } from "@cesium/widgets";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 import * as Sentry from "@sentry/browser";
 import { icon } from "@fortawesome/fontawesome-svg-core";
 import { faBell, faInfo } from "@fortawesome/free-solid-svg-icons";
-import infoBoxCss from "cesium/Build/Cesium/Widgets/InfoBox/InfoBoxDescription.css?raw";
+import infoBoxCss from "@cesium/widgets/Source/InfoBox/InfoBoxDescription.css?raw";
 
 import { useCesiumStore } from "../stores/cesium";
 import infoBoxOverrideCss from "../css/infobox.css?raw";

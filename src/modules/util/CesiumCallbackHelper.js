@@ -1,4 +1,4 @@
-import { JulianDate } from "cesium";
+import { JulianDate } from "@cesium/engine";
 
 export class CesiumCallbackHelper {
   /**

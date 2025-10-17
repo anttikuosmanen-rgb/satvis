@@ -10,7 +10,7 @@ import {
   TimeIntervalCollection,
   Transforms,
   defined,
-} from "cesium";
+} from "@cesium/engine";
 
 import Orbit from "./Orbit";
 import "./util/CesiumSampledPositionRawValueAccess";

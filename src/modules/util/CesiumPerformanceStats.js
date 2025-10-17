@@ -1,4 +1,4 @@
-import { getTimestamp } from "cesium";
+import { getTimestamp } from "@cesium/engine";
 
 // A Cesium Performance Monitor that logs avarage and worst performance over a sample period
 export class CesiumPerformanceStats {

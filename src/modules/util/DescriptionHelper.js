@@ -1,4 +1,4 @@
-import { CallbackProperty, JulianDate } from "cesium";
+import { CallbackProperty, JulianDate } from "@cesium/engine";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import utc from "dayjs/plugin/utc";

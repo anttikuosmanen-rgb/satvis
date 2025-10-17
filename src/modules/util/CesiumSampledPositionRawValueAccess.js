@@ -1,4 +1,4 @@
-import { SampledPositionProperty, binarySearch, JulianDate } from "cesium";
+import { SampledPositionProperty, binarySearch, JulianDate } from "@cesium/engine";
 
 /**
  * Gets the original values stored in the sampled property for the provided timeframe.

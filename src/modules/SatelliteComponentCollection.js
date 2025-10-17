@@ -32,7 +32,7 @@ import {
   Transforms,
   VelocityOrientationProperty,
   defined,
-} from "cesium";
+} from "@cesium/engine";
 import CesiumSensorVolumes from "cesium-sensor-volumes";
 
 import { SatelliteProperties } from "./SatelliteProperties";

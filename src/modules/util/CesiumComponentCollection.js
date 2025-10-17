@@ -11,7 +11,7 @@ import {
   Transforms,
   VelocityOrientationProperty,
   defined,
-} from "cesium";
+} from "@cesium/engine";
 
 import { CesiumCallbackHelper } from "./CesiumCallbackHelper";
 

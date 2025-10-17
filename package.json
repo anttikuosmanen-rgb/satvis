@@ -28,7 +28,7 @@
     "@primevue/themes": "^4.4.1",
     "@sentry/browser": "^10.20.0",
     "cesium": "^1.134.1",
-    "cesium-sensor-volumes": "github:Flowm/cesium-sensor-volumes#1.134.0",
+    "cesium-sensor-volumes": "github:Flowm/cesium-sensor-volumes#1.134.1",
     "dayjs": "^1.11.18",
     "pinia": "^3.0.3",
     "primevue": "^4.4.1",
