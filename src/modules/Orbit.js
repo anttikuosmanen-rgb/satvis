@@ -70,6 +70,13 @@ export default class Orbit {
     minElevation = 5,
     maxPasses = 50,
   ) {
+    // Skip pass calculation for satellites with very long orbital periods
+    // (e.g., geostationary satellites at ~1436 minutes)
+    // These satellites stay continuously visible and don't have traditional "passes"
+    if (this.orbitalPeriod > 600) {
+      return [];
+    }
+
     // Keep original position for sun calculations (degrees)
     const originalGroundStation = { ...groundStationPosition };
 

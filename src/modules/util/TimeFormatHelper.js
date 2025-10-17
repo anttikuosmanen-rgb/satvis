@@ -132,14 +132,36 @@ export class TimeFormatHelper {
   }
 
   /**
-   * Format eclipse transition time
+   * Format eclipse transition time (time only, no date)
    * @param {Date|number} timestamp - The timestamp to format
    * @param {boolean} useLocalTime - Whether to use local time
    * @param {Object} groundStationPosition - Ground station position
-   * @returns {string} Formatted time string with timezone
+   * @returns {string} Formatted time string with timezone (HH:mm:ss format)
    */
   static formatTransitionTime(timestamp, useLocalTime = false, groundStationPosition = null) {
-    return this.formatTime(timestamp, useLocalTime, "HH:mm:ss", true, groundStationPosition);
+    if (useLocalTime && groundStationPosition) {
+      // Format in ground station's local time using Intl API (time only, no date)
+      const date = new Date(timestamp);
+      const timezone = this.getTimezoneFromCoordinates(groundStationPosition.latitude, groundStationPosition.longitude);
+
+      const options = {
+        timeZone: timezone,
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      };
+
+      const formatter = new Intl.DateTimeFormat('en-GB', options);
+      const formatted = formatter.format(date);
+
+      const tzOffset = this.getTimezoneOffset(timezone, date);
+      return `${formatted} ${tzOffset}`;
+    } else {
+      // UTC mode
+      const formatted = dayjs.utc(timestamp).format("HH:mm:ss");
+      return `${formatted} UTC`;
+    }
   }
 
   /**
