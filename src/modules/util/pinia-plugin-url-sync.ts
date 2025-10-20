@@ -1,32 +1,63 @@
 import { PiniaPluginContext } from "pinia";
+import type { Router } from "vue-router";
 
 export interface SyncConfigEntry {
-  name: String;           // Object name/path in pinia store
-  url?: String;           // Alternative name of url param, defaults to name
-  serialize?: Function;   // Convert state to url string
-  deserialize?: Function; // Convert url string to state
-  valid?: Function;       // Run validation function after deserialization to filter invalid values
-  default?: Any;          // Default value (removes this value from url)
+  name: string; // Object name/path in pinia store
+  url?: string; // Alternative name of url param, defaults to name
+  serialize?: (value: unknown) => string; // Convert state to url string
+  deserialize?: (value: string) => unknown; // Convert url string to state
+  valid?: (value: unknown) => boolean; // Run validation function after deserialization to filter invalid values
+  default?: unknown; // Default value (removes this value from url)
 }
-const defaultSerialize = (v) => String(v);
-const defaultDeserialize = (v) => String(v);
 
-function resolve(path, obj, separator = ".") {
+// Extend Pinia plugin options to include our custom urlsync config
+interface UrlSyncConfig {
+  enabled?: boolean;
+  config: SyncConfigEntry[];
+}
+
+// Extend DefineStoreOptions to include urlsync
+declare module "pinia" {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  export interface DefineStoreOptionsBase<S, Store> {
+    urlsync?: UrlSyncConfig;
+  }
+}
+
+// Extended store type with our custom properties
+interface ExtendedStore {
+  router: Router;
+  customConfig: Record<string, Record<string, unknown>>;
+  defaults: Record<string, unknown>;
+  $id: string;
+  [key: string]: unknown;
+}
+
+const defaultSerialize = (v: unknown) => String(v);
+const defaultDeserialize = (v: string) => String(v);
+
+function resolve(path: string | string[], obj: Record<string, unknown>, separator = "."): unknown {
   const properties = Array.isArray(path) ? path : path.split(separator);
-  return properties.reduce((prev, curr) => prev && prev[curr], obj);
+  return properties.reduce((prev: unknown, curr: string) => {
+    if (prev && typeof prev === "object" && curr in prev) {
+      return (prev as Record<string, unknown>)[curr];
+    }
+    return undefined;
+  }, obj);
 }
 
-function urlToState(store: Store, syncConfig: SyncConfigEntry[]): void {
+function urlToState(store: ExtendedStore, syncConfig: SyncConfigEntry[]): void {
   const { router, customConfig } = store;
   const route = router.currentRoute.value;
   store.defaults = {};
 
   // Override store default values with custom app config
-  if (customConfig[store.$id]) {
-    Object.entries(customConfig[store.$id]).forEach(([key, val]) => {
+  const storeConfig = customConfig[store.$id];
+  if (storeConfig) {
+    Object.entries(storeConfig).forEach(([key, val]) => {
       store[key] = val;
     });
-  };
+  }
 
   syncConfig.forEach((config: SyncConfigEntry) => {
     const param = config.url || config.name;
@@ -41,27 +72,28 @@ function urlToState(store: Store, syncConfig: SyncConfigEntry[]): void {
     }
     try {
       console.info("Parse url param", param, route.query[param]);
-      const value = deserialize(query[param]);
-      if ("valid" in config && !config.valid(value)) {
+      const queryValue = query[param];
+      if (typeof queryValue !== "string") {
+        throw new TypeError("Query param is not a string");
+      }
+      const value = deserialize(queryValue);
+      if ("valid" in config && config.valid && !config.valid(value)) {
         throw new TypeError("Validation failed");
       }
       // TODO: Resolve nested values
       store[config.name] = value;
     } catch (error) {
       console.error(`Invalid url param ${param} ${route.query[param]}: ${error}`);
-      query[param] = undefined;
+      delete query[param];
       router.replace({ query });
     }
   });
 }
 
-function stateToUrl(store: Store, syncConfig: SyncConfigEntry[]): void {
-  const { router } = store;
-  const route = router.currentRoute.value;
-
+function stateToUrl(store: ExtendedStore, syncConfig: SyncConfigEntry[]): void {
   const params = new URLSearchParams(location.search);
   syncConfig.forEach((config: SyncConfigEntry) => {
-    const value = resolve(config.name, store);
+    const value = resolve(config.name, store as Record<string, unknown>);
     const param = config.url || config.name;
     const serialize = config.serialize || defaultSerialize;
     console.info("State update", config.name, value);
@@ -81,14 +113,16 @@ function createUrlSync({ options, store }: PiniaPluginContext): void {
     return;
   }
 
+  const extendedStore = store as unknown as ExtendedStore;
+
   // Set state from url params on page load
-  store.router.isReady().then(() => {
-    urlToState(store, options.urlsync.config);
+  extendedStore.router.isReady().then(() => {
+    urlToState(extendedStore, options.urlsync!.config);
   });
 
   // Subscribe to store updates and sync them to url params
   store.$subscribe(() => {
-    stateToUrl(store, options.urlsync.config);
+    stateToUrl(extendedStore, options.urlsync!.config);
   });
 }
 

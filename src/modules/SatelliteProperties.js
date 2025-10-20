@@ -1,4 +1,16 @@
-import * as Cesium from "@cesium/engine";
+import {
+  Cartesian3,
+  ExtrapolationType,
+  JulianDate,
+  LagrangePolynomialApproximation,
+  Matrix3,
+  ReferenceFrame,
+  SampledPositionProperty,
+  TimeInterval,
+  TimeIntervalCollection,
+  Transforms,
+  defined,
+} from "@cesium/engine";
 
 import Orbit from "./Orbit";
 import "./util/CesiumSampledPositionRawValueAccess";
@@ -14,11 +26,12 @@ export class SatelliteProperties {
     this.orbit = new Orbit(this.name, tle);
     this.satnum = this.orbit.satnum;
     this.tags = tags;
+    this.overpassMode = "elevation";
 
     this.groundStations = [];
     this.passes = [];
     this.passInterval = undefined;
-    this.passIntervals = new Cesium.TimeIntervalCollection();
+    this.passIntervals = new TimeIntervalCollection();
   }
 
   hasTag(tag) {
@@ -34,7 +47,7 @@ export class SatelliteProperties {
   }
 
   getSampledPositionsForNextOrbit(start, reference = "inertial", loop = true) {
-    const end = Cesium.JulianDate.addSeconds(start, this.orbit.orbitalPeriod * 60, new Cesium.JulianDate());
+    const end = JulianDate.addSeconds(start, this.orbit.orbitalPeriod * 60, new JulianDate());
     const positions = this.sampledPosition[reference].getRawValues(start, end);
     if (loop) {
       // Readd the first position to the end of the array to close the loop
@@ -67,20 +80,20 @@ export class SatelliteProperties {
     // console.log("updateSampledPosition", this.name, this.orbit.orbitalPeriod, samplingInterval.toFixed(2));
 
     // Always keep half an orbit backwards and 1.5 full orbits forward in the sampled position
-    const request = new Cesium.TimeInterval({
-      start: Cesium.JulianDate.addSeconds(time, -orbitalPeriod / 2, new Cesium.JulianDate()),
-      stop: Cesium.JulianDate.addSeconds(time, orbitalPeriod * 1.5, new Cesium.JulianDate()),
+    const request = new TimeInterval({
+      start: JulianDate.addSeconds(time, -orbitalPeriod / 2, new JulianDate()),
+      stop: JulianDate.addSeconds(time, orbitalPeriod * 1.5, new JulianDate()),
     });
 
     // (Re)create sampled position if it does not exist or if it does not contain the current time
-    if (!this.sampledPosition || !Cesium.TimeInterval.contains(this.sampledPosition.interval, time)) {
+    if (!this.sampledPosition || !TimeInterval.contains(this.sampledPosition.interval, time)) {
       this.initSampledPosition(request.start);
     }
 
     // Determine which parts of the requested interval are missing
-    const intersect = Cesium.TimeInterval.intersect(this.sampledPosition.interval, request);
-    const missingSecondsEnd = Cesium.JulianDate.secondsDifference(request.stop, intersect.stop);
-    const missingSecondsStart = Cesium.JulianDate.secondsDifference(intersect.start, request.start);
+    const intersect = TimeInterval.intersect(this.sampledPosition.interval, request);
+    const missingSecondsEnd = JulianDate.secondsDifference(request.stop, intersect.stop);
+    const missingSecondsStart = JulianDate.secondsDifference(intersect.start, request.start);
     // console.log(`updateSampledPosition ${this.name}`,
     //   `Missing ${missingSecondsStart.toFixed(2)}s ${missingSecondsEnd.toFixed(2)}s`,
     //   `Request ${Cesium.TimeInterval.toIso8601(request, 0)}`,
@@ -89,26 +102,26 @@ export class SatelliteProperties {
     // );
 
     if (missingSecondsStart > 0) {
-      const samplingStart = Cesium.JulianDate.addSeconds(intersect.start, -missingSecondsStart, new Cesium.JulianDate());
+      const samplingStart = JulianDate.addSeconds(intersect.start, -missingSecondsStart, new JulianDate());
       const samplingStop = this.sampledPosition.interval.start;
       this.addSamples(samplingStart, samplingStop, samplingInterval);
     }
     if (missingSecondsEnd > 0) {
       const samplingStart = this.sampledPosition.interval.stop;
-      const samplingStop = Cesium.JulianDate.addSeconds(intersect.stop, missingSecondsEnd, new Cesium.JulianDate());
+      const samplingStop = JulianDate.addSeconds(intersect.stop, missingSecondsEnd, new JulianDate());
       this.addSamples(samplingStart, samplingStop, samplingInterval);
     }
 
     // Remove no longer needed samples
-    const removeBefore = new Cesium.TimeInterval({
-      start: Cesium.JulianDate.fromIso8601("1957"),
+    const removeBefore = new TimeInterval({
+      start: JulianDate.fromIso8601("1957"),
       stop: request.start,
       isStartIncluded: false,
       isStopIncluded: false,
     });
-    const removeAfter = new Cesium.TimeInterval({
+    const removeAfter = new TimeInterval({
       start: request.stop,
-      stop: Cesium.JulianDate.fromIso8601("2100"),
+      stop: JulianDate.fromIso8601("2100"),
       isStartIncluded: false,
       isStopIncluded: false,
     });
@@ -122,25 +135,25 @@ export class SatelliteProperties {
 
   initSampledPosition(currentTime) {
     this.sampledPosition = {};
-    this.sampledPosition.interval = new Cesium.TimeInterval({
+    this.sampledPosition.interval = new TimeInterval({
       start: currentTime,
       stop: currentTime,
       isStartIncluded: false,
       isStopIncluded: false,
     });
-    this.sampledPosition.fixed = new Cesium.SampledPositionProperty();
-    this.sampledPosition.fixed.backwardExtrapolationType = Cesium.ExtrapolationType.HOLD;
-    this.sampledPosition.fixed.forwardExtrapolationType = Cesium.ExtrapolationType.HOLD;
+    this.sampledPosition.fixed = new SampledPositionProperty();
+    this.sampledPosition.fixed.backwardExtrapolationType = ExtrapolationType.HOLD;
+    this.sampledPosition.fixed.forwardExtrapolationType = ExtrapolationType.HOLD;
     this.sampledPosition.fixed.setInterpolationOptions({
       interpolationDegree: 5,
-      interpolationAlgorithm: Cesium.LagrangePolynomialApproximation,
+      interpolationAlgorithm: LagrangePolynomialApproximation,
     });
-    this.sampledPosition.inertial = new Cesium.SampledPositionProperty(Cesium.ReferenceFrame.INERTIAL);
-    this.sampledPosition.inertial.backwardExtrapolationType = Cesium.ExtrapolationType.HOLD;
-    this.sampledPosition.inertial.forwardExtrapolationType = Cesium.ExtrapolationType.HOLD;
+    this.sampledPosition.inertial = new SampledPositionProperty(ReferenceFrame.INERTIAL);
+    this.sampledPosition.inertial.backwardExtrapolationType = ExtrapolationType.HOLD;
+    this.sampledPosition.inertial.forwardExtrapolationType = ExtrapolationType.HOLD;
     this.sampledPosition.inertial.setInterpolationOptions({
       interpolationDegree: 5,
-      interpolationAlgorithm: Cesium.LagrangePolynomialApproximation,
+      interpolationAlgorithm: LagrangePolynomialApproximation,
     });
     this.sampledPosition.valid = true;
   }
@@ -149,7 +162,7 @@ export class SatelliteProperties {
     const times = [];
     const positionsFixed = [];
     const positionsInertial = [];
-    for (let time = start; Cesium.JulianDate.compare(stop, time) >= 0; time = Cesium.JulianDate.addSeconds(time, samplingInterval, new Cesium.JulianDate())) {
+    for (let time = start; JulianDate.compare(stop, time) >= 0; time = JulianDate.addSeconds(time, samplingInterval, new JulianDate())) {
       const { positionFixed, positionInertial } = this.computePosition(time);
       times.push(time);
       positionsFixed.push(positionFixed);
@@ -161,28 +174,28 @@ export class SatelliteProperties {
   }
 
   computePositionInertialTEME(time) {
-    const eci = this.orbit.positionECI(Cesium.JulianDate.toDate(time));
+    const eci = this.orbit.positionECI(JulianDate.toDate(time));
     if (this.orbit.error) {
       this.sampledPosition.valid = false;
-      return Cesium.Cartesian3.ZERO;
+      return Cartesian3.ZERO;
     }
-    return new Cesium.Cartesian3(eci.x * 1000, eci.y * 1000, eci.z * 1000);
+    return new Cartesian3(eci.x * 1000, eci.y * 1000, eci.z * 1000);
   }
 
   computePosition(timestamp) {
     const positionInertialTEME = this.computePositionInertialTEME(timestamp);
 
-    const temeToFixed = Cesium.Transforms.computeTemeToPseudoFixedMatrix(timestamp);
-    if (!Cesium.defined(temeToFixed)) {
+    const temeToFixed = Transforms.computeTemeToPseudoFixedMatrix(timestamp);
+    if (!defined(temeToFixed)) {
       console.error("Reference frame transformation data failed to load");
     }
-    const positionFixed = Cesium.Matrix3.multiplyByVector(temeToFixed, positionInertialTEME, new Cesium.Cartesian3());
+    const positionFixed = Matrix3.multiplyByVector(temeToFixed, positionInertialTEME, new Cartesian3());
 
-    const fixedToIcrf = Cesium.Transforms.computeFixedToIcrfMatrix(timestamp);
-    if (!Cesium.defined(fixedToIcrf)) {
+    const fixedToIcrf = Transforms.computeFixedToIcrfMatrix(timestamp);
+    if (!defined(fixedToIcrf)) {
       console.error("Reference frame transformation data failed to load");
     }
-    const positionInertialICRF = Cesium.Matrix3.multiplyByVector(fixedToIcrf, positionFixed, new Cesium.Cartesian3());
+    const positionInertialICRF = Matrix3.multiplyByVector(fixedToIcrf, positionFixed, new Cartesian3());
 
     // Show computed sampled position
     // window.cc.viewer.entities.add({
@@ -199,13 +212,13 @@ export class SatelliteProperties {
     return { positionFixed, positionInertial: positionInertialICRF };
   }
 
-  groundTrack(julianDate, samplesFwd = 2, samplesBwd = 0, interval = 600) {
+  groundTrack(julianDate, samplesFwd = 1, samplesBwd = 0, interval = 300) {
     const groundTrack = [];
 
     const startTime = -samplesBwd * interval;
     const stopTime = samplesFwd * interval;
     for (let time = startTime; time <= stopTime; time += interval) {
-      const timestamp = Cesium.JulianDate.addSeconds(julianDate, time, new Cesium.JulianDate());
+      const timestamp = JulianDate.addSeconds(julianDate, time, new JulianDate());
       groundTrack.push(this.position(timestamp));
     }
     return groundTrack;
@@ -220,23 +233,23 @@ export class SatelliteProperties {
       return false;
     }
     // Check if still inside of current pass interval
-    if (typeof this.passInterval !== "undefined" &&
-        Cesium.TimeInterval.contains(new Cesium.TimeInterval({ start: this.passInterval.start, stop: this.passInterval.stop }), time)) {
+    if (typeof this.passInterval !== "undefined" && TimeInterval.contains(new TimeInterval({ start: this.passInterval.start, stop: this.passInterval.stop }), time)) {
       return false;
     }
     this.passInterval = {
-      start: Cesium.JulianDate.addDays(time, -1, Cesium.JulianDate.clone(time)),
-      stop: Cesium.JulianDate.addDays(time, 1, Cesium.JulianDate.clone(time)),
-      stopPrediction: Cesium.JulianDate.addDays(time, 4, Cesium.JulianDate.clone(time)),
+      start: JulianDate.addDays(time, -1, JulianDate.clone(time)),
+      stop: JulianDate.addDays(time, 1, JulianDate.clone(time)),
+      stopPrediction: JulianDate.addDays(time, 4, JulianDate.clone(time)),
     };
 
     let allPasses = [];
     this.groundStations.forEach((groundStation) => {
-      const passes = this.orbit.computePassesElevation(
-        groundStation.position,
-        Cesium.JulianDate.toDate(this.passInterval.start),
-        Cesium.JulianDate.toDate(this.passInterval.stopPrediction),
-      );
+      let passes;
+      if (this.overpassMode === "swath") {
+        passes = this.orbit.computePassesSwath(groundStation.position, this.swath, JulianDate.toDate(this.passInterval.start), JulianDate.toDate(this.passInterval.stopPrediction));
+      } else {
+        passes = this.orbit.computePassesElevation(groundStation.position, JulianDate.toDate(this.passInterval.start), JulianDate.toDate(this.passInterval.stopPrediction));
+      }
       passes.forEach((pass) => {
         pass.groundStationName = groundStation.name;
       });
@@ -254,19 +267,19 @@ export class SatelliteProperties {
   clearPasses() {
     this.passInterval = undefined;
     this.passes = [];
-    this.passIntervals = new Cesium.TimeIntervalCollection();
+    this.passIntervals = new TimeIntervalCollection();
   }
 
   computePassIntervals() {
     const passIntervalArray = this.passes.map((pass) => {
-      const startJulian = Cesium.JulianDate.fromDate(new Date(pass.start));
-      const endJulian = Cesium.JulianDate.fromDate(new Date(pass.end));
-      return new Cesium.TimeInterval({
+      const startJulian = JulianDate.fromDate(new Date(pass.start));
+      const endJulian = JulianDate.fromDate(new Date(pass.end));
+      return new TimeInterval({
         start: startJulian,
         stop: endJulian,
       });
     });
-    this.passIntervals = new Cesium.TimeIntervalCollection(passIntervalArray);
+    this.passIntervals = new TimeIntervalCollection(passIntervalArray);
   }
 
   get swath() {

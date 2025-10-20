@@ -1,12 +1,11 @@
-import * as Cesium from "@cesium/engine";
+import { Color, JulianDate } from "@cesium/engine";
 
 export class CesiumTimelineHelper {
   static clearHighlightRanges(viewer) {
-    // eslint-disable-next-line
     if (!viewer.timeline || viewer.timeline._highlightRanges.length === 0) {
       return;
     }
-    // eslint-disable-next-line
+
     viewer.timeline._highlightRanges = [];
     viewer.timeline.updateFromClock();
     viewer.timeline.zoomTo(viewer.clock.startTime, viewer.clock.stopTime);
@@ -17,9 +16,9 @@ export class CesiumTimelineHelper {
       return;
     }
     ranges.forEach((range) => {
-      const startJulian = Cesium.JulianDate.fromDate(new Date(range.start));
-      const endJulian = Cesium.JulianDate.fromDate(new Date(range.end));
-      const highlightRange = viewer.timeline.addHighlightRange(Cesium.Color.BLUE, 100, 0);
+      const startJulian = JulianDate.fromDate(new Date(range.start));
+      const endJulian = JulianDate.fromDate(new Date(range.end));
+      const highlightRange = viewer.timeline.addHighlightRange(Color.BLUE, 100, 0);
       highlightRange.setRange(startJulian, endJulian);
       viewer.timeline.updateFromClock();
       viewer.timeline.zoomTo(viewer.clock.startTime, viewer.clock.stopTime);

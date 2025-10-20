@@ -1,4 +1,4 @@
-import * as Cesium from "@cesium/engine";
+import { CallbackProperty, JulianDate } from "@cesium/engine";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import utc from "dayjs/plugin/utc";
@@ -15,8 +15,8 @@ export class DescriptionHelper {
    */
   static cachedCallbackProperty(callback, updateTreshold = 1, usageTreshold = 1000) {
     let cache;
-    return new Cesium.CallbackProperty((time) => {
-      if (cache && Cesium.JulianDate.equalsEpsilon(time, cache.time, updateTreshold) && cache.usage < usageTreshold) {
+    return new CallbackProperty((time) => {
+      if (cache && JulianDate.equalsEpsilon(time, cache.time, updateTreshold) && cache.usage < usageTreshold) {
         // console.log("Cached callback", time, cache.usage);
         cache.usage += 1;
         return cache.content;
@@ -32,7 +32,7 @@ export class DescriptionHelper {
   }
 
   static renderSatelliteDescription(time, position, props) {
-    const { name, passes, orbit } = props;
+    const { name, passes, orbit, overpassMode } = props;
     const { tle, julianDate } = orbit;
     const description = `
       <div class="ib">
@@ -57,14 +57,14 @@ export class DescriptionHelper {
             </tr>
           </tbody>
         </table>
-        ${this.renderPasses(passes, time, false)}
+        ${this.renderPasses(passes, time, false, overpassMode)}
         ${this.renderTLE(tle, julianDate)}
       </div>
     `;
     return description;
   }
 
-  static renderGroundstationDescription(time, name, position, passes) {
+  static renderGroundstationDescription(time, name, position, passes, overpassMode = null) {
     const description = `
       <div class="ib">
         <h3>Position</h3>
@@ -84,13 +84,13 @@ export class DescriptionHelper {
             </tr>
           </tbody>
         </table>
-        ${this.renderPasses(passes, time, true)}
+        ${this.renderPasses(passes, time, true, overpassMode)}
       </div>
     `;
     return description;
   }
 
-  static renderPasses(passes, time, isGroundStation) {
+  static renderPasses(passes, time, isGroundStation, overpassMode) {
     if (passes.length === 0) {
       if (isGroundStation) {
         return `
@@ -114,7 +114,7 @@ export class DescriptionHelper {
     const passNameField = isGroundStation ? "name" : "groundStationName";
     const htmlName = passNameField ? "<th>Name</th>\n" : "";
     const html = `
-      <h3>Passes</h3>
+      <h3>Passes (${overpassMode.charAt(0).toUpperCase() + overpassMode.slice(1)})</h3>
       <table class="ibt">
         <thead>
           <tr>
@@ -122,19 +122,19 @@ export class DescriptionHelper {
             <th>Countdown</th>
             <th>Start</th>
             <th>End</th>
-            <th>El</th>
-            <th>Az</th>
+            <th>${overpassMode === "elevation" ? "El" : "Dist"}</th>
+            <th>${overpassMode === "elevation" ? "Az" : "Swath"}</th>
           </tr>
         </thead>
         <tbody>
-          ${upcomingPasses.map((pass) => this.renderPass(start, pass, passNameField)).join("")}
+          ${upcomingPasses.map((pass) => this.renderPass(start, pass, passNameField, overpassMode)).join("")}
         </tbody>
       </table>
     `;
     return html;
   }
 
-  static renderPass(time, pass, passNameField = "name") {
+  static renderPass(time, pass, passNameField = "name", overpassMode = "elevation") {
     function pad2(num) {
       return String(num).padStart(2, "0");
     }
@@ -145,14 +145,26 @@ export class DescriptionHelper {
       countdown = `${pad2(dayjs(pass.start).diff(time, "days"))}:${pad2(dayjs(pass.start).diff(time, "hours") % 24)}:${pad2(dayjs(pass.start).diff(time, "minutes") % 60)}:${pad2(dayjs(pass.start).diff(time, "seconds") % 60)}`;
     }
     const htmlName = passNameField ? `<td>${pass[passNameField]}</td>\n` : "";
+
+    // Handle different pass types based on overpass mode
+    let elevationCell, azimuthCell;
+    if (overpassMode === "swath") {
+      elevationCell = `${pass.minDistance.toFixed(1)}km`;
+      azimuthCell = `${pass.swathWidth.toFixed(0)}km`;
+    } else {
+      // Default to elevation mode
+      elevationCell = `${pass.maxElevation.toFixed(0)}&deg`;
+      azimuthCell = `${pass.azimuthApex.toFixed(2)}&deg`;
+    }
+
     const html = `
       <tr>
         ${htmlName}
         <td>${countdown}</td>
         <td><a onclick='parent.postMessage(${JSON.stringify(pass)}, "*")'>${dayjs.utc(pass.start).format("DD.MM HH:mm:ss")}</td>
         <td>${dayjs.utc(pass.end).format("HH:mm:ss")}</td>
-        <td class="ibt-right">${pass.maxElevation.toFixed(0)}&deg</td>
-        <td class="ibt-right">${pass.azimuthApex.toFixed(2)}&deg</td>
+        <td class="ibt-right">${elevationCell}</td>
+        <td class="ibt-right">${azimuthCell}</td>
       </tr>
     `;
     return html;
@@ -161,7 +173,7 @@ export class DescriptionHelper {
   static renderTLE(tle, julianDate) {
     const julianDayNumber = Math.floor(julianDate);
     const secondsOfDay = (julianDate - julianDayNumber) * 60 * 60 * 24;
-    const tleDate = new Cesium.JulianDate(julianDayNumber, secondsOfDay);
+    const tleDate = new JulianDate(julianDayNumber, secondsOfDay);
     const formattedDate = dayjs.utc(tleDate).format("YYYY-MM-DD HH:mm:ss");
     const html = `
       <h3>TLE (Epoch ${formattedDate})</h3>

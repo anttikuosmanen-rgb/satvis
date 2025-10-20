@@ -1,9 +1,8 @@
-import * as Cesium from "@cesium/engine";
+import { BillboardGraphics, HorizontalOrigin, NearFarScalar, VerticalOrigin } from "@cesium/engine";
 import dayjs from "dayjs";
+import icon from "../images/icons/dish.svg";
 import { CesiumComponentCollection } from "./util/CesiumComponentCollection";
 import { DescriptionHelper } from "./util/DescriptionHelper";
-
-import icon from "../images/icons/dish.svg";
 
 export class GroundStationEntity extends CesiumComponentCollection {
   constructor(viewer, sats, position, givenName = "") {
@@ -21,11 +20,11 @@ export class GroundStationEntity extends CesiumComponentCollection {
   }
 
   createGroundStation() {
-    const billboard = new Cesium.BillboardGraphics({
+    const billboard = new BillboardGraphics({
       image: icon,
-      horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
-      verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-      scaleByDistance: new Cesium.NearFarScalar(1e2, 0.2, 4e7, 0.1),
+      horizontalOrigin: HorizontalOrigin.CENTER,
+      verticalOrigin: VerticalOrigin.BOTTOM,
+      scaleByDistance: new NearFarScalar(1e2, 0.2, 4e7, 0.1),
     });
     this.createCesiumEntity("Groundstation", "billboard", billboard, this.name, this.description, this.position.cartesian, false);
   }
@@ -33,7 +32,7 @@ export class GroundStationEntity extends CesiumComponentCollection {
   createDescription() {
     this.description = DescriptionHelper.cachedCallbackProperty((time) => {
       const passes = this.passes(time);
-      const content = DescriptionHelper.renderGroundstationDescription(time, this.name, this.position, passes);
+      const content = DescriptionHelper.renderGroundstationDescription(time, this.name, this.position, passes, this.sats.overpassMode);
       return content;
     });
   }

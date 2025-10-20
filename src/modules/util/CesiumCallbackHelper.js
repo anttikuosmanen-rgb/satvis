@@ -1,4 +1,4 @@
-import * as Cesium from "cesium";
+import { JulianDate } from "@cesium/engine";
 
 export class CesiumCallbackHelper {
   /**
@@ -33,7 +33,7 @@ export class CesiumCallbackHelper {
     let lastUpdated = viewer.clock.currentTime;
     return event.addEventListener(() => {
       const time = viewer.clock.currentTime;
-      const delta = Math.abs(Cesium.JulianDate.secondsDifference(time, lastUpdated));
+      const delta = Math.abs(JulianDate.secondsDifference(time, lastUpdated));
       if (delta < refreshRate) {
         return;
       }

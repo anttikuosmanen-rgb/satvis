@@ -1,5 +1,4 @@
-import { SampledPositionProperty, binarySearch, JulianDate } from "cesium";
-/* eslint-disable func-names, no-underscore-dangle, no-bitwise */
+import { SampledPositionProperty, binarySearch, JulianDate } from "@cesium/engine";
 
 /**
  * Gets the original values stored in the sampled property for the provided timeframe.

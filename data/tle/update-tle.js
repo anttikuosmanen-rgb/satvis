@@ -1,8 +1,13 @@
 #!/usr/bin/env node
 
-const https = require("https");
-const fs = require("fs");
-const process = require("process");
+import * as https from "https";
+import * as fs from "fs";
+import * as process from "process";
+import { fileURLToPath } from "url";
+import { dirname } from "path";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // Change dir to the location of this script
 process.chdir(__dirname);

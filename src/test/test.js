@@ -11,7 +11,7 @@ console.log("PositionECI", positionECI);
 console.log("PositionECF", positionECF);
 
 const gs = {
-  latitude: 48.1770,
+  latitude: 48.177,
   longitude: 11.7476,
   height: 0,
 };
