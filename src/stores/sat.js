@@ -13,6 +13,7 @@ export const useSatStore = defineStore("sat", {
     hideSunlightPasses: true,
     showOnlyLitPasses: true,
     useLocalTime: false,
+    enableSwathPasses: false,
   }),
   urlsync: {
     enabled: true,

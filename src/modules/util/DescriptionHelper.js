@@ -2,8 +2,8 @@ import { CallbackProperty, JulianDate } from "@cesium/engine";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import utc from "dayjs/plugin/utc";
-import { GroundStationConditions } from "./GroundStationConditions.js";
 import { useSatStore } from "../../stores/sat";
+import { GroundStationConditions } from "./GroundStationConditions";
 import { TimeFormatHelper } from "./TimeFormatHelper";
 
 dayjs.extend(relativeTime);
@@ -206,7 +206,7 @@ export class DescriptionHelper {
   }
 
   static renderPasses(passes, time, isGroundStation, overpassMode, epochInFuture = false, orbitalPeriod = 0, groundStationAvailable = false) {
-    const epochNote = epochInFuture ? ' (* Epoch in future)' : '';
+    const epochNote = epochInFuture ? " (* Epoch in future)" : "";
     if (passes.length === 0) {
       if (isGroundStation) {
         return `
@@ -251,9 +251,11 @@ export class DescriptionHelper {
     // Apply sunlight filtering if enabled
     const satStore = useSatStore();
     if (satStore.hideSunlightPasses) {
-      filteredPasses = filteredPasses.filter((pass) =>
-        // Show pass if either start or end is in darkness
-        pass.groundStationDarkAtStart || pass.groundStationDarkAtEnd);
+      filteredPasses = filteredPasses.filter(
+        (pass) =>
+          // Show pass if either start or end is in darkness
+          pass.groundStationDarkAtStart || pass.groundStationDarkAtEnd,
+      );
     }
 
     // Check if any passes remain after filtering
@@ -274,28 +276,11 @@ export class DescriptionHelper {
     const upcomingPasses = filteredPasses.slice(upcomingPassIdx);
 
     const passNameField = isGroundStation ? "name" : null;
-    const htmlName = passNameField ? "<th>Name</th>\n" : "";
     const html = `
       <h3>Passes (${overpassMode.charAt(0).toUpperCase() + overpassMode.slice(1)})${epochNote}</h3>
-      <table class="ibt">
-        <thead>
-          <tr>
-            ${htmlName}
-            <th>Countdown</th>
-            <th>Start</th>
-            <th>End</th>
-            <th>Duration</th>
-            <th>${overpassMode === "elevation" ? "El" : "Dist"}</th>
-            <th>${overpassMode === "elevation" ? "Az" : "Swath"}</th>
-            <th>Ground</th>
-            <th>Satellite</th>
-            <th>Transitions</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${upcomingPasses.map((pass) => this.renderPass(start, pass, passNameField, overpassMode, epochInFuture)).join("")}
-        </tbody>
-      </table>
+      <div class="passes-list">
+        ${upcomingPasses.map((pass) => this.renderPassCard(start, pass, passNameField)).join("")}
+      </div>
     `;
     return html;
   }
@@ -305,9 +290,7 @@ export class DescriptionHelper {
     const useLocalTime = satStore.useLocalTime;
 
     // Get first ground station position for timezone
-    const groundStationPosition = satStore.groundStations.length > 0
-      ? { latitude: satStore.groundStations[0].lat, longitude: satStore.groundStations[0].lon }
-      : null;
+    const groundStationPosition = satStore.groundStations.length > 0 ? { latitude: satStore.groundStations[0].lat, longitude: satStore.groundStations[0].lon } : null;
 
     function pad2(num) {
       return String(num).padStart(2, "0");
@@ -356,12 +339,14 @@ export class DescriptionHelper {
         const transitionCount = pass.eclipseTransitions.length;
         transitionText = ` (${transitionCount} transition${transitionCount > 1 ? "s" : ""})`;
 
-        const transitionTimes = pass.eclipseTransitions.map((transition) => {
-          const time = TimeFormatHelper.formatTransitionTime(transition.time, useLocalTime, groundStationPosition);
-          const direction = transition.toShadow ? "→🌑" : "→☀️";
-          const description = transition.toShadow ? "enters eclipse" : "exits eclipse";
-          return `${time} ${direction} (${description})`;
-        }).join(", ");
+        const transitionTimes = pass.eclipseTransitions
+          .map((transition) => {
+            const time = TimeFormatHelper.formatTransitionTime(transition.time, useLocalTime, groundStationPosition);
+            const direction = transition.toShadow ? "→🌑" : "→☀️";
+            const description = transition.toShadow ? "enters eclipse" : "exits eclipse";
+            return `${time} ${direction} (${description})`;
+          })
+          .join(", ");
 
         transitionDetails = ` - Transitions: ${transitionTimes}`;
       }
@@ -378,19 +363,31 @@ export class DescriptionHelper {
     // Generate eclipse transition times for display
     let transitionsDisplay = "";
     if (pass.eclipseTransitions && pass.eclipseTransitions.length > 0) {
-      const transitionList = pass.eclipseTransitions.map((transition) => {
-        const time = TimeFormatHelper.formatTransitionTime(transition.time, useLocalTime, groundStationPosition);
-        const icon = transition.toShadow ? "🌑" : "☀️";
-        const desc = transition.toShadow ? "eclipse" : "sunlit";
-        return `${time} ${icon} ${desc}`;
-      }).join(", ");
+      const transitionList = pass.eclipseTransitions
+        .map((transition) => {
+          const time = TimeFormatHelper.formatTransitionTime(transition.time, useLocalTime, groundStationPosition);
+          const icon = transition.toShadow ? "🌑" : "☀️";
+          const desc = transition.toShadow ? "eclipse" : "sunlit";
+          return `${time} ${icon} ${desc}`;
+        })
+        .join(", ");
       transitionsDisplay = ` | ${transitionList}`;
     }
 
-    const baseName = passNameField ? pass[passNameField] : "";
-    const displayName = baseName && pass.epochInFuture ? `${baseName} *` : baseName;
-    const passName = displayName ? `${displayName} - ` : "";
+    // passNameField contains the satellite name which may already have an asterisk
+    const passName = passNameField && pass[passNameField] ? `${pass[passNameField]} - ` : "";
     const formattedPassStart = TimeFormatHelper.formatPassTime(pass.start, useLocalTime, groundStationPosition);
+
+    // Determine display text based on pass type (swath vs elevation)
+    let passDetailsText;
+    if (pass.swathWidth !== undefined) {
+      // Swath mode - show minimum distance and swath width
+      passDetailsText = `Min dist ${pass.minDistance.toFixed(1)}km | Swath ${pass.swathWidth.toFixed(0)}km | ${formatDuration(pass.duration)}`;
+    } else {
+      // Elevation mode - show max elevation and azimuth
+      passDetailsText = `Max ${pass.maxElevation.toFixed(0)}° ${pass.azimuthApex.toFixed(0)}° | ${formatDuration(pass.duration)}`;
+    }
+
     const html = `
       <div class="pass-card" onclick='parent.postMessage(${JSON.stringify(pass)}, "*")'>
         <div class="pass-line-1">
@@ -398,7 +395,7 @@ export class DescriptionHelper {
           <span class="pass-countdown">${countdown}</span>
         </div>
         <div class="pass-line-2">
-          <span>Max ${pass.maxElevation.toFixed(0)}° ${pass.azimuthApex.toFixed(0)}° | ${formatDuration(pass.duration)}</span>
+          <span>${passDetailsText}</span>
           <span class="pass-conditions">Ground: ${groundConditionsHtml} | Sat: ${satelliteConditionsHtml}${transitionsDisplay}</span>
         </div>
       </div>
@@ -406,14 +403,12 @@ export class DescriptionHelper {
     return html;
   }
 
-  static renderPass(time, pass, passNameField = "name", overpassMode = "elevation", epochInFuture = false) {
+  static renderPass(time, pass, passNameField = "name", overpassMode = "elevation") {
     const satStore = useSatStore();
     const useLocalTime = satStore.useLocalTime;
 
     // Get first ground station position for timezone
-    const groundStationPosition = satStore.groundStations.length > 0
-      ? { latitude: satStore.groundStations[0].lat, longitude: satStore.groundStations[0].lon }
-      : null;
+    const groundStationPosition = satStore.groundStations.length > 0 ? { latitude: satStore.groundStations[0].lat, longitude: satStore.groundStations[0].lon } : null;
 
     function pad2(num) {
       return String(num).padStart(2, "0");
@@ -465,12 +460,14 @@ export class DescriptionHelper {
         transitionText = ` (${transitionCount} transition${transitionCount > 1 ? "s" : ""})`;
 
         // Create detailed transition time information
-        const transitionTimes = pass.eclipseTransitions.map((transition) => {
-          const time = TimeFormatHelper.formatTransitionTime(transition.time, useLocalTime, groundStationPosition);
-          const direction = transition.toShadow ? "→🌑" : "→☀️";
-          const description = transition.toShadow ? "enters eclipse" : "exits eclipse";
-          return `${time} ${direction} (${description})`;
-        }).join(", ");
+        const transitionTimes = pass.eclipseTransitions
+          .map((transition) => {
+            const time = TimeFormatHelper.formatTransitionTime(transition.time, useLocalTime, groundStationPosition);
+            const direction = transition.toShadow ? "→🌑" : "→☀️";
+            const description = transition.toShadow ? "enters eclipse" : "exits eclipse";
+            return `${time} ${direction} (${description})`;
+          })
+          .join(", ");
 
         transitionDetails = ` - Transitions: ${transitionTimes}`;
       }
@@ -489,18 +486,19 @@ export class DescriptionHelper {
     // Generate eclipse transition times display
     let transitionsHtml = "—";
     if (pass.eclipseTransitions && pass.eclipseTransitions.length > 0) {
-      const transitionList = pass.eclipseTransitions.map((transition) => {
-        const time = TimeFormatHelper.formatTransitionTime(transition.time, useLocalTime, groundStationPosition);
-        const icon = transition.toShadow ? "🌑" : "☀️";
-        return `${time} ${icon}`;
-      }).join("<br>");
+      const transitionList = pass.eclipseTransitions
+        .map((transition) => {
+          const time = TimeFormatHelper.formatTransitionTime(transition.time, useLocalTime, groundStationPosition);
+          const icon = transition.toShadow ? "🌑" : "☀️";
+          return `${time} ${icon}`;
+        })
+        .join("<br>");
 
       transitionsHtml = `<div class="transition-times" title="Eclipse transition times during pass">${transitionList}</div>`;
     }
 
-    const baseName = passNameField ? pass[passNameField] : "";
-    const displayName = baseName && pass.epochInFuture ? `${baseName} *` : baseName;
-    const htmlName = displayName ? `<td>${displayName}</td>\n` : "";
+    // passNameField contains the satellite name which may already have an asterisk
+    const htmlName = passNameField && pass[passNameField] ? `<td>${pass[passNameField]}</td>\n` : "";
 
     // Handle different pass types based on overpass mode
     let elevationCell, azimuthCell;

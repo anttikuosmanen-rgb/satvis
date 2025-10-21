@@ -53,9 +53,9 @@ export class SatelliteProperties {
     const { julianDate } = this.orbit;
     const julianDayNumber = Math.floor(julianDate);
     const secondsOfDay = (julianDate - julianDayNumber) * 60 * 60 * 24;
-    const tleDate = new Cesium.JulianDate(julianDayNumber, secondsOfDay);
-    const now = Cesium.JulianDate.now();
-    return Cesium.JulianDate.compare(tleDate, now) > 0;
+    const tleDate = new JulianDate(julianDayNumber, secondsOfDay);
+    const now = JulianDate.now();
+    return JulianDate.compare(tleDate, now) > 0;
   }
 
   position(time) {
@@ -95,15 +95,40 @@ export class SatelliteProperties {
     const samplingInterval = orbitalPeriod / samplingPointsPerOrbit;
     // console.log("updateSampledPosition", this.name, this.orbit.orbitalPeriod, samplingInterval.toFixed(2));
 
-    // Always keep half an orbit backwards and 1.5 full orbits forward in the sampled position
+    // Calculate desired sampling range (half orbit back, 1.5 orbits forward)
+    let requestedStart = JulianDate.addSeconds(time, -orbitalPeriod / 2, new JulianDate());
+    const requestedStop = JulianDate.addSeconds(time, orbitalPeriod * 1.5, new JulianDate());
+
+    // For satellites with future epochs, don't try to sample before the epoch
+    // SGP4 propagation is unreliable before the TLE epoch time
+    // Allow sampling from 1 hour before epoch to show pre-launch position
+    const { julianDate } = this.orbit;
+    const julianDayNumber = Math.floor(julianDate);
+    const secondsOfDay = (julianDate - julianDayNumber) * 60 * 60 * 24;
+    const epochJulianDate = new JulianDate(julianDayNumber, secondsOfDay);
+    const epochMinus1Hour = JulianDate.addSeconds(epochJulianDate, -3600, new JulianDate());
+
+    if (JulianDate.compare(requestedStart, epochMinus1Hour) < 0) {
+      requestedStart = epochMinus1Hour;
+    }
+
     const request = new TimeInterval({
-      start: JulianDate.addSeconds(time, -orbitalPeriod / 2, new JulianDate()),
-      stop: JulianDate.addSeconds(time, orbitalPeriod * 1.5, new JulianDate()),
+      start: requestedStart,
+      stop: requestedStop,
     });
 
     // (Re)create sampled position if it does not exist or if it does not contain the current time
-    if (!this.sampledPosition || !TimeInterval.contains(this.sampledPosition.interval, time)) {
+    // For future-epoch satellites, the interval might start after the current time,
+    // but we still need to create samples for HOLD extrapolation to work
+    const needsInit = !this.sampledPosition ||
+                      (!TimeInterval.contains(this.sampledPosition.interval, time) &&
+                       JulianDate.compare(time, epochMinus1Hour) >= 0);
+
+    if (needsInit) {
       this.initSampledPosition(request.start);
+    } else if (!this.sampledPosition) {
+      // For future-epoch satellites before their epoch, initialize at epoch - 1 hour
+      this.initSampledPosition(epochMinus1Hour);
     }
 
     // Determine which parts of the requested interval are missing
@@ -243,7 +268,7 @@ export class SatelliteProperties {
     // Calculate time range for ground track sampling
     // Negative startTime goes backward in time, positive stopTime goes forward
     const startTime = -samplesBwd * interval; // e.g., 0 * 600 = 0 (no backward samples by default)
-    const stopTime = samplesFwd * interval;   // e.g., 2 * 600 = 1200 seconds (20 minutes forward)
+    const stopTime = samplesFwd * interval; // e.g., 2 * 600 = 1200 seconds (20 minutes forward)
 
     // Sample satellite positions at regular intervals to create ground track
     for (let time = startTime; time <= stopTime; time += interval) {
@@ -335,8 +360,8 @@ export class SatelliteProperties {
     const { julianDate } = this.orbit;
     const julianDayNumber = Math.floor(julianDate);
     const secondsOfDay = (julianDate - julianDayNumber) * 60 * 60 * 24;
-    const epochJulianDate = new Cesium.JulianDate(julianDayNumber, secondsOfDay);
-    const epochTime = Cesium.JulianDate.toDate(epochJulianDate);
+    const epochJulianDate = new JulianDate(julianDayNumber, secondsOfDay);
+    const epochTime = JulianDate.toDate(epochJulianDate);
 
     this.groundStations.forEach((groundStation) => {
       let passes;
@@ -380,26 +405,29 @@ export class SatelliteProperties {
   }
 
   get swath() {
+    // Use baseName (without asterisk) for matching
+    const nameToMatch = this.baseName;
+
     // Hardcoded swath for certain satellites
-    if (["SUOMI NPP", "NOAA 20 (JPSS-1)", "NOAA 21 (JPSS-2)"].includes(this.name)) {
+    if (["SUOMI NPP", "NOAA 20 (JPSS-1)", "NOAA 21 (JPSS-2)"].includes(nameToMatch)) {
       return 3000;
     }
-    if (["AQUA", "TERRA"].includes(this.name)) {
+    if (["AQUA", "TERRA"].includes(nameToMatch)) {
       return 2330;
     }
-    if (this.name.includes("SENTINEL-2")) {
+    if (nameToMatch.includes("SENTINEL-2")) {
       return 290;
     }
-    if (this.name.includes("SENTINEL-3")) {
+    if (nameToMatch.includes("SENTINEL-3")) {
       return 740;
     }
-    if (this.name.includes("LANDSAT")) {
+    if (nameToMatch.includes("LANDSAT")) {
       return 185;
     }
-    if (this.name.includes("FENGYUN")) {
+    if (nameToMatch.includes("FENGYUN")) {
       return 2900;
     }
-    if (this.name.includes("METOP")) {
+    if (nameToMatch.includes("METOP")) {
       return 2900;
     }
     return 200;

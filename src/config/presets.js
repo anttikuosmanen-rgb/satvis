@@ -18,6 +18,7 @@ export const presets = {
       ["data/tle/groups/last-30-days.txt", ["New"]],
       ["data/tle/groups/oneweb.txt", ["OneWeb"]],
       ["data/tle/groups/planet.txt", ["Planet"]],
+      ["data/tle/groups/prelaunch.txt", ["Prelaunch"]],
       ["data/tle/groups/resource.txt", ["Resource"]],
       ["data/tle/groups/science.txt", ["Science"]],
       ["data/tle/groups/spire.txt", ["Spire"]],

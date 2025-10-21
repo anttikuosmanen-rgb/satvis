@@ -8,7 +8,13 @@
         <button v-tooltip="'Satellite elements'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('sat')">
           <font-awesome-icon icon="fas fa-layer-group" />
         </button>
-        <button v-tooltip="'Ground station (double-click to toggle focus)'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('gs')" @dblclick="focusFirstGroundStation">
+        <button
+          v-tooltip="'Ground station (double-click to toggle focus)'"
+          type="button"
+          class="cesium-button cesium-toolbar-button"
+          @click="toggleMenu('gs')"
+          @dblclick="focusFirstGroundStation"
+        >
           <i class="icon svg-groundstation"></i>
         </button>
         <button v-tooltip="'Map'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('map')">
@@ -46,45 +52,34 @@
           Pick on globe
         </label>
         <label class="toolbarSwitch">
-          <input type="button" @click="cc.setGroundStationFromGeolocation()" :disabled="isInZenithView" />
+          <input type="button" :disabled="isInZenithView" @click="cc.setGroundStationFromGeolocation()" />
           Set from geolocation
         </label>
         <label class="toolbarSwitch">
-          <input type="button" @click="cc.sats.focusGroundStation()" :disabled="isInZenithView" />
+          <input type="button" :disabled="isInZenithView" @click="cc.sats.focusGroundStation()" />
           Focus
         </label>
-        <div class="toolbarTitle">Overpass calculation</div>
         <label class="toolbarSwitch">
-          <input v-model="overpassMode" type="radio" value="elevation" />
-          <span class="slider"></span>
-          Elevation
+          <input type="button" @click="toggleZenithView()" />
+          {{ isInZenithView ? "Normal view" : "Zenith view" }}
         </label>
         <label class="toolbarSwitch">
-          <input v-model="overpassMode" type="radio" value="swath" />
-          <span class="slider"></span>
-          Swath
-        </label>
-        <label class="toolbarSwitch">
-          <input type="button" @click="toggleZenithView()">
-          {{ isInZenithView ? 'Normal view' : 'Zenith view' }}
-        </label>
-        <label class="toolbarSwitch">
-          <input v-model="hideSunlightPasses" type="checkbox">
+          <input v-model="hideSunlightPasses" type="checkbox" />
           <span class="slider"></span>
           Hide passes in daylight
         </label>
         <label class="toolbarSwitch">
-          <input v-model="showOnlyLitPasses" type="checkbox">
+          <input v-model="showOnlyLitPasses" type="checkbox" />
           <span class="slider"></span>
           Show only lit satellites
         </label>
         <label class="toolbarSwitch">
-          <input v-model="useLocalTime" type="checkbox" :disabled="!canUseLocalTime">
+          <input v-model="useLocalTime" type="checkbox" :disabled="!canUseLocalTime" />
           <span class="slider"></span>
           Use local time
         </label>
         <label class="toolbarSwitch">
-          <input type="button" @click="removeGroundStation()" :disabled="isInZenithView">
+          <input type="button" :disabled="isInZenithView" @click="removeGroundStation()" />
           Remove ground station
         </label>
       </div>
@@ -184,6 +179,24 @@
           <input type="button" @click="cc.jumpTo('HalfDome')" />
           Jump to HalfDome
         </label>
+        <div class="toolbarTitle">Overpass calculation</div>
+        <label class="toolbarSwitch">
+          <input v-model="enableSwathPasses" type="checkbox" />
+          <span class="slider"></span>
+          Enable swath passes
+        </label>
+        <template v-if="enableSwathPasses">
+          <label class="toolbarSwitch">
+            <input v-model="overpassMode" type="radio" value="elevation" />
+            <span class="slider"></span>
+            Elevation
+          </label>
+          <label class="toolbarSwitch">
+            <input v-model="overpassMode" type="radio" value="swath" />
+            <span class="slider"></span>
+            Swath
+          </label>
+        </template>
       </div>
     </div>
     <div id="toolbarRight">
@@ -195,12 +208,8 @@
       </button>
     </div>
     <div v-show="showUI && !isIos" id="timelineControls">
-      <button v-tooltip="'Zoom In Timeline'" type="button" class="cesium-button cesium-toolbar-button timeline-button" @click="zoomInTimeline">
-        +
-      </button>
-      <button v-tooltip="'Zoom Out Timeline'" type="button" class="cesium-button cesium-toolbar-button timeline-button" @click="zoomOutTimeline">
-        -
-      </button>
+      <button v-tooltip="'Zoom In Timeline'" type="button" class="cesium-button cesium-toolbar-button timeline-button" @click="zoomInTimeline">+</button>
+      <button v-tooltip="'Zoom Out Timeline'" type="button" class="cesium-button cesium-toolbar-button timeline-button" @click="zoomOutTimeline">-</button>
     </div>
   </div>
 </template>
@@ -233,24 +242,8 @@ export default {
     };
   },
   computed: {
-    ...mapWritableState(useCesiumStore, [
-      "layers",
-      "terrainProvider",
-      "sceneMode",
-      "cameraMode",
-      "qualityPreset",
-      "showFps",
-      "background",
-      "pickMode",
-    ]),
-    ...mapWritableState(useSatStore, [
-      "enabledComponents",
-      "groundStations",
-      "overpassMode",
-      "hideSunlightPasses",
-      "showOnlyLitPasses",
-      "useLocalTime",
-    ]),
+    ...mapWritableState(useCesiumStore, ["layers", "terrainProvider", "sceneMode", "cameraMode", "qualityPreset", "showFps", "background", "pickMode"]),
+    ...mapWritableState(useSatStore, ["enabledComponents", "groundStations", "overpassMode", "hideSunlightPasses", "showOnlyLitPasses", "useLocalTime", "enableSwathPasses"]),
     isIos() {
       return DeviceDetect.isIos();
     },
@@ -360,7 +353,7 @@ export default {
     this.$nextTick(() => {
       if (cc.viewer && cc.viewer.scene && cc.viewer.scene.globe) {
         const lightingFadeOut = 100000000; // 100,000 km
-        const lightingFadeIn = 50000000;   // 50,000 km
+        const lightingFadeIn = 50000000; // 50,000 km
         cc.viewer.scene.globe.lightingFadeOutDistance = lightingFadeOut;
         cc.viewer.scene.globe.lightingFadeInDistance = lightingFadeIn;
 
@@ -385,9 +378,7 @@ export default {
 
       // Check if we're currently tracking a ground station
       // Ground stations now have names like "Groundstation [60.81°, 23.95°]"
-      const isTrackingGroundStation = currentTrackedEntity &&
-        currentTrackedEntity.name &&
-        currentTrackedEntity.name.includes("Groundstation");
+      const isTrackingGroundStation = currentTrackedEntity && currentTrackedEntity.name && currentTrackedEntity.name.includes("Groundstation");
 
       if (isTrackingGroundStation) {
         // Return to normal view focused on center of Earth
@@ -474,9 +465,7 @@ export default {
 
       // Check if we're currently tracking a ground station and unfocus first
       const currentTrackedEntity = this.cc.viewer.trackedEntity;
-      const isTrackingGroundStation = currentTrackedEntity &&
-        currentTrackedEntity.name &&
-        currentTrackedEntity.name.includes("Groundstation");
+      const isTrackingGroundStation = currentTrackedEntity && currentTrackedEntity.name && currentTrackedEntity.name.includes("Groundstation");
 
       if (isTrackingGroundStation) {
         // Return to normal view focused on center of Earth
@@ -562,7 +551,7 @@ export default {
           this.cc.sats.checkAndUpdateDaytimeRanges();
         }, 100);
       } catch (error) {
-        console.error('Error in timeline zoom in:', error);
+        console.error("Error in timeline zoom in:", error);
       }
     },
     zoomOutTimeline() {
@@ -607,7 +596,7 @@ export default {
           this.cc.sats.checkAndUpdateDaytimeRanges();
         }, 100);
       } catch (error) {
-        console.error('Error in timeline zoom out:', error);
+        console.error("Error in timeline zoom out:", error);
       }
     },
   },
@@ -615,7 +604,6 @@ export default {
 </script>
 
 <style scoped>
-
 .toolbarText {
   color: #aaa;
   padding: 10px;

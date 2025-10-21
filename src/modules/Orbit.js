@@ -61,19 +61,20 @@ export default class Orbit {
     };
   }
 
-  computePassesElevation(
-    groundStationPosition,
-    startDate = dayjs().toDate(),
-    endDate = dayjs(startDate).add(7, "day").toDate(),
-    minElevation = 5,
-    maxPasses = 50,
-  ) {
+  computePassesElevation(groundStationPosition, startDate = dayjs().toDate(), endDate = dayjs(startDate).add(7, "day").toDate(), minElevation = 5, maxPasses = 50) {
     // Skip pass calculation for satellites with very long orbital periods
     // (e.g., geostationary satellites at ~1436 minutes)
     // These satellites stay continuously visible and don't have traditional "passes"
     if (this.orbitalPeriod > 600) {
       return [];
     }
+
+    // For satellites with future epochs, ensure we don't try to calculate before the epoch
+    // SGP4 propagation is unreliable before the TLE epoch time
+    // Allow calculation from 1 hour before epoch to show pre-launch position
+    const epochDate = new Date((this.julianDate - 2440587.5) * 86400000); // Convert Julian date to JS Date
+    const epochMinus1Hour = new Date(epochDate.getTime() - 3600000); // 1 hour before epoch
+    const effectiveStartDate = startDate < epochMinus1Hour ? epochMinus1Hour : startDate;
 
     // Keep original position for sun calculations (degrees)
     const originalGroundStation = { ...groundStationPosition };
@@ -85,7 +86,7 @@ export default class Orbit {
     groundStation.height /= 1000; // Convert meters to kilometers
 
     // Initialize tracking variables
-    const date = new Date(startDate);
+    const date = new Date(effectiveStartDate);
     const passes = [];
     let pass = false;
     let ongoingPass = false;
@@ -178,12 +179,22 @@ export default class Orbit {
   }
 
   computePassesSwath(groundStationPosition, swathKm, startDate = dayjs().toDate(), endDate = dayjs(startDate).add(7, "day").toDate(), maxPasses = 50) {
+    // For satellites with future epochs, ensure we don't try to calculate before the epoch
+    // SGP4 propagation is unreliable before the TLE epoch time
+    // Allow calculation from 1 hour before epoch to show pre-launch position
+    const epochDate = new Date((this.julianDate - 2440587.5) * 86400000); // Convert Julian date to JS Date
+    const epochMinus1Hour = new Date(epochDate.getTime() - 3600000); // 1 hour before epoch
+    const effectiveStartDate = startDate < epochMinus1Hour ? epochMinus1Hour : startDate;
+
+    // Keep original position for sun calculations (degrees)
+    const originalGroundStation = { ...groundStationPosition };
+
     const groundStation = { ...groundStationPosition };
     groundStation.latitude *= deg2rad;
     groundStation.longitude *= deg2rad;
     groundStation.height /= 1000;
 
-    const date = new Date(startDate);
+    const date = new Date(effectiveStartDate);
     const passes = [];
     let pass = false;
     let ongoingPass = false;
@@ -214,13 +225,18 @@ export default class Orbit {
 
       if (withinSwath) {
         if (!ongoingPass) {
-          // Start of new pass
+          // Start of new pass - record initial conditions
           pass = {
             name: this.name,
             start: date.getTime(),
             minDistance: distanceKm,
             minDistanceTime: date.getTime(),
             swathWidth: swathKm,
+            groundStationDarkAtStart: GroundStationConditions.isInDarkness(originalGroundStation, date),
+            satelliteEclipsedAtStart: this.isInEclipse(date),
+            // Add placeholder values for card rendering compatibility
+            maxElevation: 0, // Not applicable for swath mode
+            azimuthApex: 0, // Not applicable for swath mode
           };
           ongoingPass = true;
         } else if (distanceKm < pass.minDistance) {
@@ -230,9 +246,15 @@ export default class Orbit {
         }
         date.setSeconds(date.getSeconds() + 30); // 30 second steps during pass
       } else if (ongoingPass) {
-        // End of pass
+        // End of pass - finalize pass data
         pass.end = date.getTime();
         pass.duration = pass.end - pass.start;
+        pass.groundStationDarkAtEnd = GroundStationConditions.isInDarkness(originalGroundStation, date);
+        pass.satelliteEclipsedAtEnd = this.isInEclipse(date);
+
+        // Find eclipse transitions during the pass
+        pass.eclipseTransitions = this.findEclipseTransitions(pass.start, pass.end, 30);
+
         passes.push(pass);
         if (passes.length >= maxPasses) {
           break;
@@ -246,15 +268,21 @@ export default class Orbit {
         const deltaDistance = distanceKm - lastDistance;
         lastDistance = distanceKm;
 
-        if (deltaDistance > 0 && distanceKm > halfSwath * 3) {
+        if (deltaDistance > 0 && distanceKm > halfSwath * 4) {
           // Moving away and far from swath, skip ahead more
           date.setMinutes(date.getMinutes() + Math.max(10, this.orbitalPeriod * 0.2));
+        } else if (distanceKm > halfSwath * 3) {
+          // Far from swath
+          date.setMinutes(date.getMinutes() + 5);
         } else if (distanceKm > halfSwath * 2) {
           // Moderately far from swath
-          date.setMinutes(date.getMinutes() + 5);
-        } else {
-          // Getting closer to swath, use smaller time steps
+          date.setMinutes(date.getMinutes() + 2);
+        } else if (distanceKm > halfSwath * 1.2) {
+          // Getting closer to swath
           date.setMinutes(date.getMinutes() + 1);
+        } else {
+          // Very close to swath threshold, use fine time steps
+          date.setSeconds(date.getSeconds() + 15);
         }
       }
     }
@@ -380,7 +408,7 @@ export default class Orbit {
         transitions.push({
           time: currentDate.getTime(),
           fromShadow: wasInEclipse, // true if transitioning from shadow to sunlight
-          toShadow: isInEclipse,     // true if transitioning from sunlight to shadow
+          toShadow: isInEclipse, // true if transitioning from sunlight to shadow
         });
         wasInEclipse = isInEclipse;
       }
