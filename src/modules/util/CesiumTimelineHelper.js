@@ -1,4 +1,4 @@
-import { Color, JulianDate } from "@cesium/engine";
+import { Cartesian3, Color, JulianDate } from "@cesium/engine";
 import suncalc from "suncalc";
 
 export class CesiumTimelineHelper {
@@ -10,19 +10,19 @@ export class CesiumTimelineHelper {
       return;
     }
     // Only clear satellite pass highlights (priority 0), preserve daytime ranges (priority -1)
-    // eslint-disable-next-line
+
     const highlightRanges = viewer.timeline._highlightRanges;
-    // eslint-disable-next-line
-    viewer.timeline._highlightRanges = highlightRanges.filter((range) =>
-      // Keep daytime ranges (priority -1), remove satellite pass ranges (priority 0)
-      // eslint-disable-next-line
-      range._base === -1
+
+    viewer.timeline._highlightRanges = highlightRanges.filter(
+      (range) =>
+        // Keep daytime ranges (priority -1), remove satellite pass ranges (priority 0)
+
+        range._base === -1,
     );
     viewer.timeline.updateFromClock();
     // Force timeline to re-render by calling _makeTics directly
-    // eslint-disable-next-line
+
     if (viewer.timeline._makeTics) {
-      // eslint-disable-next-line
       viewer.timeline._makeTics();
     }
   }
@@ -44,7 +44,7 @@ export class CesiumTimelineHelper {
     const timelineStartMs = timelineStart.getTime();
     const timelineStopMs = timelineStop.getTime();
 
-    const visibleRanges = ranges.filter(range => {
+    const visibleRanges = ranges.filter((range) => {
       const rangeStart = new Date(range.start).getTime();
       const rangeEnd = new Date(range.end).getTime();
       // Include range if it overlaps with timeline at all
@@ -93,8 +93,8 @@ export class CesiumTimelineHelper {
               const satellitePosition = satelliteEntity.position.getValue(viewer.clock.currentTime);
               if (satellitePosition) {
                 const cameraPosition = viewer.camera.positionWC;
-                const direction = Cesium.Cartesian3.subtract(satellitePosition, cameraPosition, new Cesium.Cartesian3());
-                Cesium.Cartesian3.normalize(direction, direction);
+                const direction = Cartesian3.subtract(satellitePosition, cameraPosition, new Cartesian3());
+                Cartesian3.normalize(direction, direction);
                 viewer.camera.direction = direction;
               }
             } else {
@@ -125,9 +125,8 @@ export class CesiumTimelineHelper {
     // Update timeline ONCE after adding all ranges (not in the loop)
     viewer.timeline.updateFromClock();
     // Force timeline to re-render by calling _makeTics directly
-    // eslint-disable-next-line
+
     if (viewer.timeline._makeTics) {
-      // eslint-disable-next-line
       viewer.timeline._makeTics();
     }
   }
@@ -160,16 +159,15 @@ export class CesiumTimelineHelper {
 
       // Yield to browser after each chunk
       if (i + chunkSize < satellites.length) {
-        await new Promise(resolve => setTimeout(resolve, 0));
+        await new Promise((resolve) => setTimeout(resolve, 0));
       }
     }
 
     // Trigger single re-render at the end to show all highlights
     viewer.timeline.updateFromClock();
     // Force timeline to re-render by calling _makeTics directly
-    // eslint-disable-next-line
+
     if (viewer.timeline._makeTics) {
-      // eslint-disable-next-line
       viewer.timeline._makeTics();
     }
   }
@@ -185,7 +183,7 @@ export class CesiumTimelineHelper {
     const timelineStartMs = timelineStart.getTime();
     const timelineStopMs = timelineStop.getTime();
 
-    const visibleRanges = ranges.filter(range => {
+    const visibleRanges = ranges.filter((range) => {
       const rangeStart = new Date(range.start).getTime();
       const rangeEnd = new Date(range.end).getTime();
       return rangeEnd >= timelineStartMs && rangeStart <= timelineStopMs;
@@ -225,8 +223,8 @@ export class CesiumTimelineHelper {
               const satellitePosition = satelliteEntity.position.getValue(viewer.clock.currentTime);
               if (satellitePosition) {
                 const cameraPosition = viewer.camera.positionWC;
-                const direction = Cesium.Cartesian3.subtract(satellitePosition, cameraPosition, new Cesium.Cartesian3());
-                Cesium.Cartesian3.normalize(direction, direction);
+                const direction = Cartesian3.subtract(satellitePosition, cameraPosition, new Cartesian3());
+                Cartesian3.normalize(direction, direction);
                 viewer.camera.direction = direction;
               }
             } else {
@@ -267,8 +265,7 @@ export class CesiumTimelineHelper {
     const currentStop = viewer.clock.stopTime;
 
     // Check if current timeline is outside the cached range
-    return JulianDate.lessThan(currentStart, cachedRange.start) ||
-           JulianDate.greaterThan(currentStop, cachedRange.stop);
+    return JulianDate.lessThan(currentStart, cachedRange.start) || JulianDate.greaterThan(currentStop, cachedRange.stop);
   }
 
   static addGroundStationDaytimeRanges(viewer, groundStation) {
@@ -287,7 +284,7 @@ export class CesiumTimelineHelper {
     const cacheKey = `${groundStation.position.latitude}_${groundStation.position.longitude}`;
     this._daytimeRangeCache.set(cacheKey, {
       start: JulianDate.clone(extendedStart),
-      stop: JulianDate.clone(extendedStop)
+      stop: JulianDate.clone(extendedStop),
     });
 
     const startDate = JulianDate.toDate(extendedStart);
@@ -392,7 +389,6 @@ export class CesiumTimelineHelper {
                   const grayColor = Color.GRAY.withAlpha(0.5);
                   const highlightRange = viewer.timeline.addHighlightRange(grayColor, 60, -1);
                   highlightRange.setRange(rangeStart, rangeEnd);
-                } else {
                 }
               }
             }
@@ -406,12 +402,10 @@ export class CesiumTimelineHelper {
             const prevDate = new Date(currentDate);
             prevDate.setUTCDate(prevDate.getUTCDate() - 1);
             const prevSunTimes = suncalc.getTimes(prevDate, lat, lon);
-            const prevWasPolarDay = (!prevSunTimes.sunrise || isNaN(prevSunTimes.sunrise.getTime())) &&
-                                    (!prevSunTimes.sunset || isNaN(prevSunTimes.sunset.getTime()));
+            const prevWasPolarDay = (!prevSunTimes.sunrise || isNaN(prevSunTimes.sunrise.getTime())) && (!prevSunTimes.sunset || isNaN(prevSunTimes.sunset.getTime()));
 
             // Also check if previous day was a transition day (had very late sunrise)
-            const prevHadLateSunrise = prevSunTimes.sunrise && !isNaN(prevSunTimes.sunrise.getTime()) &&
-                                       prevSunTimes.sunrise.getUTCHours() >= 18;
+            const prevHadLateSunrise = prevSunTimes.sunrise && !isNaN(prevSunTimes.sunrise.getTime()) && prevSunTimes.sunrise.getUTCHours() >= 18;
 
             if (isLateSunrise && (prevWasPolarDay || prevHadLateSunrise)) {
               // This day should get full coverage because it's continuing from polar day or transition period
@@ -430,7 +424,6 @@ export class CesiumTimelineHelper {
             } else {
               // Normal day processing - but handle cross-day events
               if (!sunriseOnCurrentDay || !sunsetOnCurrentDay) {
-
                 // For cross-day events, create appropriate ranges
                 if (!sunriseOnCurrentDay && sunsetOnCurrentDay) {
                   // Sunrise is tomorrow, sunset is today - cover from start of day to sunset
@@ -465,7 +458,6 @@ export class CesiumTimelineHelper {
               }
             }
           }
-
         } else if (!hasValidSunrise && !hasValidSunset) {
           // No sunrise/sunset for this day - could be polar day/night OR a transition day
 
@@ -476,15 +468,11 @@ export class CesiumTimelineHelper {
 
           const nextHasValidSunrise = nextDaySunTimes.sunrise && !isNaN(nextDaySunTimes.sunrise.getTime());
 
-          if (nextHasValidSunrise) {
-          }
-
           // Check if next day's sunrise actually occurs on current day
           if (nextHasValidSunrise) {
             const nextSunriseDate = new Date(nextDaySunTimes.sunrise);
             const nextSunriseUTCDay = nextSunriseDate.toISOString().substring(0, 10);
             const currentUTCDay = currentDate.toISOString().substring(0, 10);
-
 
             if (nextSunriseUTCDay === currentUTCDay) {
               // Next day's sunrise is actually on current day
@@ -494,17 +482,13 @@ export class CesiumTimelineHelper {
               prevDate.setUTCDate(prevDate.getUTCDate() - 1);
               const prevSunTimes = suncalc.getTimes(prevDate, lat, lon);
 
-              const prevWasPolarDay = (!prevSunTimes.sunrise || isNaN(prevSunTimes.sunrise.getTime())) &&
-                                      (!prevSunTimes.sunset || isNaN(prevSunTimes.sunset.getTime()));
+              const prevWasPolarDay = (!prevSunTimes.sunrise || isNaN(prevSunTimes.sunrise.getTime())) && (!prevSunTimes.sunset || isNaN(prevSunTimes.sunset.getTime()));
 
-              const prevWasTransitionDay = prevSunTimes.sunrise && !isNaN(prevSunTimes.sunrise.getTime()) &&
-                                           prevSunTimes.sunrise.getUTCHours() >= 18;
+              const prevWasTransitionDay = prevSunTimes.sunrise && !isNaN(prevSunTimes.sunrise.getTime()) && prevSunTimes.sunrise.getUTCHours() >= 18;
 
               // For cross-day sunrise following polar/transition days, ALWAYS provide full day coverage
               // This ensures no gap from start of day to the cross-day sunrise time
               if (prevWasPolarDay || prevWasTransitionDay) {
-                const sunriseHour = nextDaySunTimes.sunrise.getUTCHours();
-
                 const dayStart = new Date(currentDate);
                 dayStart.setUTCHours(0, 0, 0, 0);
                 const dayEnd = new Date(dayStart);
@@ -516,11 +500,8 @@ export class CesiumTimelineHelper {
                 const grayColor = Color.GRAY.withAlpha(0.5);
                 const highlightRange = viewer.timeline.addHighlightRange(grayColor, 60, -1);
                 highlightRange.setRange(rangeStart, rangeEnd);
-
               } else {
                 // Normal cross-day sunrise - partial coverage from sunrise to end of day
-                const sunriseHour = nextDaySunTimes.sunrise.getUTCHours();
-
                 const sunriseJulian = JulianDate.fromDate(nextDaySunTimes.sunrise);
                 const dayEnd = new Date(currentDate);
                 dayEnd.setUTCHours(23, 59, 59, 999);
@@ -529,15 +510,12 @@ export class CesiumTimelineHelper {
                 const grayColor = Color.GRAY.withAlpha(0.5);
                 const highlightRange = viewer.timeline.addHighlightRange(grayColor, 60, -1);
                 highlightRange.setRange(sunriseJulian, dayEndJulian);
-
               }
 
               // For cross-day sunrise, we need to handle the next day's coverage
               // The sunrise on currentDay continues into the next day
               const nextDayDate = new Date(currentDate);
               nextDayDate.setUTCDate(nextDayDate.getUTCDate() + 1);
-              const nextDayUTCDay = nextDayDate.toISOString().substring(0, 10);
-
 
               // Try to get sun times for next day
               let nextDayHasValidSunset = false;
@@ -556,7 +534,6 @@ export class CesiumTimelineHelper {
                   const grayColor = Color.GRAY.withAlpha(0.5);
                   const nextDayRange = viewer.timeline.addHighlightRange(grayColor, 60, -1);
                   nextDayRange.setRange(nextDayStartJulian, nextDaySunsetJulian);
-
                 } else {
                   // Next day has no sunset - likely transitioning to or continuing polar day
                   // Give it full day coverage as a transition day
@@ -572,9 +549,8 @@ export class CesiumTimelineHelper {
                   const grayColor = Color.GRAY.withAlpha(0.5);
                   const nextDayRange = viewer.timeline.addHighlightRange(grayColor, 60, -1);
                   nextDayRange.setRange(nextDayStartJulian, nextDayEndJulian);
-
                 }
-              } catch (error) {
+              } catch {
                 // If sun time calculation fails, treat as transition day
 
                 const nextDayStart = new Date(nextDayDate);
@@ -588,7 +564,6 @@ export class CesiumTimelineHelper {
                 const grayColor = Color.GRAY.withAlpha(0.5);
                 const nextDayRange = viewer.timeline.addHighlightRange(grayColor, 60, -1);
                 nextDayRange.setRange(nextDayStartJulian, nextDayEndJulian);
-
               }
 
               // Skip both current and next day in the main loop since we handled both
@@ -607,21 +582,16 @@ export class CesiumTimelineHelper {
 
             let isContinuousDaylight = false;
             if (isNorthernHemisphere) {
-              const distToSummer = Math.min(Math.abs(dayOfYear - summerSolstice),
-                                           Math.abs(dayOfYear - summerSolstice - 365));
-              const distToWinter = Math.min(Math.abs(dayOfYear - winterSolstice),
-                                           Math.abs(dayOfYear - winterSolstice + 365));
+              const distToSummer = Math.min(Math.abs(dayOfYear - summerSolstice), Math.abs(dayOfYear - summerSolstice - 365));
+              const distToWinter = Math.min(Math.abs(dayOfYear - winterSolstice), Math.abs(dayOfYear - winterSolstice + 365));
               isContinuousDaylight = distToSummer < distToWinter;
             } else {
-              const distToSummer = Math.min(Math.abs(dayOfYear - summerSolstice),
-                                           Math.abs(dayOfYear - summerSolstice - 365));
-              const distToWinter = Math.min(Math.abs(dayOfYear - winterSolstice),
-                                           Math.abs(dayOfYear - winterSolstice + 365));
+              const distToSummer = Math.min(Math.abs(dayOfYear - summerSolstice), Math.abs(dayOfYear - summerSolstice - 365));
+              const distToWinter = Math.min(Math.abs(dayOfYear - winterSolstice), Math.abs(dayOfYear - winterSolstice + 365));
               isContinuousDaylight = distToWinter < distToSummer;
             }
 
             if (isContinuousDaylight) {
-
               const dayStart = new Date(currentDate);
               dayStart.setUTCHours(0, 0, 0, 0);
               const dayEnd = new Date(dayStart);
@@ -633,10 +603,8 @@ export class CesiumTimelineHelper {
               const grayColor = Color.GRAY.withAlpha(0.5);
               const highlightRange = viewer.timeline.addHighlightRange(grayColor, 60, -1);
               highlightRange.setRange(rangeStart, rangeEnd);
-            } else {
             }
           }
-
         } else if (hasValidSunrise && !hasValidSunset) {
           // Sunrise but no sunset - sun rises but doesn't set (entering polar day)
           // Check if this is a transition day to polar day with very early sunrise
@@ -647,8 +615,7 @@ export class CesiumTimelineHelper {
           const nextDate = new Date(currentDate);
           nextDate.setUTCDate(nextDate.getUTCDate() + 1);
           const nextSunTimes = suncalc.getTimes(nextDate, lat, lon);
-          const nextWillBePolarDay = (!nextSunTimes.sunrise || isNaN(nextSunTimes.sunrise.getTime())) &&
-                                     (!nextSunTimes.sunset || isNaN(nextSunTimes.sunset.getTime()));
+          const nextWillBePolarDay = (!nextSunTimes.sunrise || isNaN(nextSunTimes.sunrise.getTime())) && (!nextSunTimes.sunset || isNaN(nextSunTimes.sunset.getTime()));
 
           if (isEarlySunrise && nextWillBePolarDay) {
             // This day should get full coverage because it's transitioning to polar day
@@ -676,7 +643,6 @@ export class CesiumTimelineHelper {
             const highlightRange = viewer.timeline.addHighlightRange(grayColor, 60, -1);
             highlightRange.setRange(sunriseJulian, dayEndJulian);
           }
-
         } else if (!hasValidSunrise && hasValidSunset) {
           // Sunset but no sunrise - sun sets but doesn't rise (entering polar night)
           // Check if this is a transition day from polar night with very late sunset
@@ -687,9 +653,11 @@ export class CesiumTimelineHelper {
           const prevDate = new Date(currentDate);
           prevDate.setUTCDate(prevDate.getUTCDate() - 1);
           const prevSunTimes = suncalc.getTimes(prevDate, lat, lon);
-          const prevWasPolarNight = (!prevSunTimes.sunrise || isNaN(prevSunTimes.sunrise.getTime())) &&
-                                    (!prevSunTimes.sunset || isNaN(prevSunTimes.sunset.getTime())) &&
-                                    prevSunTimes.solarNoon && !isNaN(prevSunTimes.solarNoon.getTime());
+          const prevWasPolarNight =
+            (!prevSunTimes.sunrise || isNaN(prevSunTimes.sunrise.getTime())) &&
+            (!prevSunTimes.sunset || isNaN(prevSunTimes.sunset.getTime())) &&
+            prevSunTimes.solarNoon &&
+            !isNaN(prevSunTimes.solarNoon.getTime());
 
           if (isLateSunset && prevWasPolarNight) {
             // This day should get no coverage because it's transitioning from polar night
@@ -717,9 +685,8 @@ export class CesiumTimelineHelper {
 
     viewer.timeline.updateFromClock();
     // Force timeline to re-render by calling _makeTics directly
-    // eslint-disable-next-line
+
     if (viewer.timeline._makeTics) {
-      // eslint-disable-next-line
       viewer.timeline._makeTics();
     }
   }
@@ -730,19 +697,15 @@ export class CesiumTimelineHelper {
     }
 
     // Remove daytime highlight ranges (priority -1)
-    // eslint-disable-next-line
+
     const highlightRanges = viewer.timeline._highlightRanges;
-    // eslint-disable-next-line
-    viewer.timeline._highlightRanges = highlightRanges.filter((range) =>
-      // eslint-disable-next-line
-      range._base !== -1
-    );
+
+    viewer.timeline._highlightRanges = highlightRanges.filter((range) => range._base !== -1);
 
     viewer.timeline.updateFromClock();
     // Force timeline to re-render by calling _makeTics directly
-    // eslint-disable-next-line
+
     if (viewer.timeline._makeTics) {
-      // eslint-disable-next-line
       viewer.timeline._makeTics();
     }
   }

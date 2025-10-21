@@ -1,9 +1,8 @@
 import { BillboardGraphics, HorizontalOrigin, JulianDate, NearFarScalar, VerticalOrigin } from "@cesium/engine";
-import dayjs from "dayjs";
 import icon from "../images/icons/dish.svg";
+import { useSatStore } from "../stores/sat";
 import { CesiumComponentCollection } from "./util/CesiumComponentCollection";
 import { DescriptionHelper } from "./util/DescriptionHelper";
-import { useSatStore } from "../stores/sat";
 import { filterAndSortPasses } from "./util/PassFilter";
 
 export class GroundStationEntity extends CesiumComponentCollection {
@@ -80,7 +79,8 @@ export class GroundStationEntity extends CesiumComponentCollection {
       showOnlyLitPasses: satStore.showOnlyLitPasses,
     };
 
-    const filterStateChanged = this._cachedFilterState === null ||
+    const filterStateChanged =
+      this._cachedFilterState === null ||
       this._cachedFilterState.hideSunlightPasses !== currentFilterState.hideSunlightPasses ||
       this._cachedFilterState.showOnlyLitPasses !== currentFilterState.showOnlyLitPasses;
 
@@ -128,7 +128,8 @@ export class GroundStationEntity extends CesiumComponentCollection {
       showOnlyLitPasses: satStore.showOnlyLitPasses,
     };
 
-    const filterStateChanged = this._cachedFilterState === null ||
+    const filterStateChanged =
+      this._cachedFilterState === null ||
       this._cachedFilterState.hideSunlightPasses !== currentFilterState.hideSunlightPasses ||
       this._cachedFilterState.showOnlyLitPasses !== currentFilterState.showOnlyLitPasses;
 
@@ -166,7 +167,7 @@ export class GroundStationEntity extends CesiumComponentCollection {
 
       // Yield to browser after each chunk
       if (i + chunkSize < visibleSatellites.length) {
-        await new Promise(resolve => setTimeout(resolve, 0));
+        await new Promise((resolve) => setTimeout(resolve, 0));
       }
     }
 

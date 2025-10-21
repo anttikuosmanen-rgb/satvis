@@ -1,4 +1,18 @@
-import { ClockStep, JulianDate } from "@cesium/engine";
+import {
+  CameraEventType,
+  Cartesian2,
+  Cartesian3,
+  ClockStep,
+  Color,
+  Entity,
+  HorizontalOrigin,
+  JulianDate,
+  KeyboardEventModifier,
+  LabelStyle,
+  Math as CesiumMath,
+  ScreenSpaceEventType,
+  VerticalOrigin,
+} from "@cesium/engine";
 import { useSatStore } from "../stores/sat";
 import { SatelliteComponentCollection } from "./SatelliteComponentCollection";
 import { GroundStationEntity } from "./GroundStationEntity";
@@ -42,8 +56,7 @@ export class SatelliteManager {
     // Listen for clock range changes
     this.viewer.clock.onTick.addEventListener(() => {
       // Only check occasionally (every 60 ticks) to avoid performance issues
-      if (this.viewer.clock.clockStep === ClockStep.SYSTEM_CLOCK ||
-          this.viewer.clock.clockStep === ClockStep.TICK_DEPENDENT) {
+      if (this.viewer.clock.clockStep === ClockStep.SYSTEM_CLOCK || this.viewer.clock.clockStep === ClockStep.TICK_DEPENDENT) {
         return; // Don't check during normal time progression
       }
 
@@ -67,8 +80,7 @@ export class SatelliteManager {
       const currentStart = this.viewer.clock.startTime;
       const currentStop = this.viewer.clock.stopTime;
 
-      if (!JulianDate.equals(lastStartTime, currentStart) ||
-          !JulianDate.equals(lastStopTime, currentStop)) {
+      if (!JulianDate.equals(lastStartTime, currentStart) || !JulianDate.equals(lastStopTime, currentStop)) {
         lastStartTime = JulianDate.clone(currentStart);
         lastStopTime = JulianDate.clone(currentStop);
 
@@ -85,7 +97,7 @@ export class SatelliteManager {
       const timelineContainer = this.viewer.timeline.container;
 
       // Listen for wheel events (scrolling)
-      timelineContainer.addEventListener('wheel', () => {
+      timelineContainer.addEventListener("wheel", () => {
         setTimeout(() => {
           try {
             // First constrain timeline bounds to prevent invalid dates
@@ -94,13 +106,13 @@ export class SatelliteManager {
             }
             this.checkAndUpdateDaytimeRanges();
           } catch (error) {
-            console.error('Error in timeline wheel event handler:', error);
+            console.error("Error in timeline wheel event handler:", error);
           }
         }, 200);
       });
 
       // Listen for mouse events that might change timeline
-      ['mouseup', 'touchend'].forEach(eventType => {
+      ["mouseup", "touchend"].forEach((eventType) => {
         timelineContainer.addEventListener(eventType, () => {
           setTimeout(() => {
             try {
@@ -123,13 +135,13 @@ export class SatelliteManager {
       if (this.#groundStations.length > 0) {
         const firstGroundStation = this.#groundStations[0];
         if (CesiumTimelineHelper.needsRecalculation(this.viewer, firstGroundStation)) {
-          console.log('Timeline moved outside calculated range, recalculating daytime highlights');
+          console.log("Timeline moved outside calculated range, recalculating daytime highlights");
           CesiumTimelineHelper.clearGroundStationDaytimeRanges(this.viewer);
           CesiumTimelineHelper.addGroundStationDaytimeRanges(this.viewer, firstGroundStation);
         }
       }
     } catch (error) {
-      console.error('Error updating daytime ranges:', error);
+      console.error("Error updating daytime ranges:", error);
     }
   }
 
@@ -420,10 +432,10 @@ export class SatelliteManager {
     }
     // Return to a reasonable view of Earth from distance
     this.viewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(0, 20, 20000000), // 20,000 km away
+      destination: Cartesian3.fromDegrees(0, 20, 20000000), // 20,000 km away
       orientation: {
         heading: 0,
-        pitch: -Cesium.Math.PI_OVER_TWO, // Look down at Earth
+        pitch: -CesiumMath.PI_OVER_TWO, // Look down at Earth
         roll: 0,
       },
       duration: 1.5,
@@ -439,15 +451,11 @@ export class SatelliteManager {
     const position = groundStation.position;
 
     // Convert lat/lon/height to Cartesian3 for ground station position
-    const groundStationPosition = Cesium.Cartesian3.fromDegrees(
-      position.longitude,
-      position.latitude,
-      position.height
-    );
+    const groundStationPosition = Cartesian3.fromDegrees(position.longitude, position.latitude, position.height);
 
     // Check if camera is already at ground station position
     const currentCameraPosition = this.viewer.camera.positionWC;
-    const distanceToGroundStation = Cesium.Cartesian3.distance(currentCameraPosition, groundStationPosition);
+    const distanceToGroundStation = Cartesian3.distance(currentCameraPosition, groundStationPosition);
 
     // If camera is more than 1km from ground station, focus on it first
     if (distanceToGroundStation > 1000) {
@@ -476,11 +484,7 @@ export class SatelliteManager {
     const position = groundStation.position;
 
     // Convert lat/lon/height to Cartesian3 for camera position
-    const cameraPosition = Cesium.Cartesian3.fromDegrees(
-      position.longitude,
-      position.latitude,
-      position.height
-    );
+    const cameraPosition = Cartesian3.fromDegrees(position.longitude, position.latitude, position.height);
 
     // Clear any tracked entity
     this.viewer.trackedEntity = undefined;
@@ -495,7 +499,7 @@ export class SatelliteManager {
       destination: cameraPosition,
       orientation: {
         heading: 0, // North
-        pitch: Cesium.Math.toRadians(90), // 90 degrees = straight up (zenith)
+        pitch: CesiumMath.toRadians(90), // 90 degrees = straight up (zenith)
         roll: 0,
       },
     });
@@ -512,10 +516,10 @@ export class SatelliteManager {
 
     // Replace default double-click behavior with ground station selection
     const screenSpaceEventHandler = this.viewer.screenSpaceEventHandler;
-    const originalLeftDoubleClick = screenSpaceEventHandler.getInputAction(Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
+    const originalLeftDoubleClick = screenSpaceEventHandler.getInputAction(ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
 
     // Custom double-click handler for zenith view
-    const zenithDoubleClickHandler = (click) => {
+    const zenithDoubleClickHandler = () => {
       // Select ground station entity when double-clicking
       const groundStationEntity = groundStation.components.Groundstation;
       if (groundStationEntity) {
@@ -523,24 +527,21 @@ export class SatelliteManager {
       }
     };
 
-    screenSpaceEventHandler.setInputAction(zenithDoubleClickHandler, Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
+    screenSpaceEventHandler.setInputAction(zenithDoubleClickHandler, ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
 
-    controller.enableZoom = false;        // Disable default zoom (we use custom wheel handler)
-    controller.enableTranslate = false;   // Disable panning/moving position
-    controller.enableRotate = false;      // Disable orbiting which moves camera position
-    controller.enableTilt = true;         // Allow tilting camera up/down
-    controller.enableLook = true;         // Allow looking around from fixed position
+    controller.enableZoom = false; // Disable default zoom (we use custom wheel handler)
+    controller.enableTranslate = false; // Disable panning/moving position
+    controller.enableRotate = false; // Disable orbiting which moves camera position
+    controller.enableTilt = true; // Allow tilting camera up/down
+    controller.enableLook = true; // Allow looking around from fixed position
 
     // Remap left mouse drag to look instead of rotate (which moves camera position)
-    controller.lookEventTypes = [
-      Cesium.CameraEventType.LEFT_DRAG,
-      Cesium.CameraEventType.RIGHT_DRAG,
-    ];
+    controller.lookEventTypes = [CameraEventType.LEFT_DRAG, CameraEventType.RIGHT_DRAG];
     controller.tiltEventTypes = [
-      Cesium.CameraEventType.MIDDLE_DRAG,
+      CameraEventType.MIDDLE_DRAG,
       {
-        eventType: Cesium.CameraEventType.LEFT_DRAG,
-        modifier: Cesium.KeyboardEventModifier.SHIFT,
+        eventType: CameraEventType.LEFT_DRAG,
+        modifier: KeyboardEventModifier.SHIFT,
       },
     ];
 
@@ -548,16 +549,16 @@ export class SatelliteManager {
     const originalFov = this.viewer.camera.frustum.fov;
 
     // FOV settings (in degrees)
-    const minFov = 30;   // Maximum zoom (narrowest field of view)
-    const maxFov = 150;  // Maximum wide view
+    const minFov = 30; // Maximum zoom (narrowest field of view)
+    const maxFov = 150; // Maximum wide view
     let currentFov = 90; // Start with 90 degree FOV (medium view)
 
     // Apply initial FOV
-    this.viewer.camera.frustum.fov = Cesium.Math.toRadians(currentFov);
+    this.viewer.camera.frustum.fov = CesiumMath.toRadians(currentFov);
 
     // Create FOV readout display
-    const viewReadout = document.createElement('div');
-    viewReadout.id = 'zenithViewReadout';
+    const viewReadout = document.createElement("div");
+    viewReadout.id = "zenithViewReadout";
     viewReadout.style.cssText = `
       position: absolute;
       top: 10px;
@@ -581,15 +582,15 @@ export class SatelliteManager {
 
     // Cardinal directions mapping
     const cardinals = {
-      0: 'N',
-      90: 'E',
-      180: 'S',
-      270: 'W',
+      0: "N",
+      90: "E",
+      180: "S",
+      270: "W",
     };
 
     // Create markers every 30 degrees
     for (let azimuth = 0; azimuth < 360; azimuth += 30) {
-      const azimuthRad = Cesium.Math.toRadians(azimuth);
+      const azimuthRad = CesiumMath.toRadians(azimuth);
 
       // Calculate position at horizon for this azimuth
       const dx = Math.sin(azimuthRad) * horizonRadius;
@@ -597,28 +598,24 @@ export class SatelliteManager {
 
       // Convert to lat/lon offset (approximate for small distances)
       const latOffset = dy / 111000; // degrees latitude
-      const lonOffset = dx / (111000 * Math.cos(Cesium.Math.toRadians(position.latitude))); // degrees longitude
+      const lonOffset = dx / (111000 * Math.cos(CesiumMath.toRadians(position.latitude))); // degrees longitude
 
       const markerLat = position.latitude + latOffset;
       const markerLon = position.longitude + lonOffset;
 
       // Create tick mark (short line extending outward)
-      const tickStart = Cesium.Cartesian3.fromDegrees(markerLon, markerLat, position.height);
+      const tickStart = Cartesian3.fromDegrees(markerLon, markerLat, position.height);
       const tickDx = Math.sin(azimuthRad) * tickLength;
       const tickDy = Math.cos(azimuthRad) * tickLength;
       const tickLatOffset = (dy + tickDy) / 111000;
-      const tickLonOffset = (dx + tickDx) / (111000 * Math.cos(Cesium.Math.toRadians(position.latitude)));
-      const tickEnd = Cesium.Cartesian3.fromDegrees(
-        position.longitude + tickLonOffset,
-        position.latitude + tickLatOffset,
-        position.height
-      );
+      const tickLonOffset = (dx + tickDx) / (111000 * Math.cos(CesiumMath.toRadians(position.latitude)));
+      const tickEnd = Cartesian3.fromDegrees(position.longitude + tickLonOffset, position.latitude + tickLatOffset, position.height);
 
       const tickEntity = this.viewer.entities.add({
         polyline: {
           positions: [tickStart, tickEnd],
           width: 2,
-          material: Cesium.Color.WHITE,
+          material: Color.WHITE,
           clampToGround: false,
           disableDepthTestDistance: Number.POSITIVE_INFINITY, // Always render on top
         },
@@ -636,24 +633,20 @@ export class SatelliteManager {
       const labelDx = Math.sin(azimuthRad) * labelDistance;
       const labelDy = Math.cos(azimuthRad) * labelDistance;
       const labelLatOffset = labelDy / 111000;
-      const labelLonOffset = labelDx / (111000 * Math.cos(Cesium.Math.toRadians(position.latitude)));
+      const labelLonOffset = labelDx / (111000 * Math.cos(CesiumMath.toRadians(position.latitude)));
 
       const labelEntity = this.viewer.entities.add({
-        position: Cesium.Cartesian3.fromDegrees(
-          position.longitude + labelLonOffset,
-          position.latitude + labelLatOffset,
-          position.height
-        ),
+        position: Cartesian3.fromDegrees(position.longitude + labelLonOffset, position.latitude + labelLatOffset, position.height),
         label: {
           text: labelText,
-          font: '14px sans-serif',
-          fillColor: Cesium.Color.WHITE,
-          outlineColor: Cesium.Color.BLACK,
+          font: "14px sans-serif",
+          fillColor: Color.WHITE,
+          outlineColor: Color.BLACK,
           outlineWidth: 2,
-          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-          pixelOffset: new Cesium.Cartesian2(0, 0),
-          horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
-          verticalOrigin: Cesium.VerticalOrigin.CENTER,
+          style: LabelStyle.FILL_AND_OUTLINE,
+          pixelOffset: new Cartesian2(0, 0),
+          horizontalOrigin: HorizontalOrigin.CENTER,
+          verticalOrigin: VerticalOrigin.CENTER,
           disableDepthTestDistance: Number.POSITIVE_INFINITY, // Always render on top
         },
       });
@@ -675,7 +668,7 @@ export class SatelliteManager {
       currentFov = Math.max(minFov, Math.min(maxFov, currentFov));
 
       // Update camera FOV
-      this.viewer.camera.frustum.fov = Cesium.Math.toRadians(currentFov);
+      this.viewer.camera.frustum.fov = CesiumMath.toRadians(currentFov);
 
       // Update readout
       viewReadout.textContent = `FOV: ${currentFov.toFixed(0)}°`;
@@ -684,7 +677,7 @@ export class SatelliteManager {
       this.viewer.scene.requestRender();
     };
 
-    canvas.addEventListener('wheel', wheelHandler, { passive: false, capture: true });
+    canvas.addEventListener("wheel", wheelHandler, { passive: false, capture: true });
 
     // Add post-render event to keep horizon level (roll = 0)
     const postRenderListener = this.viewer.scene.postRender.addEventListener(() => {
@@ -704,7 +697,7 @@ export class SatelliteManager {
 
     // Cleanup function
     this.zenithViewCleanup = () => {
-      canvas.removeEventListener('wheel', wheelHandler, { capture: true });
+      canvas.removeEventListener("wheel", wheelHandler, { capture: true });
       postRenderListener(); // Remove post-render listener
       controller.enableZoom = originalZoomEnabled;
       controller.enableTranslate = originalTranslateEnabled;
@@ -713,7 +706,7 @@ export class SatelliteManager {
       controller.tiltEventTypes = originalTiltEventTypes;
       // Restore double-click behavior
       if (originalLeftDoubleClick) {
-        screenSpaceEventHandler.setInputAction(originalLeftDoubleClick, Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
+        screenSpaceEventHandler.setInputAction(originalLeftDoubleClick, ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
       }
       // Restore original FOV
       this.viewer.camera.frustum.fov = originalFov;
@@ -757,7 +750,7 @@ export class SatelliteManager {
 
       // Remove all entities associated with the ground station from viewer
       Object.values(existingStation.components).forEach((component) => {
-        if (component instanceof Cesium.Entity && this.viewer.entities.contains(component)) {
+        if (component instanceof Entity && this.viewer.entities.contains(component)) {
           this.viewer.entities.remove(component);
         }
       });
@@ -826,12 +819,53 @@ export class SatelliteManager {
     this.satellites.forEach((sat) => {
       sat.props.overpassMode = newMode;
     });
-    // Clear and update passes for all satellites with ground stations to force recalculation
+    // Clear passes immediately to show old data is stale
     this.satellites.forEach((sat) => {
       if (sat.props.groundStationAvailable) {
         sat.props.clearPasses();
-        sat.props.updatePasses(this.viewer.clock.currentTime);
       }
     });
+
+    // Invalidate ground station caches
+    this.invalidateGroundStationCaches();
+
+    // Recalculate passes asynchronously in batches to avoid blocking UI
+    this.recalculatePassesAsync();
+  }
+
+  async recalculatePassesAsync() {
+    const satellitesWithGS = this.satellites.filter((sat) => sat.props.groundStationAvailable);
+    if (satellitesWithGS.length === 0) return;
+
+    console.log(`Recalculating passes for ${satellitesWithGS.length} satellites in async mode...`);
+
+    // Process satellites in small batches to keep UI responsive
+    const batchSize = 5;
+    for (let i = 0; i < satellitesWithGS.length; i += batchSize) {
+      const batch = satellitesWithGS.slice(i, i + batchSize);
+
+      // Process this batch
+      batch.forEach((sat) => {
+        sat.props.updatePasses(this.viewer.clock.currentTime);
+      });
+
+      // Yield to browser after each batch to keep UI responsive
+      if (i + batchSize < satellitesWithGS.length) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+    }
+
+    console.log('Pass recalculation complete');
+
+    // Refresh the currently selected entity's info box if it's a satellite or ground station
+    const selectedEntity = this.viewer.selectedEntity;
+    if (selectedEntity) {
+      // Trigger refresh by temporarily clearing and restoring selection
+      const entity = selectedEntity;
+      this.viewer.selectedEntity = undefined;
+      setTimeout(() => {
+        this.viewer.selectedEntity = entity;
+      }, 10);
+    }
   }
 }

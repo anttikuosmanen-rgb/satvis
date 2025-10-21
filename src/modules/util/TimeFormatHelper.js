@@ -21,13 +21,13 @@ export class TimeFormatHelper {
         return timezone;
       }
     } catch (error) {
-      console.warn('Error looking up timezone for coordinates:', lat, lon, error);
+      console.warn("Error looking up timezone for coordinates:", lat, lon, error);
     }
 
     // Fallback to simple longitude-based calculation if tz-lookup fails
     const offsetHours = Math.round(lon / 15);
     if (offsetHours === 0) {
-      return 'UTC';
+      return "UTC";
     } else if (offsetHours > 0) {
       return `Etc/GMT-${offsetHours}`;
     } else {
@@ -43,29 +43,29 @@ export class TimeFormatHelper {
    */
   static getTimezoneOffset(timezone = null, date = new Date()) {
     if (!timezone) {
-      return 'UTC';
+      return "UTC";
     }
 
     try {
       // Get the offset in minutes by comparing UTC and local time
-      const utcDate = new Date(date.toLocaleString('en-US', { timeZone: 'UTC' }));
-      const tzDate = new Date(date.toLocaleString('en-US', { timeZone: timezone }));
+      const utcDate = new Date(date.toLocaleString("en-US", { timeZone: "UTC" }));
+      const tzDate = new Date(date.toLocaleString("en-US", { timeZone: timezone }));
       const offsetMinutes = (tzDate.getTime() - utcDate.getTime()) / 60000;
       const offsetHours = Math.floor(Math.abs(offsetMinutes) / 60);
       const offsetMins = Math.abs(offsetMinutes) % 60;
 
       if (offsetMinutes === 0) {
-        return 'UTC';
+        return "UTC";
       }
 
-      const sign = offsetMinutes > 0 ? '+' : '-';
+      const sign = offsetMinutes > 0 ? "+" : "-";
       if (offsetMins === 0) {
         return `UTC${sign}${offsetHours}`;
       } else {
-        return `UTC${sign}${offsetHours}:${offsetMins.toString().padStart(2, '0')}`;
+        return `UTC${sign}${offsetHours}:${offsetMins.toString().padStart(2, "0")}`;
       }
     } catch {
-      return 'UTC';
+      return "UTC";
     }
   }
 
@@ -77,18 +77,18 @@ export class TimeFormatHelper {
   static getTimezoneAbbreviation(timezone = null) {
     const date = new Date();
     const options = {
-      timeZoneName: 'short',
+      timeZoneName: "short",
     };
 
     if (timezone) {
       options.timeZone = timezone;
     }
 
-    const formatter = new Intl.DateTimeFormat('en-US', options);
+    const formatter = new Intl.DateTimeFormat("en-US", options);
     const parts = formatter.formatToParts(date);
-    const timeZonePart = parts.find(part => part.type === 'timeZoneName');
+    const timeZonePart = parts.find((part) => part.type === "timeZoneName");
 
-    return timeZonePart ? timeZonePart.value : (timezone || 'Local');
+    return timeZonePart ? timeZonePart.value : timezone || "Local";
   }
 
   /**
@@ -108,17 +108,17 @@ export class TimeFormatHelper {
 
       const options = {
         timeZone: timezone,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
       };
 
-      const formatter = new Intl.DateTimeFormat('en-GB', options);
-      const formatted = formatter.format(date).replace(/\//g, '.').replace(',', '');
+      const formatter = new Intl.DateTimeFormat("en-GB", options);
+      const formatted = formatter.format(date).replace(/\//g, ".").replace(",", "");
 
       if (includeTimezone) {
         const tzOffset = this.getTimezoneOffset(timezone, date);
@@ -146,13 +146,13 @@ export class TimeFormatHelper {
 
       const options = {
         timeZone: timezone,
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
       };
 
-      const formatter = new Intl.DateTimeFormat('en-GB', options);
+      const formatter = new Intl.DateTimeFormat("en-GB", options);
       const formatted = formatter.format(date);
 
       const tzOffset = this.getTimezoneOffset(timezone, date);

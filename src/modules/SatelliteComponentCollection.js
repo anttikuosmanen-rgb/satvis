@@ -7,8 +7,6 @@ import {
   Cartographic,
   Color,
   ColorGeometryInstanceAttribute,
-  CornerType,
-  CorridorGraphics,
   DistanceDisplayCondition,
   EllipseGraphics,
   Entity,
@@ -121,7 +119,7 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       if (component) {
         // Clean up tick mark entities
         if (component._tickEntities) {
-          component._tickEntities.forEach(tickEntity => {
+          component._tickEntities.forEach((tickEntity) => {
             this.viewer.entities.remove(tickEntity);
           });
           component._tickEntities.length = 0;
@@ -161,7 +159,7 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       }
 
       if (entity?.name?.includes("Groundstation")) {
-        this.handleGroundStationHighlights(entity, "selected");
+        this.handleGroundStationHighlights(entity);
         return;
       }
 
@@ -180,7 +178,7 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       // Handle ground station tracking (double-click to focus)
       const trackedEntity = this.viewer.trackedEntity;
       if (trackedEntity?.name?.includes("Groundstation")) {
-        this.handleGroundStationHighlights(trackedEntity, "tracked");
+        this.handleGroundStationHighlights(trackedEntity);
         return;
       }
 
@@ -195,12 +193,10 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     });
   }
 
-  async handleGroundStationHighlights(entity, eventType) {
+  async handleGroundStationHighlights(entity) {
     // Handle ground station selection/tracking - show all passes for that ground station
     // Find the ground station that owns this entity
-    const groundStation = window.cc?.sats?.groundStations?.find(gs =>
-      gs.components && Object.values(gs.components).includes(entity)
-    );
+    const groundStation = window.cc?.sats?.groundStations?.find((gs) => gs.components && Object.values(gs.components).includes(entity));
 
     if (!groundStation) {
       CesiumTimelineHelper.clearHighlightRanges(this.viewer);
@@ -211,7 +207,7 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     CesiumTimelineHelper.clearHighlightRanges(this.viewer);
 
     // Yield to browser to keep UI responsive
-    await new Promise(resolve => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     // Calculate passes asynchronously
     const passes = await groundStation.passesAsync(this.viewer.clock.currentTime);
@@ -527,11 +523,7 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
         positions: new CallbackProperty((time) => {
           const satellitePosition = this.props.position(time);
           const cartographic = Cartographic.fromCartesian(satellitePosition);
-          const surfacePosition = Cartesian3.fromRadians(
-            cartographic.longitude,
-            cartographic.latitude,
-            0,
-          );
+          const surfacePosition = Cartesian3.fromRadians(cartographic.longitude, cartographic.latitude, 0);
           return [surfacePosition, satellitePosition];
         }, false),
         followSurface: false,
@@ -564,11 +556,7 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
               return [];
             }
 
-            const tickPosition = Cartesian3.fromRadians(
-              cartographic.longitude,
-              cartographic.latitude,
-              altitude * 1000,
-            );
+            const tickPosition = Cartesian3.fromRadians(cartographic.longitude, cartographic.latitude, altitude * 1000);
 
             // Calculate eastward direction for tick
             const up = Cartesian3.normalize(satellitePosition, new Cartesian3());
@@ -576,11 +564,7 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
             Cartesian3.normalize(east, east);
 
             const tickLength = is500km ? 8000 : 4000;
-            const tickEnd = Cartesian3.add(
-              tickPosition,
-              Cartesian3.multiplyByScalar(east, tickLength, new Cartesian3()),
-              new Cartesian3(),
-            );
+            const tickEnd = Cartesian3.add(tickPosition, Cartesian3.multiplyByScalar(east, tickLength, new Cartesian3()), new Cartesian3());
 
             return [tickPosition, tickEnd];
           }, false),
@@ -649,7 +633,7 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     // Find current pass
     const getCurrentPass = (time) => {
       const currentTime = new Date(JulianDate.toDate(time));
-      return this.props.passes.find(pass => {
+      return this.props.passes.find((pass) => {
         const passStart = new Date(pass.start);
         const passEnd = new Date(pass.end);
         return currentTime >= passStart && currentTime <= passEnd;
@@ -661,9 +645,9 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       try {
         const isEclipsed = this.props.orbit.isInEclipse(JulianDate.toDate(time));
         return isEclipsed
-          ? Color.DARKRED.withAlpha(0.8)  // Dark red for eclipsed portions
-          : Color.CYAN.withAlpha(0.9);    // Bright cyan for sunlit portions during pass
-      } catch (error) {
+          ? Color.DARKRED.withAlpha(0.8) // Dark red for eclipsed portions
+          : Color.CYAN.withAlpha(0.9); // Bright cyan for sunlit portions during pass
+      } catch {
         // Fallback to cyan if eclipse calculation fails
         return Color.CYAN.withAlpha(0.8);
       }

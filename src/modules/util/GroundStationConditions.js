@@ -23,7 +23,7 @@ export class GroundStationConditions {
     // Default SunCalc method for backwards compatibility
     const sunPosition = SunCalc.getPosition(time, position.latitude, position.longitude);
     // Sun altitude below -6 degrees indicates civil twilight (darkness for visual observation)
-    return sunPosition.altitude < (-6 * deg2rad);
+    return sunPosition.altitude < -6 * deg2rad;
   }
 
   /**
@@ -49,7 +49,7 @@ export class GroundStationConditions {
       console.warn("Astronomy-engine calculation failed, falling back to SunCalc:", error);
       // Fallback to SunCalc
       const sunPosition = SunCalc.getPosition(time, position.latitude, position.longitude);
-      return sunPosition.altitude < (-6 * deg2rad);
+      return sunPosition.altitude < -6 * deg2rad;
     }
   }
 
@@ -91,7 +91,7 @@ export class GroundStationConditions {
     return {
       altitude: sunPosition.altitude * (180 / Math.PI), // Convert to degrees
       azimuth: sunPosition.azimuth * (180 / Math.PI), // Convert to degrees
-      isDark: sunPosition.altitude < (-6 * deg2rad),
+      isDark: sunPosition.altitude < -6 * deg2rad,
     };
   }
 
@@ -114,7 +114,7 @@ export class GroundStationConditions {
 
       return {
         altitude: hor.altitude, // Already in degrees
-        azimuth: hor.azimuth,   // Already in degrees
+        azimuth: hor.azimuth, // Already in degrees
         isDark: hor.altitude < -6.0,
       };
     } catch (error) {
@@ -124,7 +124,7 @@ export class GroundStationConditions {
       return {
         altitude: sunPosition.altitude * (180 / Math.PI),
         azimuth: sunPosition.azimuth * (180 / Math.PI),
-        isDark: sunPosition.altitude < (-6 * deg2rad),
+        isDark: sunPosition.altitude < -6 * deg2rad,
       };
     }
   }

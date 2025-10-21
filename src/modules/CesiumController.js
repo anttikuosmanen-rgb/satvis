@@ -33,6 +33,7 @@ import { faBell, faInfo } from "@fortawesome/free-solid-svg-icons";
 import infoBoxCss from "@cesium/widgets/Source/InfoBox/InfoBoxDescription.css?raw";
 
 import { useCesiumStore } from "../stores/cesium";
+import { useSatStore } from "../stores/sat";
 import infoBoxOverrideCss from "../css/infobox.css?raw";
 import { useToastProxy } from "../composables/useToastProxy";
 import { DeviceDetect } from "./util/DeviceDetect";
@@ -40,6 +41,7 @@ import { PushManager } from "./util/PushManager";
 import { CesiumPerformanceStats } from "./util/CesiumPerformanceStats";
 import { CesiumTimelineHelper } from "./util/CesiumTimelineHelper";
 import { SatelliteManager } from "./SatelliteManager";
+import { TimeFormatHelper } from "./util/TimeFormatHelper";
 
 dayjs.extend(utc);
 
@@ -425,8 +427,8 @@ export class CesiumController {
     if (!this.viewer.timeline) return;
 
     // Define safe date bounds (years 1900-2100 to stay well within Cesium's limits)
-    const minDate = JulianDate.fromIso8601('1900-01-01T00:00:00Z');
-    const maxDate = JulianDate.fromIso8601('2100-12-31T23:59:59Z');
+    const minDate = JulianDate.fromIso8601("1900-01-01T00:00:00Z");
+    const maxDate = JulianDate.fromIso8601("2100-12-31T23:59:59Z");
 
     try {
       const timeline = this.viewer.timeline;
@@ -472,8 +474,8 @@ export class CesiumController {
       }
     } catch (error) {
       // If there's any error with bounds checking, reset to a safe default
-      console.warn('Timeline bounds error, resetting to safe defaults:', error);
-      const safeStart = JulianDate.fromIso8601('2024-01-01T00:00:00Z');
+      console.warn("Timeline bounds error, resetting to safe defaults:", error);
+      const safeStart = JulianDate.fromIso8601("2024-01-01T00:00:00Z");
       const safeEnd = JulianDate.addDays(safeStart, 7, new JulianDate());
 
       this.viewer.clock.startTime = safeStart;
@@ -786,7 +788,7 @@ export class CesiumController {
 
             // Ensure entities is actually an array
             if (!Array.isArray(entities)) {
-              console.warn('Entities collection is not an array, skipping satellite tracking');
+              console.warn("Entities collection is not an array, skipping satellite tracking");
               return;
             }
 
@@ -816,8 +818,8 @@ export class CesiumController {
                   const satellitePosition = satelliteEntity.position.getValue(this.viewer.clock.currentTime);
                   if (satellitePosition) {
                     const cameraPosition = this.viewer.camera.positionWC;
-                    const direction = Cesium.Cartesian3.subtract(satellitePosition, cameraPosition, new Cesium.Cartesian3());
-                    Cesium.Cartesian3.normalize(direction, direction);
+                    const direction = Cartesian3.subtract(satellitePosition, cameraPosition, new Cartesian3());
+                    Cartesian3.normalize(direction, direction);
                     this.viewer.camera.direction = direction;
                     // Select the satellite to show its info
                     this.viewer.selectedEntity = satelliteEntity;
@@ -848,10 +850,13 @@ export class CesiumController {
               }
             } else {
               console.warn(`Could not find satellite entity for: ${satelliteName}`);
-              console.log("Available entities:", entities.map((entity) => entity.name).filter((n) => n));
+              console.log(
+                "Available entities:",
+                entities.map((entity) => entity.name).filter((n) => n),
+              );
             }
           } catch (error) {
-            console.error('Error while tracking satellite:', error);
+            console.error("Error while tracking satellite:", error);
           }
         }
       }
@@ -890,15 +895,12 @@ export class CesiumController {
       return;
     }
 
-    const { useSatStore } = require("../stores/sat");
-    const { TimeFormatHelper } = require("./util/TimeFormatHelper");
-
     // Store original makeLabel function and its context for timeline
     const timeline = this.viewer.timeline;
     const originalTimelineMakeLabel = timeline.makeLabel.bind(timeline);
 
     // Override timeline makeLabel to support local time
-    this.viewer.timeline.makeLabel = function(time) {
+    this.viewer.timeline.makeLabel = function (time) {
       try {
         const satStore = useSatStore();
 
@@ -906,37 +908,34 @@ export class CesiumController {
           // Get first ground station position for timezone
           const groundStationPosition = {
             latitude: satStore.groundStations[0].lat,
-            longitude: satStore.groundStations[0].lon
+            longitude: satStore.groundStations[0].lon,
           };
 
           // Format in ground station's local time
           const date = JulianDate.toDate(time);
-          const timezone = TimeFormatHelper.getTimezoneFromCoordinates(
-            groundStationPosition.latitude,
-            groundStationPosition.longitude
-          );
+          const timezone = TimeFormatHelper.getTimezoneFromCoordinates(groundStationPosition.latitude, groundStationPosition.longitude);
 
           const tzOffset = TimeFormatHelper.getTimezoneOffset(timezone, date);
 
           // Format in DD.MM HH:MM:SS format for timeline
-          const formatter = new Intl.DateTimeFormat('en-GB', {
+          const formatter = new Intl.DateTimeFormat("en-GB", {
             timeZone: timezone,
-            day: '2-digit',
-            month: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: false
+            day: "2-digit",
+            month: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            hour12: false,
           });
 
           const formatted = formatter.format(date);
           // Format is "DD/MM/YYYY, HH:MM:SS" - convert to "DD.MM HH:MM:SS"
-          const parts = formatted.split(', ');
-          const datePart = parts[0].substring(0, 5).replace('/', '.'); // Get DD.MM only
+          const parts = formatted.split(", ");
+          const datePart = parts[0].substring(0, 5).replace("/", "."); // Get DD.MM only
           const timePart = parts[1];
           return `${datePart} ${timePart} ${tzOffset}`;
         }
-      } catch (error) {
+      } catch {
         // Pinia store not ready yet or error accessing it, fall back to UTC
       }
 
@@ -952,7 +951,7 @@ export class CesiumController {
     const originalAnimationDateFormatter = animation.viewModel.dateFormatter;
 
     // Override animation date formatter to support local time
-    animation.viewModel.dateFormatter = function(date, viewModel) {
+    animation.viewModel.dateFormatter = function (date, viewModel) {
       try {
         const satStore = useSatStore();
 
@@ -963,26 +962,23 @@ export class CesiumController {
           // Get first ground station position for timezone
           const groundStationPosition = {
             latitude: satStore.groundStations[0].lat,
-            longitude: satStore.groundStations[0].lon
+            longitude: satStore.groundStations[0].lon,
           };
 
           // Format in ground station's local time
-          const timezone = TimeFormatHelper.getTimezoneFromCoordinates(
-            groundStationPosition.latitude,
-            groundStationPosition.longitude
-          );
+          const timezone = TimeFormatHelper.getTimezoneFromCoordinates(groundStationPosition.latitude, groundStationPosition.longitude);
 
           // Format in MMM DD YYYY format (without timezone, that goes with time)
-          const formatter = new Intl.DateTimeFormat('en-US', {
+          const formatter = new Intl.DateTimeFormat("en-US", {
             timeZone: timezone,
-            month: 'short',
-            day: '2-digit',
-            year: 'numeric'
+            month: "short",
+            day: "2-digit",
+            year: "numeric",
           });
 
           return formatter.format(jsDate);
         }
-      } catch (error) {
+      } catch {
         // Pinia store not ready yet or error accessing it, fall back to UTC
       }
 
@@ -991,7 +987,7 @@ export class CesiumController {
     };
 
     // Override animation time formatter to support local time
-    animation.viewModel.timeFormatter = function(date, viewModel) {
+    animation.viewModel.timeFormatter = function (date, viewModel) {
       try {
         const satStore = useSatStore();
 
@@ -1002,29 +998,26 @@ export class CesiumController {
           // Get first ground station position for timezone
           const groundStationPosition = {
             latitude: satStore.groundStations[0].lat,
-            longitude: satStore.groundStations[0].lon
+            longitude: satStore.groundStations[0].lon,
           };
 
           // Format in ground station's local time
-          const timezone = TimeFormatHelper.getTimezoneFromCoordinates(
-            groundStationPosition.latitude,
-            groundStationPosition.longitude
-          );
+          const timezone = TimeFormatHelper.getTimezoneFromCoordinates(groundStationPosition.latitude, groundStationPosition.longitude);
 
           const tzOffset = TimeFormatHelper.getTimezoneOffset(timezone, jsDate);
 
           // Format in HH:MM:SS UTC+x format
-          const formatter = new Intl.DateTimeFormat('en-GB', {
+          const formatter = new Intl.DateTimeFormat("en-GB", {
             timeZone: timezone,
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: false
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            hour12: false,
           });
 
           return `${formatter.format(jsDate)} ${tzOffset}`;
         }
-      } catch (error) {
+      } catch {
         // Pinia store not ready yet or error accessing it, fall back to UTC
       }
 

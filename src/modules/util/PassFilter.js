@@ -26,9 +26,11 @@ export function filterAndSortPasses(passes, time, deltaHours = 48) {
   // Filter out passes in sunlight if option is enabled
   const satStore = useSatStore();
   if (satStore.hideSunlightPasses) {
-    filtered = filtered.filter((pass) =>
-      // Show pass if either start or end in darkness
-      pass.groundStationDarkAtStart || pass.groundStationDarkAtEnd);
+    filtered = filtered.filter(
+      (pass) =>
+        // Show pass if either start or end in darkness
+        pass.groundStationDarkAtStart || pass.groundStationDarkAtEnd,
+    );
   }
 
   // Filter out passes where satellite is eclipsed for the entire pass if option is enabled
