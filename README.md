@@ -7,7 +7,7 @@ Satellite orbit visualization and pass prediction.
 > This version is currently deployed to https://satvis.space/next.
 > Planning to merge this back to the ~~master~~ main in the next few months.
 
-![Screenshot](https://anttikuosmanen-rgb.github.io/satvis/data/images/Screenshot%202025-10-22%20at%209.19.31.png)
+![Screenshot](https://anttikuosmanen-rgb.github.io/satvis/data/images/screenshot.png)
 
 ## Features
 - Calculate position and orbit of satellites from TLE
