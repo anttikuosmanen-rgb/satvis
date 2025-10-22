@@ -179,6 +179,24 @@
           <input type="button" @click="cc.jumpTo('HalfDome')" />
           Jump to HalfDome
         </label>
+        <div class="toolbarTitle">Planets</div>
+        <label class="toolbarSwitch">
+          <input v-model="planetsEnabled" type="checkbox" @change="togglePlanets" />
+          <span class="slider"></span>
+          Show planets
+        </label>
+        <template v-if="planetsEnabled">
+          <label class="toolbarSwitch">
+            <input v-model="planetRenderMode" type="radio" value="billboard" @change="setPlanetRenderMode" />
+            <span class="slider"></span>
+            Billboard
+          </label>
+          <label class="toolbarSwitch">
+            <input v-model="planetRenderMode" type="radio" value="point" @change="setPlanetRenderMode" />
+            <span class="slider"></span>
+            Point Primitive
+          </label>
+        </template>
         <div class="toolbarTitle">Overpass calculation</div>
         <label class="toolbarSwitch">
           <input v-model="enableSwathPasses" type="checkbox" />
@@ -239,6 +257,8 @@ export default {
       },
       showUI: true,
       zenithViewActive: false, // Local reactive state for zenith view
+      planetsEnabled: false, // Planet rendering enabled state
+      planetRenderMode: "billboard", // 'billboard' or 'point'
     };
   },
   computed: {
@@ -607,6 +627,21 @@ export default {
         }, 100);
       } catch (error) {
         console.error("Error in timeline zoom out:", error);
+      }
+    },
+    togglePlanets() {
+      if (this.planetsEnabled) {
+        // Enable planet rendering with current mode
+        this.cc.planets.enable(this.planetRenderMode);
+      } else {
+        // Disable planet rendering
+        this.cc.planets.disable();
+      }
+    },
+    setPlanetRenderMode() {
+      // Update render mode if planets are enabled
+      if (this.planetsEnabled) {
+        this.cc.planets.setRenderMode(this.planetRenderMode);
       }
     },
   },
