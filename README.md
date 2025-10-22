@@ -1,6 +1,6 @@
 # SatVis - Enhanced Fork ![Node CI](https://github.com/anttikuosmanen-rgb/satvis/workflows/Node%20CI/badge.svg) ![Deploy](https://github.com/anttikuosmanen-rgb/satvis/workflows/Deploy%20to%20GitHub%20Pages/badge.svg)
 
-Satellite orbit visualization and pass prediction with enhanced features.
+Satellite orbit visualization and pass prediction with enhanced features for visual observing of satellites.
 
 > [!NOTE]
 > This is an enhanced fork of [Flowm/satvis](https://github.com/Flowm/satvis) with significant improvements to pass prediction, timeline visualization, and ground station features.
