@@ -440,7 +440,7 @@ export class SatelliteManager {
       this.zenithViewCleanup();
     }
     // Dispatch event for UI to update
-    window.dispatchEvent(new CustomEvent('zenithViewChanged', { detail: { active: false } }));
+    window.dispatchEvent(new CustomEvent("zenithViewChanged", { detail: { active: false } }));
 
     // Return to a reasonable view of Earth from distance
     this.viewer.camera.flyTo({
@@ -710,7 +710,7 @@ export class SatelliteManager {
     });
 
     // Dispatch event for UI to update
-    window.dispatchEvent(new CustomEvent('zenithViewChanged', { detail: { active: true } }));
+    window.dispatchEvent(new CustomEvent("zenithViewChanged", { detail: { active: true } }));
 
     // Cleanup function
     this.zenithViewCleanup = () => {
@@ -872,7 +872,7 @@ export class SatelliteManager {
       }
     }
 
-    console.log('Pass recalculation complete');
+    console.log("Pass recalculation complete");
 
     // Refresh the currently selected entity's info box if it's a satellite or ground station
     const selectedEntity = this.viewer.selectedEntity;

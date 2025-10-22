@@ -120,9 +120,7 @@ export class SatelliteProperties {
     // (Re)create sampled position if it does not exist or if it does not contain the current time
     // For future-epoch satellites, the interval might start after the current time,
     // but we still need to create samples for HOLD extrapolation to work
-    const needsInit = !this.sampledPosition ||
-                      (!TimeInterval.contains(this.sampledPosition.interval, time) &&
-                       JulianDate.compare(time, epochMinus1Hour) >= 0);
+    const needsInit = !this.sampledPosition || (!TimeInterval.contains(this.sampledPosition.interval, time) && JulianDate.compare(time, epochMinus1Hour) >= 0);
 
     if (needsInit) {
       this.initSampledPosition(request.start);

@@ -369,12 +369,12 @@ export default {
     this.zenithViewChangeHandler = (event) => {
       this.zenithViewActive = event.detail.active;
     };
-    window.addEventListener('zenithViewChanged', this.zenithViewChangeHandler);
+    window.addEventListener("zenithViewChanged", this.zenithViewChangeHandler);
   },
   beforeUnmount() {
     // Clean up event listener
     if (this.zenithViewChangeHandler) {
-      window.removeEventListener('zenithViewChanged', this.zenithViewChangeHandler);
+      window.removeEventListener("zenithViewChanged", this.zenithViewChangeHandler);
     }
   },
   methods: {
