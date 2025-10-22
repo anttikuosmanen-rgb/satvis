@@ -103,8 +103,10 @@ export class GroundStationEntity extends CesiumComponentCollection {
 
     // Calculate new passes
     let passes = [];
-    // Aggregate passes from all visible satellites
-    this.sats.visibleSatellites.forEach((sat) => {
+    // Aggregate passes from all active satellites (enabled by tags/names)
+    // Use activeSatellites instead of visibleSatellites to include satellites
+    // even when all visual components are disabled
+    this.sats.activeSatellites.forEach((sat) => {
       sat.props.updatePasses(this.viewer.clock.currentTime);
       passes.push(...sat.props.passes);
     });
@@ -152,12 +154,14 @@ export class GroundStationEntity extends CesiumComponentCollection {
 
     // Calculate new passes in chunks to avoid blocking UI
     let passes = [];
-    const visibleSatellites = this.sats.visibleSatellites;
+    // Use activeSatellites instead of visibleSatellites to include satellites
+    // even when all visual components are disabled
+    const activeSatellites = this.sats.activeSatellites;
 
     // Process satellites in chunks of 5 to avoid blocking
     const chunkSize = 5;
-    for (let i = 0; i < visibleSatellites.length; i += chunkSize) {
-      const chunk = visibleSatellites.slice(i, i + chunkSize);
+    for (let i = 0; i < activeSatellites.length; i += chunkSize) {
+      const chunk = activeSatellites.slice(i, i + chunkSize);
 
       // Process this chunk
       chunk.forEach((sat) => {
@@ -166,7 +170,7 @@ export class GroundStationEntity extends CesiumComponentCollection {
       });
 
       // Yield to browser after each chunk
-      if (i + chunkSize < visibleSatellites.length) {
+      if (i + chunkSize < activeSatellites.length) {
         await new Promise((resolve) => setTimeout(resolve, 0));
       }
     }
