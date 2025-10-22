@@ -104,6 +104,9 @@ export class CesiumController {
     // Create Satellite Manager
     this.sats = new SatelliteManager(this.viewer);
 
+    // Add event listener for ground station selection
+    this.setupGroundStationSelectionListener();
+
     // Add event listener to detect when time is set to "now" (today/real-time button)
     this.setupTimelineResetOnNow();
 
@@ -1027,5 +1030,55 @@ export class CesiumController {
 
     // Update timeline when local time setting changes
     this.viewer.timeline.updateFromClock();
+  }
+
+  setupGroundStationSelectionListener() {
+    // Listen for entity selection changes to show timeline highlights when ground station is selected
+    let lastSelectedEntity = null;
+
+    // Use selectedEntityChanged event to detect selection changes
+    this.viewer.selectedEntityChanged.addEventListener(() => {
+      const selectedEntity = this.viewer.selectedEntity;
+
+      // Only process if selection actually changed
+      if (selectedEntity === lastSelectedEntity) {
+        return;
+      }
+      lastSelectedEntity = selectedEntity;
+
+      // Check if the selected entity is a ground station
+      if (selectedEntity && selectedEntity.name && selectedEntity.name.includes("Groundstation")) {
+        console.log("Ground station selected:", selectedEntity.name);
+
+        // Find the ground station in the satellite manager
+        const groundStation = this.sats.groundStations.find((gs) => gs.entity === selectedEntity);
+
+        if (groundStation) {
+          // Get all passes for enabled satellites at this ground station
+          const currentTime = this.viewer.clock.currentTime;
+
+          // Clear existing satellite pass highlights
+          CesiumTimelineHelper.clearHighlightRanges(this.viewer);
+
+          // Add highlights for all passes of all enabled satellites
+          const enabledSatellites = this.sats.enabledSatellites;
+
+          enabledSatellites.forEach((satName) => {
+            const satellite = this.sats.getSatellite(satName);
+            if (satellite && satellite.props) {
+              // Update passes for this satellite
+              satellite.props.updatePasses(currentTime);
+
+              // Add highlights for this satellite's passes
+              if (satellite.props.passes && satellite.props.passes.length > 0) {
+                CesiumTimelineHelper.addHighlightRanges(this.viewer, satellite.props.passes, satName);
+              }
+            }
+          });
+
+          console.log(`Added timeline highlights for ${enabledSatellites.length} satellites`);
+        }
+      }
+    });
   }
 }
