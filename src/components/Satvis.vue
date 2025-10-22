@@ -238,7 +238,7 @@ export default {
         dbg: false,
       },
       showUI: true,
-      inZenithView: false,
+      zenithViewActive: false, // Local reactive state for zenith view
     };
   },
   computed: {
@@ -251,7 +251,8 @@ export default {
       return this.groundStations && this.groundStations.length > 0;
     },
     isInZenithView() {
-      return this.inZenithView;
+      // Use local reactive state instead of checking cc.sats directly
+      return this.zenithViewActive;
     },
   },
   watch: {
@@ -363,6 +364,18 @@ export default {
         cc.viewer.scene.globe.nightFadeInDistance = nightFadeDistance * 0.5;
       }
     });
+
+    // Listen for zenith view state changes
+    this.zenithViewChangeHandler = (event) => {
+      this.zenithViewActive = event.detail.active;
+    };
+    window.addEventListener('zenithViewChanged', this.zenithViewChangeHandler);
+  },
+  beforeUnmount() {
+    // Clean up event listener
+    if (this.zenithViewChangeHandler) {
+      window.removeEventListener('zenithViewChanged', this.zenithViewChangeHandler);
+    }
   },
   methods: {
     toggleMenu(name) {
@@ -446,21 +459,18 @@ export default {
       }
     },
     toggleZenithView() {
-      if (this.inZenithView) {
-        // Exit zenith view
+      if (this.cc.sats.isInZenithView) {
+        // Exit zenith view (event will be dispatched by SatelliteManager)
         this.cc.sats.exitZenithView();
-        this.inZenithView = false;
       } else {
-        // Enter zenith view
+        // Enter zenith view (event will be dispatched by SatelliteManager)
         this.cc.sats.zenithViewFromGroundStation();
-        this.inZenithView = true;
       }
     },
     removeGroundStation() {
-      // Exit zenith view if active
-      if (this.inZenithView) {
+      // Exit zenith view if active (event will be dispatched by SatelliteManager)
+      if (this.cc.sats.isInZenithView) {
         this.cc.sats.exitZenithView();
-        this.inZenithView = false;
       }
 
       // Check if we're currently tracking a ground station and unfocus first

@@ -417,9 +417,18 @@ export class SatelliteManager {
   }
 
   focusGroundStation() {
-    if (this.groundStationAvailable) {
-      this.#groundStations[0].track();
+    if (!this.groundStationAvailable) {
+      return;
     }
+
+    // If in zenith view, exit to normal view first
+    if (this.isInZenithView) {
+      this.exitZenithView();
+      return;
+    }
+
+    // Normal focus behavior
+    this.#groundStations[0].track();
   }
 
   get isInZenithView() {
@@ -430,6 +439,9 @@ export class SatelliteManager {
     if (this.zenithViewCleanup) {
       this.zenithViewCleanup();
     }
+    // Dispatch event for UI to update
+    window.dispatchEvent(new CustomEvent('zenithViewChanged', { detail: { active: false } }));
+
     // Return to a reasonable view of Earth from distance
     this.viewer.camera.flyTo({
       destination: Cartesian3.fromDegrees(0, 20, 20000000), // 20,000 km away
@@ -459,15 +471,17 @@ export class SatelliteManager {
 
     // If camera is more than 1km from ground station, focus on it first
     if (distanceToGroundStation > 1000) {
-      // Clear any tracking
-      this.viewer.trackedEntity = undefined;
-      this.viewer.selectedEntity = groundStation.entity;
-      groundStation.track();
+      // Select ground station entity first (so it shows in zenith view)
+      const groundStationEntity = groundStation.components.Groundstation;
+      this.viewer.selectedEntity = groundStationEntity;
 
-      // Enter zenith view after camera movement completes
+      // Track ground station to move camera
+      this.viewer.trackedEntity = groundStationEntity;
+
+      // Enter zenith view after a short delay for camera to start moving
       setTimeout(() => {
         this.enterZenithViewImmediate();
-      }, 1500);
+      }, 300); // Reduced delay - just enough for tracking to engage
       return;
     }
 
@@ -694,6 +708,9 @@ export class SatelliteManager {
         });
       }
     });
+
+    // Dispatch event for UI to update
+    window.dispatchEvent(new CustomEvent('zenithViewChanged', { detail: { active: true } }));
 
     // Cleanup function
     this.zenithViewCleanup = () => {
