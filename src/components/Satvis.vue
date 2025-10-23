@@ -257,7 +257,7 @@ export default {
       },
       showUI: true,
       zenithViewActive: false, // Local reactive state for zenith view
-      planetsEnabled: false, // Planet rendering enabled state
+      planetsEnabled: true, // Planet rendering enabled state
       planetRenderMode: "billboard", // 'billboard' or 'point'
     };
   },
@@ -313,6 +313,10 @@ export default {
     enabledComponents: {
       handler(newComponents) {
         cc.sats.enabledComponents = newComponents;
+        // Update planet label visibility based on enabled components
+        if (cc.planets) {
+          cc.planets.updateComponents(newComponents);
+        }
       },
       deep: true,
     },
@@ -390,6 +394,15 @@ export default {
       this.zenithViewActive = event.detail.active;
     };
     window.addEventListener("zenithViewChanged", this.zenithViewChangeHandler);
+
+    // Enable planets by default
+    if (this.planetsEnabled) {
+      this.$nextTick(() => {
+        if (cc.planets) {
+          cc.planets.enable(this.planetRenderMode);
+        }
+      });
+    }
   },
   beforeUnmount() {
     // Clean up event listener

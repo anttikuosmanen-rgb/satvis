@@ -1,4 +1,4 @@
-import { Cartesian3, Color, JulianDate, VerticalOrigin } from "@cesium/engine";
+import { Cartesian3, Color, JulianDate, VerticalOrigin, HorizontalOrigin, CallbackProperty, ReferenceFrame } from "@cesium/engine";
 import { PlanetaryPositions } from "./PlanetaryPositions";
 
 /**
@@ -14,6 +14,11 @@ export class PlanetManager {
     this.planetEntities = [];
     this.pointPrimitives = null;
     this.updateInterval = null;
+    this.preRenderListener = null;
+    this.lastUpdateTime = null; // Last simulation time we updated point primitives
+    this.lastRealUpdate = null; // Last real-world time we updated
+    this.showLabels = true; // Whether to show planet labels
+    this.trackedEntityListener = null; // Listener to prevent planet tracking
   }
 
   /**
@@ -30,17 +35,29 @@ export class PlanetManager {
 
     if (mode === "billboard") {
       this.createBillboards();
+      // Update metadata every 5 minutes for billboards
+      this.updateInterval = setInterval(() => {
+        this.updatePositions();
+      }, 5 * 60 * 1000);
     } else if (mode === "point") {
       await this.createPointPrimitives();
+      // For point primitives, check periodically if position update is needed
+      this.preRenderListener = this.viewer.scene.preUpdate.addEventListener(() => {
+        this.updatePointPrimitivesThrottled();
+      });
     }
-
-    // Update planet positions every 5 minutes
-    this.updateInterval = setInterval(() => {
-      this.updatePositions();
-    }, 5 * 60 * 1000);
 
     // Initial position update
     this.updatePositions();
+
+    // Add listener to prevent planet tracking
+    this.trackedEntityListener = this.viewer.trackedEntityChanged.addEventListener(() => {
+      const tracked = this.viewer.trackedEntity;
+      if (tracked && tracked.id && tracked.id.startsWith("planet")) {
+        // Don't allow tracking planets - clear tracked entity
+        this.viewer.trackedEntity = undefined;
+      }
+    });
 
     console.log(`Planet rendering enabled in ${mode} mode`);
   }
@@ -61,19 +78,33 @@ export class PlanetManager {
       this.updateInterval = null;
     }
 
-    // Remove billboards
-    if (this.renderMode === "billboard") {
-      this.planetEntities.forEach((entity) => {
-        this.viewer.entities.remove(entity);
-      });
-      this.planetEntities = [];
+    // Clear preRender listener
+    if (this.preRenderListener) {
+      this.preRenderListener();
+      this.preRenderListener = null;
     }
+
+    // Clear tracked entity listener
+    if (this.trackedEntityListener) {
+      this.trackedEntityListener();
+      this.trackedEntityListener = null;
+    }
+
+    // Remove entities (billboards or labels)
+    this.planetEntities.forEach((entity) => {
+      this.viewer.entities.remove(entity);
+    });
+    this.planetEntities = [];
 
     // Remove point primitives
     if (this.renderMode === "point" && this.pointPrimitives) {
       this.viewer.scene.primitives.remove(this.pointPrimitives);
       this.pointPrimitives = null;
     }
+
+    // Reset update tracking
+    this.lastUpdateTime = null;
+    this.lastRealUpdate = null;
 
     console.log("Planet rendering disabled");
   }
@@ -103,19 +134,61 @@ export class PlanetManager {
     planets.forEach((planetName) => {
       const planetData = this.planetary.planets.find((p) => p.name === planetName);
 
+      // Create a callback property that calculates position at render time
+      // Positions are transformed from ICRF to Fixed frame in PlanetaryPositions
+      const positionCallback = new CallbackProperty((time, result) => {
+        const positions = this.planetary.calculatePositions(time);
+        const planet = positions.find((p) => p.name === planetName);
+        if (planet) {
+          // Debug: log first time we see this planet
+          if (!this._logged) {
+            this._logged = {};
+          }
+          if (!this._logged[planetName]) {
+            console.log(`${planetName} position:`, {
+              x: planet.position.x.toExponential(2),
+              y: planet.position.y.toExponential(2),
+              z: planet.position.z.toExponential(2),
+              ra: planet.ra.toFixed(4),
+              dec: planet.dec.toFixed(2),
+            });
+            this._logged[planetName] = true;
+          }
+          return Cartesian3.clone(planet.position, result);
+        }
+        return result;
+      }, false);
+
       // Create billboard entity
       const entity = this.viewer.entities.add({
         id: `planet-${planetName}`,
-        name: planetName,
-        position: new Cartesian3(0, 0, 0), // Will be updated
+        name: `Planet: ${planetName}`,
+        position: positionCallback,
         billboard: {
-          image: this.createPlanetCanvas(planetData.color, 16),
-          scale: 1.0,
+          image: this.createPlanetCanvas(planetData.color, 10),
+          scale: 0.8,
           verticalOrigin: VerticalOrigin.CENTER,
           disableDepthTestDistance: Number.POSITIVE_INFINITY, // Always visible
           scaleByDistance: null, // Keep constant size
         },
-        description: `Planet: ${planetName}`,
+        label: {
+          text: planetData.symbol,
+          font: "16px sans-serif",
+          fillColor: Color.WHITE,
+          outlineColor: Color.BLACK,
+          outlineWidth: 2,
+          style: 2, // FILL_AND_OUTLINE
+          verticalOrigin: VerticalOrigin.TOP,
+          horizontalOrigin: HorizontalOrigin.CENTER,
+          pixelOffset: new Cartesian3(0, 8, 0),
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          show: new CallbackProperty(() => this.showLabels, false),
+        },
+        description: new CallbackProperty((time) => {
+          const positions = this.planetary.calculatePositions(time || this.viewer.clock.currentTime);
+          const planet = positions.find((p) => p.name === planetName);
+          return planet ? this.generateDescription(planet) : "";
+        }, false),
       });
 
       this.planetEntities.push(entity);
@@ -140,14 +213,90 @@ export class PlanetManager {
         id: planetName,
         position: new Cartesian3(0, 0, 0), // Will be updated
         color: Color.fromBytes(planetData.color[0], planetData.color[1], planetData.color[2], 255),
-        pixelSize: 8,
+        pixelSize: 5,
         outlineColor: Color.WHITE,
         outlineWidth: 1,
         disableDepthTestDistance: Number.POSITIVE_INFINITY, // Always visible
       });
 
       point.planetName = planetName; // Store planet name for updates
+
+      // Create label entity for the point primitive
+      // Labels must be entities, not primitives
+      const positionCallback = new CallbackProperty((time, result) => {
+        const positions = this.planetary.calculatePositions(time);
+        const planet = positions.find((p) => p.name === planetName);
+        if (planet) {
+          return Cartesian3.clone(planet.position, result);
+        }
+        return result;
+      }, false);
+
+      const labelEntity = this.viewer.entities.add({
+        id: `planet-label-${planetName}`,
+        name: `Planet: ${planetName}`,
+        position: positionCallback,
+        label: {
+          text: planetData.symbol,
+          font: "16px sans-serif",
+          fillColor: Color.WHITE,
+          outlineColor: Color.BLACK,
+          outlineWidth: 2,
+          style: 2, // FILL_AND_OUTLINE
+          verticalOrigin: VerticalOrigin.TOP,
+          horizontalOrigin: HorizontalOrigin.CENTER,
+          pixelOffset: new Cartesian3(0, 8, 0),
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          show: new CallbackProperty(() => this.showLabels, false),
+        },
+        description: new CallbackProperty((time) => {
+          const positions = this.planetary.calculatePositions(time || this.viewer.clock.currentTime);
+          const planet = positions.find((p) => p.name === planetName);
+          return planet ? this.generateDescription(planet) : "";
+        }, false),
+      });
+
+      this.planetEntities.push(labelEntity); // Store for cleanup
     });
+  }
+
+  /**
+   * Throttled update for point primitives
+   * Only updates if simulation time changed by 1 hour OR 0.5 seconds of real time passed
+   */
+  updatePointPrimitivesThrottled() {
+    if (!this.enabled || this.renderMode !== "point") {
+      return;
+    }
+
+    const currentTime = this.viewer.clock.currentTime;
+    const now = Date.now();
+
+    // Check if we should update
+    let shouldUpdate = false;
+
+    // Update if this is first time
+    if (!this.lastUpdateTime || !this.lastRealUpdate) {
+      shouldUpdate = true;
+    } else {
+      // Update if simulation time changed by more than 1 hour
+      const timeDiffSeconds = Math.abs(JulianDate.secondsDifference(currentTime, this.lastUpdateTime));
+      if (timeDiffSeconds > 3600) {
+        // 1 hour
+        shouldUpdate = true;
+      }
+
+      // Or if 0.5 seconds of real time passed (for smooth scrubbing)
+      if (now - this.lastRealUpdate > 500) {
+        shouldUpdate = true;
+      }
+    }
+
+    if (shouldUpdate) {
+      this.lastUpdateTime = JulianDate.clone(currentTime);
+      this.lastRealUpdate = now;
+      this.updatePositions();
+    }
   }
 
   /**
@@ -162,14 +311,11 @@ export class PlanetManager {
     const positions = this.planetary.calculatePositions(currentTime);
 
     if (this.renderMode === "billboard") {
+      // Billboards use CallbackProperty which auto-updates position and description
+      // We only need to update scale based on magnitude
       positions.forEach((planetData) => {
-        const entity = this.planetEntities.find((e) => e.name === planetData.name);
+        const entity = this.planetEntities.find((e) => e.id === `planet-${planetData.name}`);
         if (entity) {
-          entity.position = planetData.position;
-
-          // Update description with current data
-          entity.description = this.generateDescription(planetData);
-
           // Adjust size based on magnitude (brighter = larger)
           const scale = this.magnitudeToScale(planetData.magnitude);
           entity.billboard.scale = scale;
@@ -197,9 +343,9 @@ export class PlanetManager {
    */
   magnitudeToScale(magnitude) {
     // Venus can be -4.6, Jupiter -2.9, Mercury -1.9, Mars -2.9, Saturn 0.5
-    // Scale from 0.5 (dim) to 2.0 (bright)
-    const scale = 1.5 - magnitude * 0.15;
-    return Math.max(0.5, Math.min(2.5, scale));
+    // Scale from 0.6 (dim) to 1.2 (bright) - smaller overall
+    const scale = 0.9 - magnitude * 0.1;
+    return Math.max(0.6, Math.min(1.2, scale));
   }
 
   /**
@@ -208,9 +354,9 @@ export class PlanetManager {
    * @returns {number} Pixel size
    */
   magnitudeToPixelSize(magnitude) {
-    // Scale from 4 (dim) to 14 (bright)
-    const size = 10 - magnitude * 1.5;
-    return Math.max(4, Math.min(14, size));
+    // Scale from 3 (dim) to 8 (bright) - smaller overall
+    const size = 5.5 - magnitude * 0.9;
+    return Math.max(3, Math.min(8, size));
   }
 
   /**
@@ -276,5 +422,13 @@ export class PlanetManager {
    */
   isEnabled() {
     return this.enabled;
+  }
+
+  /**
+   * Update component visibility based on enabled components
+   * @param {Array<string>} enabledComponents - Array of enabled component names
+   */
+  updateComponents(enabledComponents) {
+    this.showLabels = enabledComponents.includes("Label");
   }
 }
