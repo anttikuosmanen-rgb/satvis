@@ -1,5 +1,5 @@
 import * as Astronomy from "astronomy-engine";
-import { Cartesian3, JulianDate, Transforms, Matrix3, Matrix4, Simon1994PlanetaryPositions } from "@cesium/engine";
+import { Cartesian3, JulianDate, Transforms, Matrix3 } from "@cesium/engine";
 
 /**
  * Calculate positions for the 5 brightest planets visible to the naked eye

@@ -1,4 +1,4 @@
-import { Cartesian3, Color, JulianDate, VerticalOrigin, HorizontalOrigin, CallbackProperty, ReferenceFrame } from "@cesium/engine";
+import { Cartesian3, Color, JulianDate, VerticalOrigin, HorizontalOrigin, CallbackProperty } from "@cesium/engine";
 import { PlanetaryPositions } from "./PlanetaryPositions";
 
 /**
@@ -36,9 +36,12 @@ export class PlanetManager {
     if (mode === "billboard") {
       this.createBillboards();
       // Update metadata every 5 minutes for billboards
-      this.updateInterval = setInterval(() => {
-        this.updatePositions();
-      }, 5 * 60 * 1000);
+      this.updateInterval = setInterval(
+        () => {
+          this.updatePositions();
+        },
+        5 * 60 * 1000,
+      );
     } else if (mode === "point") {
       await this.createPointPrimitives();
       // For point primitives, check periodically if position update is needed
