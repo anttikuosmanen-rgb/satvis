@@ -14,7 +14,7 @@ export class EarthManager {
     this.pointPrimitives = null;
     this.preRenderListener = null;
     this.showLabels = true;
-    this.distanceThreshold = 1e9; // 1,000,000 km (1 million km) - distance at which to show Earth/Moon as points
+    this.distanceThreshold = 1e10; // 10,000,000 km (10 million km) - distance at which to show Earth/Moon as points
     this.lastGlobeShowState = true; // Track globe visibility state
     this.lastMoonShowState = true; // Track moon visibility state
   }
