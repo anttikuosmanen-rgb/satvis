@@ -43,6 +43,7 @@ import { CesiumTimelineHelper } from "./util/CesiumTimelineHelper";
 import { SatelliteManager } from "./SatelliteManager";
 import { TimeFormatHelper } from "./util/TimeFormatHelper";
 import { PlanetManager } from "./PlanetManager";
+import { EarthManager } from "./EarthManager";
 
 dayjs.extend(utc);
 
@@ -107,6 +108,9 @@ export class CesiumController {
 
     // Create Planet Manager
     this.planets = new PlanetManager(this.viewer);
+
+    // Create Earth/Moon Manager
+    this.earthMoon = new EarthManager(this.viewer);
 
     // Add event listener for ground station selection
     this.setupGroundStationSelectionListener();

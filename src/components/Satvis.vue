@@ -142,6 +142,11 @@
           FPS
         </label>
         <label class="toolbarSwitch">
+          <input v-model="showCameraAltitude" type="checkbox" />
+          <span class="slider"></span>
+          Camera Altitude
+        </label>
+        <label class="toolbarSwitch">
           <input v-model="cc.viewer.scene.requestRenderMode" type="checkbox" />
           <span class="slider"></span>
           RequestRender
@@ -218,7 +223,7 @@
       </div>
     </div>
     <div id="toolbarRight">
-      <a v-if="showUI" v-tooltip="'Github'" class="cesium-button cesium-toolbar-button" href="https://github.com/Flowm/satvis/" target="_blank" rel="noopener">
+      <a v-if="showUI" v-tooltip="'Github'" class="cesium-button cesium-toolbar-button" href="https://github.com/anttikuosmanen-rgb/satvis" target="_blank" rel="noopener">
         <font-awesome-icon icon="fab fa-github" />
       </a>
       <button v-tooltip="'Toggle UI'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleUI">
@@ -229,6 +234,7 @@
       <button v-tooltip="'Zoom In Timeline'" type="button" class="cesium-button cesium-toolbar-button timeline-button" @click="zoomInTimeline">+</button>
       <button v-tooltip="'Zoom Out Timeline'" type="button" class="cesium-button cesium-toolbar-button timeline-button" @click="zoomOutTimeline">-</button>
     </div>
+    <div v-if="showCameraAltitude" id="cameraAltitudeDisplay">Camera Altitude: {{ formattedCameraAltitude }}</div>
   </div>
 </template>
 
@@ -259,6 +265,8 @@ export default {
       zenithViewActive: false, // Local reactive state for zenith view
       planetsEnabled: true, // Planet rendering enabled state
       planetRenderMode: "billboard", // 'billboard' or 'point'
+      showCameraAltitude: false,
+      cameraAltitude: 0,
     };
   },
   computed: {
@@ -273,6 +281,16 @@ export default {
     isInZenithView() {
       // Use local reactive state instead of checking cc.sats directly
       return this.zenithViewActive;
+    },
+    formattedCameraAltitude() {
+      const altitudeKm = this.cameraAltitude / 1000;
+      if (altitudeKm >= 1000000) {
+        return `${(altitudeKm / 1000000).toFixed(2)} million km`;
+      } else if (altitudeKm >= 1000) {
+        return `${(altitudeKm / 1000).toFixed(2)} thousand km`;
+      } else {
+        return `${altitudeKm.toFixed(2)} km`;
+      }
     },
   },
   watch: {
@@ -316,6 +334,10 @@ export default {
         // Update planet label visibility based on enabled components
         if (cc.planets) {
           cc.planets.updateComponents(newComponents);
+        }
+        // Update Earth/Moon label visibility based on enabled components
+        if (cc.earthMoon) {
+          cc.earthMoon.updateComponents(newComponents);
         }
       },
       deep: true,
@@ -367,6 +389,22 @@ export default {
       // Refresh info boxes to update time display
       this.refreshGroundStationHighlights();
     },
+    showCameraAltitude(enabled) {
+      if (enabled) {
+        // Start updating camera altitude
+        this.cameraAltitudeInterval = setInterval(() => {
+          if (cc.viewer && cc.viewer.camera) {
+            this.cameraAltitude = cc.viewer.camera.positionCartographic.height;
+          }
+        }, 100); // Update every 100ms
+      } else {
+        // Stop updating
+        if (this.cameraAltitudeInterval) {
+          clearInterval(this.cameraAltitudeInterval);
+          this.cameraAltitudeInterval = null;
+        }
+      }
+    },
   },
   mounted() {
     if (this.$route.query.time) {
@@ -401,6 +439,10 @@ export default {
         if (cc.planets) {
           cc.planets.enable(this.planetRenderMode);
         }
+        // Also enable Earth/Moon rendering with same mode
+        if (cc.earthMoon) {
+          cc.earthMoon.enable(this.planetRenderMode);
+        }
       });
     }
   },
@@ -408,6 +450,10 @@ export default {
     // Clean up event listener
     if (this.zenithViewChangeHandler) {
       window.removeEventListener("zenithViewChanged", this.zenithViewChangeHandler);
+    }
+    // Clean up camera altitude interval
+    if (this.cameraAltitudeInterval) {
+      clearInterval(this.cameraAltitudeInterval);
     }
   },
   methods: {
@@ -646,15 +692,21 @@ export default {
       if (this.planetsEnabled) {
         // Enable planet rendering with current mode
         this.cc.planets.enable(this.planetRenderMode);
+        // Also enable Earth/Moon rendering with same mode
+        this.cc.earthMoon.enable(this.planetRenderMode);
       } else {
         // Disable planet rendering
         this.cc.planets.disable();
+        // Also disable Earth/Moon rendering
+        this.cc.earthMoon.disable();
       }
     },
     setPlanetRenderMode() {
       // Update render mode if planets are enabled
       if (this.planetsEnabled) {
         this.cc.planets.setRenderMode(this.planetRenderMode);
+        // Also update Earth/Moon render mode
+        this.cc.earthMoon.setRenderMode(this.planetRenderMode);
       }
     },
   },
@@ -667,5 +719,20 @@ export default {
   padding: 10px;
   text-align: center;
   font-style: italic;
+}
+
+#cameraAltitudeDisplay {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: rgba(42, 42, 42, 0.8);
+  color: #edffff;
+  padding: 5px 15px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 14px;
+  z-index: 1000;
+  pointer-events: none;
 }
 </style>
