@@ -19,6 +19,12 @@ export class PlanetManager {
     this.lastRealUpdate = null; // Last real-world time we updated
     this.showLabels = true; // Whether to show planet labels
     this.trackedEntityListener = null; // Listener to prevent planet tracking
+    this.occlusionCheckListener = null; // Listener for checking Earth globe occlusion
+    this.earthRadius = 6378137.0; // Earth's radius in meters
+    this.lastOcclusionCheck = 0; // Last time we checked occlusion (in milliseconds)
+    this.occlusionCheckInterval = 1000; // Check occlusion every 1 second
+    this.isInZenithView = false; // Track if we're in zenith view mode
+    this.zenithViewChangeHandler = null; // Handler for zenith view state changes
   }
 
   /**
@@ -62,6 +68,17 @@ export class PlanetManager {
       }
     });
 
+    // Add listener to check for Earth globe occlusion (throttled to 1 second)
+    this.occlusionCheckListener = this.viewer.scene.preRender.addEventListener(() => {
+      this.updatePlanetOcclusion();
+    });
+
+    // Listen for zenith view state changes
+    this.zenithViewChangeHandler = (event) => {
+      this.isInZenithView = event.detail.active;
+    };
+    window.addEventListener("zenithViewChanged", this.zenithViewChangeHandler);
+
     console.log(`Planet rendering enabled in ${mode} mode`);
   }
 
@@ -91,6 +108,18 @@ export class PlanetManager {
     if (this.trackedEntityListener) {
       this.trackedEntityListener();
       this.trackedEntityListener = null;
+    }
+
+    // Clear occlusion check listener
+    if (this.occlusionCheckListener) {
+      this.occlusionCheckListener();
+      this.occlusionCheckListener = null;
+    }
+
+    // Remove zenith view change listener
+    if (this.zenithViewChangeHandler) {
+      window.removeEventListener("zenithViewChanged", this.zenithViewChangeHandler);
+      this.zenithViewChangeHandler = null;
     }
 
     // Remove entities (billboards or labels)
@@ -433,5 +462,85 @@ export class PlanetManager {
    */
   updateComponents(enabledComponents) {
     this.showLabels = enabledComponents.includes("Label");
+  }
+
+  /**
+   * Check if a planet is occluded by Earth's globe
+   * @param {Cartesian3} planetPosition - Planet position in world coordinates
+   * @returns {boolean} True if planet is behind Earth from camera perspective
+   */
+  isPlanetOccludedByEarth(planetPosition) {
+    const cameraPosition = this.viewer.camera.position;
+    const earthCenter = Cartesian3.ZERO;
+
+    // Vector from camera to planet (normalized)
+    const cameraToPlanet = Cartesian3.subtract(planetPosition, cameraPosition, new Cartesian3());
+    Cartesian3.normalize(cameraToPlanet, cameraToPlanet);
+
+    // Vector from camera to Earth center (normalized)
+    const cameraToEarth = Cartesian3.subtract(earthCenter, cameraPosition, new Cartesian3());
+    const distanceToEarth = Cartesian3.magnitude(cameraToEarth);
+    Cartesian3.normalize(cameraToEarth, cameraToEarth);
+
+    // Calculate angular separation between planet and Earth center
+    const angle = Cartesian3.angleBetween(cameraToPlanet, cameraToEarth);
+
+    // Calculate Earth's angular radius as seen from camera
+    const earthAngularRadius = Math.asin(this.earthRadius / distanceToEarth);
+
+    // For normal views: Check if planet is within Earth's angular radius
+    // This handles the case where you're looking at Earth from the side
+    if (!this.isInZenithView) {
+      return angle < earthAngularRadius;
+    }
+
+    // For zenith view mode: Use dot product to check if planet is below horizon
+    // If dot product is positive, camera→planet and camera→Earth point in similar directions
+    // This means the planet is beyond Earth (below the horizon)
+    const dotProduct = Cartesian3.dot(cameraToPlanet, cameraToEarth);
+    return dotProduct > 0;
+  }
+
+  /**
+   * Update occlusion state for all planets
+   * Throttled to run every 1 second to avoid performance impact
+   */
+  updatePlanetOcclusion() {
+    if (!this.enabled) {
+      return;
+    }
+
+    // Throttle to once per second
+    const now = Date.now();
+    if (now - this.lastOcclusionCheck < this.occlusionCheckInterval) {
+      return;
+    }
+    this.lastOcclusionCheck = now;
+
+    const currentTime = this.viewer.clock.currentTime;
+    const positions = this.planetary.calculatePositions(currentTime);
+
+    positions.forEach((planetData) => {
+      const isOccluded = this.isPlanetOccludedByEarth(planetData.position);
+
+      if (this.renderMode === "billboard") {
+        const entity = this.planetEntities.find((e) => e.id === `planet-${planetData.name}`);
+        if (entity && entity.billboard) {
+          entity.billboard.show = !isOccluded;
+        }
+        if (entity && entity.label) {
+          entity.label.show = !isOccluded && this.showLabels;
+        }
+      } else if (this.renderMode === "point" && this.pointPrimitives) {
+        const point = this.pointPrimitives._pointPrimitives.find((p) => p.planetName === planetData.name);
+        if (point) {
+          point.show = !isOccluded;
+        }
+        const labelEntity = this.planetEntities.find((e) => e.id === `planet-label-${planetData.name}`);
+        if (labelEntity && labelEntity.label) {
+          labelEntity.label.show = !isOccluded && this.showLabels;
+        }
+      }
+    });
   }
 }

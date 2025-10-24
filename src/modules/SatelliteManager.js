@@ -754,8 +754,10 @@ export class SatelliteManager {
   }
 
   addGroundStation(position, name) {
-    if (position.height < 1) {
-      position.height = 0;
+    // Ensure minimum height of 2 meters above ellipsoid for proper camera rendering in zenith view
+    // Camera at 0 meters can cause terrain/globe rendering issues
+    if (position.height < 2) {
+      position.height = 2;
     }
 
     // Remove existing ground station if one exists (only support one station at a time)

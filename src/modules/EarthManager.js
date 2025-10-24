@@ -1,4 +1,4 @@
-import { Cartesian3, Color, VerticalOrigin, HorizontalOrigin, CallbackProperty, Simon1994PlanetaryPositions } from "@cesium/engine";
+import { Cartesian3, Color, VerticalOrigin, HorizontalOrigin, CallbackProperty, Simon1994PlanetaryPositions, Transforms, Matrix3 } from "@cesium/engine";
 
 /**
  * Manages Earth and Moon rendering as billboards/point primitives when zoomed far away
@@ -13,6 +13,7 @@ export class EarthManager {
     this.moonEntity = null;
     this.pointPrimitives = null;
     this.preRenderListener = null;
+    this.moonUpdateListener = null;
     this.showLabels = true;
     this.distanceThreshold = 1e10; // 10,000,000 km (10 million km) - distance at which to show Earth/Moon as points
     this.lastGlobeShowState = true; // Track globe visibility state
@@ -59,6 +60,12 @@ export class EarthManager {
     if (this.preRenderListener) {
       this.preRenderListener();
       this.preRenderListener = null;
+    }
+
+    // Clear moon update listener
+    if (this.moonUpdateListener) {
+      this.moonUpdateListener();
+      this.moonUpdateListener = null;
     }
 
     // Remove entities (billboards or labels)
@@ -139,8 +146,19 @@ export class EarthManager {
 
     // Create Moon billboard entity with dynamic position
     const moonPositionCallback = new CallbackProperty((time, result) => {
-      const moonPosition = Simon1994PlanetaryPositions.computeMoonPositionInEarthInertialFrame(time, result);
-      return moonPosition;
+      // Get Moon position in Inertial (ICRF) frame
+      const moonPositionInertial = Simon1994PlanetaryPositions.computeMoonPositionInEarthInertialFrame(time);
+
+      // Transform from ICRF (inertial) to Fixed (Earth-fixed) frame
+      // This matches how planets are positioned in PlanetaryPositions.js
+      const icrfToFixed = Transforms.computeIcrfToFixedMatrix(time);
+      if (!icrfToFixed) {
+        // Fallback if transformation fails
+        return Cartesian3.clone(moonPositionInertial, result);
+      }
+
+      const moonPositionFixed = Matrix3.multiplyByVector(icrfToFixed, moonPositionInertial, new Cartesian3());
+      return Cartesian3.clone(moonPositionFixed, result);
     }, false);
 
     this.moonEntity = this.viewer.entities.add({
@@ -152,7 +170,7 @@ export class EarthManager {
         scale: 0.7,
         verticalOrigin: VerticalOrigin.CENTER,
         disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        show: new CallbackProperty(() => this.shouldShowPoints(), false),
+        show: true, // Always show Moon billboard
       },
       label: {
         text: "☾", // Moon symbol
@@ -165,7 +183,7 @@ export class EarthManager {
         horizontalOrigin: HorizontalOrigin.CENTER,
         pixelOffset: new Cartesian3(0, 8, 0),
         disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        show: new CallbackProperty(() => this.showLabels && this.shouldShowPoints(), false),
+        show: new CallbackProperty(() => this.showLabels, false),
       },
       description: this.generateMoonDescription(),
     });
@@ -189,7 +207,6 @@ export class EarthManager {
       outlineColor: Color.WHITE,
       outlineWidth: 1,
       disableDepthTestDistance: Number.POSITIVE_INFINITY,
-      show: true, // Controlled by updateVisibility
     });
 
     // Moon point - needs dynamic position update
@@ -227,8 +244,17 @@ export class EarthManager {
     });
 
     const moonPositionCallback = new CallbackProperty((time, result) => {
-      const moonPosition = Simon1994PlanetaryPositions.computeMoonPositionInEarthInertialFrame(time, result);
-      return moonPosition;
+      // Get Moon position in Inertial (ICRF) frame
+      const moonPositionInertial = Simon1994PlanetaryPositions.computeMoonPositionInEarthInertialFrame(time);
+
+      // Transform from ICRF (inertial) to Fixed (Earth-fixed) frame
+      const icrfToFixed = Transforms.computeIcrfToFixedMatrix(time);
+      if (!icrfToFixed) {
+        return Cartesian3.clone(moonPositionInertial, result);
+      }
+
+      const moonPositionFixed = Matrix3.multiplyByVector(icrfToFixed, moonPositionInertial, new Cartesian3());
+      return Cartesian3.clone(moonPositionFixed, result);
     }, false);
 
     this.moonEntity = this.viewer.entities.add({
@@ -246,7 +272,7 @@ export class EarthManager {
         horizontalOrigin: HorizontalOrigin.CENTER,
         pixelOffset: new Cartesian3(0, 8, 0),
         disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        show: new CallbackProperty(() => this.showLabels && this.shouldShowPoints(), false),
+        show: new CallbackProperty(() => this.showLabels, false),
       },
       description: this.generateMoonDescription(),
     });
@@ -256,9 +282,17 @@ export class EarthManager {
     this.moonUpdateListener = this.viewer.scene.preRender.addEventListener(() => {
       if (this.moonPoint && this.enabled) {
         const currentTime = this.viewer.clock.currentTime;
-        // Update moon position every frame for point primitives
-        const moonPosition = Simon1994PlanetaryPositions.computeMoonPositionInEarthInertialFrame(currentTime);
-        this.moonPoint.position = moonPosition;
+        // Get Moon position in Inertial (ICRF) frame
+        const moonPositionInertial = Simon1994PlanetaryPositions.computeMoonPositionInEarthInertialFrame(currentTime);
+
+        // Transform from ICRF to Fixed frame
+        const icrfToFixed = Transforms.computeIcrfToFixedMatrix(currentTime);
+        if (icrfToFixed) {
+          const moonPositionFixed = Matrix3.multiplyByVector(icrfToFixed, moonPositionInertial, new Cartesian3());
+          this.moonPoint.position = moonPositionFixed;
+        } else {
+          this.moonPoint.position = moonPositionInertial;
+        }
       }
     });
   }
@@ -278,7 +312,8 @@ export class EarthManager {
 
   /**
    * Update visibility based on camera distance
-   * Hides globe/moon and shows points when far away, and vice versa
+   * Shows Earth/Moon billboards/points when far away
+   * Note: Does not hide the actual globe/moon - they naturally stop rendering at extreme distances
    */
   updateVisibility() {
     if (!this.enabled) {
@@ -287,21 +322,8 @@ export class EarthManager {
 
     const shouldShow = this.shouldShowPoints();
 
-    // Toggle globe visibility
-    const globeShow = !shouldShow;
-    if (this.viewer.scene.globe.show !== globeShow) {
-      this.viewer.scene.globe.show = globeShow;
-      this.lastGlobeShowState = globeShow;
-    }
-
-    // Toggle moon visibility
-    if (this.viewer.scene.moon) {
-      const moonShow = !shouldShow;
-      if (this.viewer.scene.moon.show !== moonShow) {
-        this.viewer.scene.moon.show = moonShow;
-        this.lastMoonShowState = moonShow;
-      }
-    }
+    // Don't toggle globe/moon visibility - let Cesium handle rendering at extreme distances
+    // The billboards will show when camera is far enough (controlled by shouldShowPoints callback)
 
     // Update point primitives visibility if using point mode
     if (this.renderMode === "point" && this.pointPrimitives && this.pointPrimitives._pointPrimitives.length > 0) {
