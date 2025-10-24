@@ -712,6 +712,9 @@ export class SatelliteManager {
     // Dispatch event for UI to update
     window.dispatchEvent(new CustomEvent("zenithViewChanged", { detail: { active: true } }));
 
+    // Request immediate render to kickstart terrain loading
+    this.viewer.scene.requestRender();
+
     // Cleanup function
     this.zenithViewCleanup = () => {
       canvas.removeEventListener("wheel", wheelHandler, { capture: true });

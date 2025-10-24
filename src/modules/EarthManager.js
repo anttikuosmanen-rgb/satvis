@@ -14,10 +14,17 @@ export class EarthManager {
     this.pointPrimitives = null;
     this.preRenderListener = null;
     this.moonUpdateListener = null;
+    this.trackedEntityListener = null;
     this.showLabels = true;
     this.distanceThreshold = 1e10; // 10,000,000 km (10 million km) - distance at which to show Earth/Moon as points
     this.lastGlobeShowState = true; // Track globe visibility state
     this.lastMoonShowState = true; // Track moon visibility state
+    this.earthRadius = 6378137.0; // Earth's radius in meters
+    this.lastOcclusionCheck = 0; // Last time we checked occlusion (in milliseconds)
+    this.occlusionCheckInterval = 1000; // Check occlusion every 1 second
+    this.isInZenithView = false; // Track if we're in zenith view mode
+    this.zenithViewChangeHandler = null; // Handler for zenith view state changes
+    this.isMoonOccluded = false; // Track if Moon is currently occluded by Earth
   }
 
   /**
@@ -43,6 +50,20 @@ export class EarthManager {
       this.updateVisibility();
     });
 
+    // Prevent camera movement when Moon entity is tracked (double-clicked)
+    this.trackedEntityListener = this.viewer.trackedEntityChanged.addEventListener(() => {
+      if (this.viewer.trackedEntity === this.moonEntity) {
+        // Immediately untrack the Moon to prevent camera zoom
+        this.viewer.trackedEntity = undefined;
+      }
+    });
+
+    // Listen for zenith view state changes
+    this.zenithViewChangeHandler = (event) => {
+      this.isInZenithView = event.detail.active;
+    };
+    window.addEventListener("zenithViewChanged", this.zenithViewChangeHandler);
+
     console.log(`Earth and Moon point rendering enabled in ${mode} mode`);
   }
 
@@ -66,6 +87,18 @@ export class EarthManager {
     if (this.moonUpdateListener) {
       this.moonUpdateListener();
       this.moonUpdateListener = null;
+    }
+
+    // Clear tracked entity listener
+    if (this.trackedEntityListener) {
+      this.trackedEntityListener();
+      this.trackedEntityListener = null;
+    }
+
+    // Remove zenith view change listener
+    if (this.zenithViewChangeHandler) {
+      window.removeEventListener("zenithViewChanged", this.zenithViewChangeHandler);
+      this.zenithViewChangeHandler = null;
     }
 
     // Remove entities (billboards or labels)
@@ -165,12 +198,13 @@ export class EarthManager {
       id: "moon-point",
       name: "Moon",
       position: moonPositionCallback,
+      viewFrom: new Cartesian3(0, 0, 0), // Keep camera at current position when selected
       billboard: {
         image: this.createBodyCanvas([192, 192, 192], 10), // Light gray
         scale: 0.7,
         verticalOrigin: VerticalOrigin.CENTER,
         disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        show: true, // Always show Moon billboard
+        show: new CallbackProperty(() => !this.isMoonOccluded, false), // Hide when occluded by Earth
       },
       label: {
         text: "☾", // Moon symbol
@@ -183,7 +217,7 @@ export class EarthManager {
         horizontalOrigin: HorizontalOrigin.CENTER,
         pixelOffset: new Cartesian3(0, 8, 0),
         disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        show: new CallbackProperty(() => this.showLabels, false),
+        show: new CallbackProperty(() => this.showLabels && !this.isMoonOccluded, false),
       },
       description: this.generateMoonDescription(),
     });
@@ -261,6 +295,7 @@ export class EarthManager {
       id: "moon-label",
       name: "Moon",
       position: moonPositionCallback,
+      viewFrom: new Cartesian3(0, 0, 0), // Keep camera at current position when selected
       label: {
         text: "☾",
         font: "16px sans-serif",
@@ -272,7 +307,7 @@ export class EarthManager {
         horizontalOrigin: HorizontalOrigin.CENTER,
         pixelOffset: new Cartesian3(0, 8, 0),
         disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        show: new CallbackProperty(() => this.showLabels, false),
+        show: new CallbackProperty(() => this.showLabels && !this.isMoonOccluded, false),
       },
       description: this.generateMoonDescription(),
     });
@@ -322,14 +357,82 @@ export class EarthManager {
 
     const shouldShow = this.shouldShowPoints();
 
-    // Don't toggle globe/moon visibility - let Cesium handle rendering at extreme distances
-    // The billboards will show when camera is far enough (controlled by shouldShowPoints callback)
-
     // Update point primitives visibility if using point mode
     if (this.renderMode === "point" && this.pointPrimitives && this.pointPrimitives._pointPrimitives.length > 0) {
       this.pointPrimitives._pointPrimitives.forEach((point) => {
         point.show = shouldShow;
       });
+    }
+
+    // Check Moon occlusion by Earth (throttled to 1 check per second)
+    this.updateMoonOcclusion();
+  }
+
+  /**
+   * Check if Moon is occluded by Earth's globe from camera perspective
+   * @param {Cartesian3} moonPosition - Moon position in Fixed frame
+   * @returns {boolean} True if Moon is occluded (hidden behind Earth)
+   */
+  isMoonOccludedByEarth(moonPosition) {
+    const cameraPosition = this.viewer.camera.position;
+    const earthCenter = Cartesian3.ZERO;
+
+    // Vector from camera to Moon (normalized)
+    const cameraToMoon = Cartesian3.subtract(moonPosition, cameraPosition, new Cartesian3());
+    Cartesian3.normalize(cameraToMoon, cameraToMoon);
+
+    // Vector from camera to Earth center (normalized)
+    const cameraToEarth = Cartesian3.subtract(earthCenter, cameraPosition, new Cartesian3());
+    const distanceToEarth = Cartesian3.magnitude(cameraToEarth);
+    Cartesian3.normalize(cameraToEarth, cameraToEarth);
+
+    // Calculate angular separation between Moon and Earth center
+    const angle = Cartesian3.angleBetween(cameraToMoon, cameraToEarth);
+
+    // Calculate Earth's angular radius as seen from camera
+    const earthAngularRadius = Math.asin(this.earthRadius / distanceToEarth);
+
+    // For normal views: Check if Moon is within Earth's angular radius
+    if (!this.isInZenithView) {
+      return angle < earthAngularRadius;
+    }
+
+    // For zenith view mode: Use dot product to check if Moon is below horizon
+    // If dot product > 0, Moon is in the same general direction as Earth center (below horizon)
+    const dotProduct = Cartesian3.dot(cameraToMoon, cameraToEarth);
+    return dotProduct > 0;
+  }
+
+  /**
+   * Update Moon visibility based on occlusion by Earth
+   * Throttled to run at most once per second
+   */
+  updateMoonOcclusion() {
+    if (!this.moonEntity) {
+      return;
+    }
+
+    // Throttle occlusion checks to once per second
+    const now = Date.now();
+    if (now - this.lastOcclusionCheck < this.occlusionCheckInterval) {
+      return;
+    }
+    this.lastOcclusionCheck = now;
+
+    // Get current Moon position
+    const currentTime = this.viewer.clock.currentTime;
+    const moonPosition = this.moonEntity.position.getValue(currentTime);
+
+    if (!moonPosition) {
+      return;
+    }
+
+    // Update occlusion state - CallbackProperty will pick up the change
+    this.isMoonOccluded = this.isMoonOccludedByEarth(moonPosition);
+
+    // Update Moon point primitive visibility (point mode only)
+    if (this.renderMode === "point" && this.moonPoint) {
+      this.moonPoint.show = !this.isMoonOccluded;
     }
   }
 
