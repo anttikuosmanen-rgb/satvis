@@ -1,8 +1,9 @@
-import { BillboardGraphics, HorizontalOrigin, NearFarScalar, VerticalOrigin } from "@cesium/engine";
-import dayjs from "dayjs";
+import { BillboardGraphics, HorizontalOrigin, JulianDate, NearFarScalar, VerticalOrigin } from "@cesium/engine";
 import icon from "../images/icons/dish.svg";
+import { useSatStore } from "../stores/sat";
 import { CesiumComponentCollection } from "./util/CesiumComponentCollection";
 import { DescriptionHelper } from "./util/DescriptionHelper";
+import { filterAndSortPasses } from "./util/PassFilter";
 
 export class GroundStationEntity extends CesiumComponentCollection {
   constructor(viewer, sats, position, givenName = "") {
@@ -11,12 +12,34 @@ export class GroundStationEntity extends CesiumComponentCollection {
     this.position = position;
     this.givenName = givenName;
 
+    // Cache for pass calculations to avoid recalculating on every click
+    this._passesCache = null;
+    this._passesCacheTime = null;
+    this._cachedFilterState = null;
+
     this.createEntities();
   }
 
   createEntities() {
     this.createDescription();
     this.createGroundStation();
+  }
+
+  invalidatePassCache() {
+    this._passesCache = null;
+    this._passesCacheTime = null;
+
+    // Force description refresh by recreating it
+    // This ensures the passes list in the info panel updates
+    this.refreshDescription();
+  }
+
+  refreshDescription() {
+    // Recreate the description to force it to recalculate with new passes
+    if (this.components && this.components.Groundstation) {
+      this.createDescription();
+      this.components.Groundstation.description = this.description;
+    }
   }
 
   createGroundStation() {
@@ -45,25 +68,121 @@ export class GroundStationEntity extends CesiumComponentCollection {
     if (this.givenName) {
       return this.givenName;
     }
-    return `${this.position.latitude.toFixed(2)}°, ${this.position.longitude.toFixed(2)}°`;
+    return `Groundstation [${this.position.latitude.toFixed(2)}°, ${this.position.longitude.toFixed(2)}°]`;
   }
 
   passes(time, deltaHours = 48) {
+    // Check if filter state has changed
+    const satStore = useSatStore();
+    const currentFilterState = {
+      hideSunlightPasses: satStore.hideSunlightPasses,
+      showOnlyLitPasses: satStore.showOnlyLitPasses,
+    };
+
+    const filterStateChanged =
+      this._cachedFilterState === null ||
+      this._cachedFilterState.hideSunlightPasses !== currentFilterState.hideSunlightPasses ||
+      this._cachedFilterState.showOnlyLitPasses !== currentFilterState.showOnlyLitPasses;
+
+    if (filterStateChanged) {
+      this.invalidatePassCache();
+      this._cachedFilterState = currentFilterState;
+    }
+
+    // Check if we can use cached results
+    const currentTimeMs = JulianDate.toDate(time).getTime();
+    const cacheValidityMs = 60 * 1000; // Cache valid for 60 seconds
+
+    if (this._passesCache && this._passesCacheTime) {
+      const cacheAge = currentTimeMs - this._passesCacheTime;
+      if (cacheAge < cacheValidityMs) {
+        // Return cached passes, filtered by current time window
+        return filterAndSortPasses(this._passesCache, time, deltaHours);
+      }
+    }
+
+    // Calculate new passes
     let passes = [];
-    // Aggregate passes from all visible satellites
-    this.sats.visibleSatellites.forEach((sat) => {
+    // Aggregate passes from all active satellites (enabled by tags/names)
+    // Use activeSatellites instead of visibleSatellites to include satellites
+    // even when all visual components are disabled
+    this.sats.activeSatellites.forEach((sat) => {
       sat.props.updatePasses(this.viewer.clock.currentTime);
       passes.push(...sat.props.passes);
     });
 
-    // Filter passes based on time
-    passes = passes.filter((pass) => dayjs(pass.start).diff(time, "hours") < deltaHours);
-
-    // Filter passes based on groundstation
+    // Filter passes based on groundstation (do this before caching)
     passes = passes.filter((pass) => pass.groundStationName === this.name);
 
-    // Sort passes by time
-    passes = passes.sort((a, b) => a.start - b.start);
-    return passes;
+    // Cache the raw passes
+    this._passesCache = passes;
+    this._passesCacheTime = currentTimeMs;
+
+    // Filter and return
+    return filterAndSortPasses(passes, time, deltaHours);
+  }
+
+  async passesAsync(time, deltaHours = 48) {
+    // Check if filter state has changed
+    const satStore = useSatStore();
+    const currentFilterState = {
+      hideSunlightPasses: satStore.hideSunlightPasses,
+      showOnlyLitPasses: satStore.showOnlyLitPasses,
+    };
+
+    const filterStateChanged =
+      this._cachedFilterState === null ||
+      this._cachedFilterState.hideSunlightPasses !== currentFilterState.hideSunlightPasses ||
+      this._cachedFilterState.showOnlyLitPasses !== currentFilterState.showOnlyLitPasses;
+
+    if (filterStateChanged) {
+      this.invalidatePassCache();
+      this._cachedFilterState = currentFilterState;
+    }
+
+    // Check if we can use cached results
+    const currentTimeMs = JulianDate.toDate(time).getTime();
+    const cacheValidityMs = 60 * 1000; // Cache valid for 60 seconds
+
+    if (this._passesCache && this._passesCacheTime) {
+      const cacheAge = currentTimeMs - this._passesCacheTime;
+      if (cacheAge < cacheValidityMs) {
+        // Return cached passes, filtered by current time window
+        return filterAndSortPasses(this._passesCache, time, deltaHours);
+      }
+    }
+
+    // Calculate new passes in chunks to avoid blocking UI
+    let passes = [];
+    // Use activeSatellites instead of visibleSatellites to include satellites
+    // even when all visual components are disabled
+    const activeSatellites = this.sats.activeSatellites;
+
+    // Process satellites in chunks of 5 to avoid blocking
+    const chunkSize = 5;
+    for (let i = 0; i < activeSatellites.length; i += chunkSize) {
+      const chunk = activeSatellites.slice(i, i + chunkSize);
+
+      // Process this chunk
+      chunk.forEach((sat) => {
+        sat.props.updatePasses(this.viewer.clock.currentTime);
+        passes.push(...sat.props.passes);
+      });
+
+      // Yield to browser after each chunk
+      if (i + chunkSize < activeSatellites.length) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+    }
+
+    // Filter passes based on groundstation (do this before caching)
+    passes = passes.filter((pass) => pass.groundStationName === this.name);
+
+    // Cache the raw passes
+    this._passesCache = passes;
+    this._passesCacheTime = currentTimeMs;
+
+    // Filter and return
+    return filterAndSortPasses(passes, time, deltaHours);
   }
 }

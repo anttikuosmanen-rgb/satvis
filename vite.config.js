@@ -9,7 +9,7 @@ const cesiumWidgetsSource = "node_modules/@cesium/widgets";
 const cesiumBaseUrl = "cesium";
 
 export default defineConfig({
-  base: "",
+  base: process.env.GITHUB_ACTIONS ? "/satvis/" : "",
   build: {
     sourcemap: true,
     chunkSizeWarningLimit: 1000,

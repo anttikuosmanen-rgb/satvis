@@ -1,5 +1,6 @@
 import {
   Cartesian3,
+  Ellipsoid,
   ExtrapolationType,
   JulianDate,
   LagrangePolynomialApproximation,
@@ -28,6 +29,12 @@ export class SatelliteProperties {
     this.tags = tags;
     this.overpassMode = "elevation";
 
+    // Check if epoch is in the future and add asterisk to name if so
+    this.baseName = this.name;
+    if (this.isEpochInFuture()) {
+      this.name = `${this.name} *`;
+    }
+
     this.groundStations = [];
     this.passes = [];
     this.passInterval = undefined;
@@ -40,6 +47,15 @@ export class SatelliteProperties {
 
   addTags(tags) {
     this.tags = [...new Set(this.tags.concat(tags))];
+  }
+
+  isEpochInFuture() {
+    const { julianDate } = this.orbit;
+    const julianDayNumber = Math.floor(julianDate);
+    const secondsOfDay = (julianDate - julianDayNumber) * 60 * 60 * 24;
+    const tleDate = new JulianDate(julianDayNumber, secondsOfDay);
+    const now = JulianDate.now();
+    return JulianDate.compare(tleDate, now) > 0;
   }
 
   position(time) {
@@ -79,15 +95,38 @@ export class SatelliteProperties {
     const samplingInterval = orbitalPeriod / samplingPointsPerOrbit;
     // console.log("updateSampledPosition", this.name, this.orbit.orbitalPeriod, samplingInterval.toFixed(2));
 
-    // Always keep half an orbit backwards and 1.5 full orbits forward in the sampled position
+    // Calculate desired sampling range (half orbit back, 1.5 orbits forward)
+    let requestedStart = JulianDate.addSeconds(time, -orbitalPeriod / 2, new JulianDate());
+    const requestedStop = JulianDate.addSeconds(time, orbitalPeriod * 1.5, new JulianDate());
+
+    // For satellites with future epochs, don't try to sample before the epoch
+    // SGP4 propagation is unreliable before the TLE epoch time
+    // Allow sampling from 1 hour before epoch to show pre-launch position
+    const { julianDate } = this.orbit;
+    const julianDayNumber = Math.floor(julianDate);
+    const secondsOfDay = (julianDate - julianDayNumber) * 60 * 60 * 24;
+    const epochJulianDate = new JulianDate(julianDayNumber, secondsOfDay);
+    const epochMinus1Hour = JulianDate.addSeconds(epochJulianDate, -3600, new JulianDate());
+
+    if (JulianDate.compare(requestedStart, epochMinus1Hour) < 0) {
+      requestedStart = epochMinus1Hour;
+    }
+
     const request = new TimeInterval({
-      start: JulianDate.addSeconds(time, -orbitalPeriod / 2, new JulianDate()),
-      stop: JulianDate.addSeconds(time, orbitalPeriod * 1.5, new JulianDate()),
+      start: requestedStart,
+      stop: requestedStop,
     });
 
     // (Re)create sampled position if it does not exist or if it does not contain the current time
-    if (!this.sampledPosition || !TimeInterval.contains(this.sampledPosition.interval, time)) {
+    // For future-epoch satellites, the interval might start after the current time,
+    // but we still need to create samples for HOLD extrapolation to work
+    const needsInit = !this.sampledPosition || (!TimeInterval.contains(this.sampledPosition.interval, time) && JulianDate.compare(time, epochMinus1Hour) >= 0);
+
+    if (needsInit) {
       this.initSampledPosition(request.start);
+    } else if (!this.sampledPosition) {
+      // For future-epoch satellites before their epoch, initialize at epoch - 1 hour
+      this.initSampledPosition(epochMinus1Hour);
     }
 
     // Determine which parts of the requested interval are missing
@@ -212,16 +251,86 @@ export class SatelliteProperties {
     return { positionFixed, positionInertial: positionInertialICRF };
   }
 
-  groundTrack(julianDate, samplesFwd = 1, samplesBwd = 0, interval = 300) {
+  /**
+   * Calculate the satellite's ground track (subsatellite point path on Earth's surface)
+   *
+   * @param {JulianDate} julianDate - Current time reference point
+   * @param {number} samplesFwd - Number of sample intervals forward in time (default: 2)
+   * @param {number} samplesBwd - Number of sample intervals backward in time (default: 0)
+   * @param {number} interval - Time interval between samples in seconds (default: 600 = 10 minutes)
+   * @returns {Cartesian3[]} Array of 3D positions representing the ground track
+   */
+  groundTrack(julianDate, samplesFwd = 2, samplesBwd = 0, interval = 600) {
     const groundTrack = [];
 
-    const startTime = -samplesBwd * interval;
-    const stopTime = samplesFwd * interval;
+    // Calculate time range for ground track sampling
+    // Negative startTime goes backward in time, positive stopTime goes forward
+    const startTime = -samplesBwd * interval; // e.g., 0 * 600 = 0 (no backward samples by default)
+    const stopTime = samplesFwd * interval; // e.g., 2 * 600 = 1200 seconds (20 minutes forward)
+
+    // Sample satellite positions at regular intervals to create ground track
     for (let time = startTime; time <= stopTime; time += interval) {
+      // Create timestamp for this sample point
       const timestamp = JulianDate.addSeconds(julianDate, time, new JulianDate());
+
+      // Get satellite position at this time using SGP4 orbital mechanics
+      // This returns the 3D Cartesian position in Earth-fixed coordinates
       groundTrack.push(this.position(timestamp));
     }
+
+    // Return array of positions that form the ground track
+    // Cesium will project these 3D positions onto Earth's surface for display
     return groundTrack;
+  }
+
+  /**
+   * Calculate the visible area width from satellite altitude
+   * This represents the diameter of the area on Earth's surface from which
+   * the satellite can be seen above the horizon (minimum 10° elevation)
+   *
+   * @param {Cesium.JulianDate} time - Time for satellite position calculation
+   * @param {number} minElevation - Minimum elevation angle in degrees (default: 10°)
+   * @returns {number} Visible area diameter in kilometers
+   */
+  getVisibleAreaWidth(time, minElevation = 10) {
+    // Get satellite position at given time
+    const satellitePosition = this.position(time);
+    if (!satellitePosition) return 0;
+
+    // Calculate satellite altitude above Earth's surface
+    const ellipsoid = Ellipsoid.WGS84;
+    const cartographic = ellipsoid.cartesianToCartographic(satellitePosition);
+    if (!cartographic) return 0;
+
+    const altitudeKm = cartographic.height / 1000; // Convert to kilometers
+    const earthRadiusKm = 6371; // Average Earth radius in km
+
+    // Calculate satellite visibility radius using simple geometric approach
+    // For 10° minimum elevation, use the horizon distance formula with elevation correction
+
+    const minElevationRad = minElevation * (Math.PI / 180);
+
+    // For 10° minimum elevation, use a more accurate geometric calculation
+    // The key insight: lower satellites have smaller visibility circles at high elevation angles
+
+    // Maximum slant range from observer to satellite at minimum elevation
+    // Using geometry: range = (R + h) * sin(arccos(R/(R+h)) - elevation_angle)
+    const satelliteDistance = earthRadiusKm + altitudeKm;
+    const nadir_angle = Math.acos(earthRadiusKm / satelliteDistance);
+    const effective_angle = nadir_angle - minElevationRad;
+
+    let visibleRadiusKm;
+    if (effective_angle <= 0) {
+      // Satellite too low for this elevation angle
+      visibleRadiusKm = 0;
+    } else {
+      // Ground range is approximately slant_range * cos(elevation)
+      const slant_range = satelliteDistance * Math.sin(effective_angle);
+      visibleRadiusKm = slant_range * Math.cos(minElevationRad);
+    }
+    const visibleDiameterKm = 2 * visibleRadiusKm;
+
+    return visibleDiameterKm;
   }
 
   get groundStationAvailable() {
@@ -243,6 +352,15 @@ export class SatelliteProperties {
     };
 
     let allPasses = [];
+    const epochInFuture = this.isEpochInFuture();
+
+    // Get epoch time for filtering
+    const { julianDate } = this.orbit;
+    const julianDayNumber = Math.floor(julianDate);
+    const secondsOfDay = (julianDate - julianDayNumber) * 60 * 60 * 24;
+    const epochJulianDate = new JulianDate(julianDayNumber, secondsOfDay);
+    const epochTime = JulianDate.toDate(epochJulianDate);
+
     this.groundStations.forEach((groundStation) => {
       let passes;
       if (this.overpassMode === "swath") {
@@ -252,6 +370,8 @@ export class SatelliteProperties {
       }
       passes.forEach((pass) => {
         pass.groundStationName = groundStation.name;
+        pass.epochInFuture = epochInFuture;
+        pass.epochTime = epochTime;
       });
       allPasses.push(...passes);
     });
@@ -283,26 +403,29 @@ export class SatelliteProperties {
   }
 
   get swath() {
+    // Use baseName (without asterisk) for matching
+    const nameToMatch = this.baseName;
+
     // Hardcoded swath for certain satellites
-    if (["SUOMI NPP", "NOAA 20 (JPSS-1)", "NOAA 21 (JPSS-2)"].includes(this.name)) {
+    if (["SUOMI NPP", "NOAA 20 (JPSS-1)", "NOAA 21 (JPSS-2)"].includes(nameToMatch)) {
       return 3000;
     }
-    if (["AQUA", "TERRA"].includes(this.name)) {
+    if (["AQUA", "TERRA"].includes(nameToMatch)) {
       return 2330;
     }
-    if (this.name.includes("SENTINEL-2")) {
+    if (nameToMatch.includes("SENTINEL-2")) {
       return 290;
     }
-    if (this.name.includes("SENTINEL-3")) {
+    if (nameToMatch.includes("SENTINEL-3")) {
       return 740;
     }
-    if (this.name.includes("LANDSAT")) {
+    if (nameToMatch.includes("LANDSAT")) {
       return 185;
     }
-    if (this.name.includes("FENGYUN")) {
+    if (nameToMatch.includes("FENGYUN")) {
       return 2900;
     }
-    if (this.name.includes("METOP")) {
+    if (nameToMatch.includes("METOP")) {
       return 2900;
     }
     return 200;

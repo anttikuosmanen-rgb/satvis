@@ -50,6 +50,10 @@
     text-align: right;
 }
 
+.ibt .ibt-center {
+    text-align: center;
+}
+
 .cesium-infoBox-description {
     margin-right: 0px;
     min-height: 200px;

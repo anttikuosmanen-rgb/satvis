@@ -4,6 +4,7 @@ import {
   Cartesian3,
   Cartographic,
   CesiumTerrainProvider,
+  ClockStep,
   Color,
   Credit,
   EllipsoidTerrainProvider,
@@ -32,12 +33,17 @@ import { faBell, faInfo } from "@fortawesome/free-solid-svg-icons";
 import infoBoxCss from "@cesium/widgets/Source/InfoBox/InfoBoxDescription.css?raw";
 
 import { useCesiumStore } from "../stores/cesium";
+import { useSatStore } from "../stores/sat";
 import infoBoxOverrideCss from "../css/infobox.css?raw";
 import { useToastProxy } from "../composables/useToastProxy";
 import { DeviceDetect } from "./util/DeviceDetect";
 import { PushManager } from "./util/PushManager";
 import { CesiumPerformanceStats } from "./util/CesiumPerformanceStats";
+import { CesiumTimelineHelper } from "./util/CesiumTimelineHelper";
 import { SatelliteManager } from "./SatelliteManager";
+import { TimeFormatHelper } from "./util/TimeFormatHelper";
+import { PlanetManager } from "./PlanetManager";
+import { EarthManager } from "./EarthManager";
 
 dayjs.extend(utc);
 
@@ -70,10 +76,13 @@ export class CesiumController {
 
     // Cesium default settings
     this.viewer.clock.shouldAnimate = true;
+    this.viewer.clock.multiplier = 1.0; // Ensure clock multiplier is set
+    this.viewer.clock.clockStep = ClockStep.SYSTEM_CLOCK_MULTIPLIER;
     this.viewer.scene.globe.enableLighting = true;
     this.viewer.scene.highDynamicRange = true;
     this.viewer.scene.maximumRenderTimeChange = 1 / 30;
-    this.viewer.scene.requestRenderMode = true;
+    // Comment out requestRenderMode temporarily to see if it's interfering
+    // this.viewer.scene.requestRenderMode = true;
 
     // Cesium Performance Tools
     // this.viewer.scene.debugShowFramesPerSecond = true;
@@ -96,6 +105,21 @@ export class CesiumController {
 
     // Create Satellite Manager
     this.sats = new SatelliteManager(this.viewer);
+
+    // Create Planet Manager
+    this.planets = new PlanetManager(this.viewer);
+
+    // Create Earth/Moon Manager
+    this.earthMoon = new EarthManager(this.viewer);
+
+    // Add event listener for ground station selection
+    this.setupGroundStationSelectionListener();
+
+    // Add event listener to detect when time is set to "now" (today/real-time button)
+    this.setupTimelineResetOnNow();
+
+    // Setup local time formatting for clock and timeline
+    this.setupLocalTimeFormatting();
 
     this.pm = new PushManager();
 
@@ -150,7 +174,7 @@ export class CesiumController {
       Topo: {
         create: () =>
           new UrlTemplateImageryProvider({
-            url: "https://api.maptiler.com/maps/topo-v2/{z}/{x}/{y}@2x.png?key=tiHE8Ed08u6ZoFjbE32Z",
+            url: "https://api.maptiler.com/maps/topo-v2/{z}/{x}/{y}@2x.png?key=smE1YAavFPhU2rf3prVZ",
             credit: `<a href="https://www.maptiler.com/copyright/" target="_blank">&copy; MapTiler</a> <a href="https://www.openstreetmap.org/copyright" target="_blank">&copy; OpenStreetMap contributors</a>`,
           }),
         alpha: 1,
@@ -211,7 +235,7 @@ export class CesiumController {
       },
       Maptiler: {
         create: () =>
-          CesiumTerrainProvider.fromUrl("https://api.maptiler.com/tiles/terrain-quantized-mesh/?key=tiHE8Ed08u6ZoFjbE32Z", {
+          CesiumTerrainProvider.fromUrl("https://api.maptiler.com/tiles/terrain-quantized-mesh/?key=smE1YAavFPhU2rf3prVZ", {
             credit:
               '<a href="https://www.maptiler.com/copyright/" target="_blank">© MapTiler</a> <a href="https://www.openstreetmap.org/copyright" target="_blank">© OpenStreetMap contributors</a>',
             requestVertexNormals: true,
@@ -380,6 +404,99 @@ export class CesiumController {
     if (typeof this.viewer.timeline !== "undefined") {
       this.viewer.timeline.updateFromClock();
       this.viewer.timeline.zoomTo(this.viewer.clock.startTime, this.viewer.clock.stopTime);
+    }
+  }
+
+  setCurrentTimeOnly(current) {
+    const newCurrentTime = JulianDate.fromIso8601(dayjs.utc(current).toISOString());
+    this.viewer.clock.currentTime = newCurrentTime;
+
+    if (typeof this.viewer.timeline !== "undefined") {
+      // Get current timeline visible range duration
+      const timeline = this.viewer.timeline;
+      const currentStart = timeline._startJulian;
+      const currentEnd = timeline._endJulian;
+
+      if (currentStart && currentEnd) {
+        // Calculate the duration of the current visible range
+        const rangeDurationSeconds = JulianDate.secondsDifference(currentEnd, currentStart);
+        const halfDuration = rangeDurationSeconds / 2;
+
+        // Center the timeline around the new current time with the same zoom level
+        const newStart = JulianDate.addSeconds(newCurrentTime, -halfDuration, new JulianDate());
+        const newEnd = JulianDate.addSeconds(newCurrentTime, halfDuration, new JulianDate());
+
+        // Use zoomTo to move the timeline view while maintaining the zoom level
+        timeline.zoomTo(newStart, newEnd);
+      }
+
+      this.viewer.timeline.updateFromClock();
+    }
+  }
+
+  constrainTimelineBounds() {
+    if (!this.viewer.timeline) return;
+
+    // Define safe date bounds (years 1900-2100 to stay well within Cesium's limits)
+    const minDate = JulianDate.fromIso8601("1900-01-01T00:00:00Z");
+    const maxDate = JulianDate.fromIso8601("2100-12-31T23:59:59Z");
+
+    try {
+      const timeline = this.viewer.timeline;
+
+      // Get current timeline bounds
+      const currentStart = timeline._startJulian;
+      const currentEnd = timeline._endJulian;
+
+      if (currentStart && currentEnd) {
+        let needsUpdate = false;
+        let newStart = currentStart;
+        let newEnd = currentEnd;
+
+        // Check if start time is before minimum allowed date
+        if (JulianDate.lessThan(currentStart, minDate)) {
+          newStart = JulianDate.clone(minDate);
+          needsUpdate = true;
+        }
+
+        // Check if end time is after maximum allowed date
+        if (JulianDate.greaterThan(currentEnd, maxDate)) {
+          newEnd = JulianDate.clone(maxDate);
+          needsUpdate = true;
+        }
+
+        // If bounds need updating, safely update them
+        if (needsUpdate) {
+          // Ensure the range makes sense (end > start)
+          const timeDiff = JulianDate.secondsDifference(newEnd, newStart);
+          if (timeDiff <= 0) {
+            // If the range is invalid, create a default 7-day range
+            newStart = JulianDate.clone(minDate);
+            newEnd = JulianDate.addDays(newStart, 7, new JulianDate());
+          }
+
+          // Update clock bounds
+          this.viewer.clock.startTime = newStart;
+          this.viewer.clock.stopTime = newEnd;
+
+          // Update timeline to reflect new bounds
+          timeline.zoomTo(newStart, newEnd);
+        }
+      }
+    } catch (error) {
+      // If there's any error with bounds checking, reset to a safe default
+      console.warn("Timeline bounds error, resetting to safe defaults:", error);
+      const safeStart = JulianDate.fromIso8601("2024-01-01T00:00:00Z");
+      const safeEnd = JulianDate.addDays(safeStart, 7, new JulianDate());
+
+      this.viewer.clock.startTime = safeStart;
+      this.viewer.clock.stopTime = safeEnd;
+      this.viewer.clock.currentTime = JulianDate.clone(safeStart);
+
+      if (this.viewer.timeline) {
+        this.viewer.timeline.updateFromClock();
+        this.viewer.timeline.zoomTo(safeStart, safeEnd);
+      }
     }
   }
 
@@ -641,11 +758,334 @@ export class CesiumController {
     frame.setAttribute("allowTransparency", "true");
     frame.src = "about:blank";
 
-    // Allow time changes from infobox
+    // Allow time changes and satellite tracking from infobox pass clicks
     window.addEventListener("message", (e) => {
       const pass = e.data;
       if ("start" in pass) {
-        this.setTime(pass.start);
+        console.log("Ground station pass clicked:", pass);
+
+        // Set time to pass start without changing timeline zoom
+        this.setCurrentTimeOnly(pass.start);
+
+        // Show highlights for all passes of this satellite
+        const satelliteName = pass.satelliteName || pass.name;
+        if (satelliteName && this.sats) {
+          // Find the satellite object
+          const satellite = this.sats.getSatellite(satelliteName);
+          if (satellite) {
+            // Update passes for this satellite and show all its pass highlights
+            satellite.props.updatePasses(this.viewer.clock.currentTime);
+            CesiumTimelineHelper.clearHighlightRanges(this.viewer);
+            CesiumTimelineHelper.addHighlightRanges(this.viewer, satellite.props.passes, satelliteName);
+          } else {
+            // Fallback to showing just the clicked pass if satellite not found
+            CesiumTimelineHelper.clearHighlightRanges(this.viewer);
+            CesiumTimelineHelper.addHighlightRanges(this.viewer, [pass], satelliteName);
+          }
+        } else {
+          // Fallback to showing just the clicked pass
+          CesiumTimelineHelper.clearHighlightRanges(this.viewer);
+          CesiumTimelineHelper.addHighlightRanges(this.viewer, [pass], pass.satelliteName || pass.name);
+        }
+
+        // Track or point at the satellite for this pass
+        if (pass.satelliteName || pass.name) {
+          const satelliteName = pass.satelliteName || pass.name;
+          console.log(`Attempting to track satellite: ${satelliteName}`);
+
+          try {
+            // Find the satellite entity with proper error handling
+            const entities = this.viewer.entities.values;
+
+            // Ensure entities is actually an array
+            if (!Array.isArray(entities)) {
+              console.warn("Entities collection is not an array, skipping satellite tracking");
+              return;
+            }
+
+            // Try different naming patterns to find the satellite entity
+            let satelliteEntity = entities.find((entity) => entity && entity.name && entity.name.includes(satelliteName) && entity.name.includes("Point"));
+
+            // If not found with "Point", try just the satellite name
+            if (!satelliteEntity) {
+              satelliteEntity = entities.find((entity) => entity && entity.name && entity.name === satelliteName);
+            }
+
+            // If still not found, try partial match
+            if (!satelliteEntity) {
+              satelliteEntity = entities.find((entity) => entity && entity.name && entity.name.includes(satelliteName));
+            }
+
+            if (satelliteEntity) {
+              console.log(`Found satellite entity: ${satelliteEntity.name}`);
+
+              // Check if we're in zenith view
+              const isInZenithView = this.sats && this.sats.isInZenithView;
+
+              if (isInZenithView) {
+                // In zenith view: point camera at satellite without moving position, and select it
+                // Use a small delay to ensure satellite position is calculated at the new time
+                setTimeout(() => {
+                  const satellitePosition = satelliteEntity.position.getValue(this.viewer.clock.currentTime);
+                  if (satellitePosition) {
+                    const cameraPosition = this.viewer.camera.positionWC;
+                    const direction = Cartesian3.subtract(satellitePosition, cameraPosition, new Cartesian3());
+                    Cartesian3.normalize(direction, direction);
+                    this.viewer.camera.direction = direction;
+                    // Select the satellite to show its info
+                    this.viewer.selectedEntity = satelliteEntity;
+                    // Request render to update the view
+                    this.viewer.scene.requestRender();
+                    console.log(`Pointed camera at satellite: ${satelliteEntity.name} for pass (zenith view)`);
+                  }
+                }, 100);
+              } else {
+                // Normal mode: track the satellite
+                this.viewer.trackedEntity = null;
+
+                // Also try to select satellite through satellite manager
+                if (this.sats) {
+                  try {
+                    console.log(`Tracking satellite through manager: ${satelliteName}`);
+                    this.sats.trackedSatellite = satelliteName;
+                  } catch (error) {
+                    console.warn("Could not use satellite manager:", error);
+                  }
+                }
+
+                // Set tracking with delay
+                setTimeout(() => {
+                  this.viewer.trackedEntity = satelliteEntity;
+                  console.log(`Now tracking satellite: ${satelliteEntity.name} for pass`);
+                }, 100);
+              }
+            } else {
+              console.warn(`Could not find satellite entity for: ${satelliteName}`);
+              console.log(
+                "Available entities:",
+                entities.map((entity) => entity.name).filter((n) => n),
+              );
+            }
+          } catch (error) {
+            console.error("Error while tracking satellite:", error);
+          }
+        }
+      }
+    });
+  }
+
+  setupTimelineResetOnNow() {
+    if (!this.viewer.timeline || !this.viewer.animation) {
+      return;
+    }
+
+    // Monitor clock changes to detect when current time is set to "now"
+    let lastCurrentTime = this.viewer.clock.currentTime;
+
+    this.viewer.clock.onTick.addEventListener(() => {
+      const currentTime = this.viewer.clock.currentTime;
+      const now = JulianDate.now();
+
+      // Check if the current time was just set to very close to "now" (within 1 second)
+      // This typically happens when the real-time/today button is clicked
+      const timeDifference = Math.abs(JulianDate.secondsDifference(currentTime, now));
+      const lastTimeDifference = Math.abs(JulianDate.secondsDifference(lastCurrentTime, now));
+
+      // If current time just jumped to be very close to "now" (and wasn't close before)
+      if (timeDifference < 1 && lastTimeDifference > 60) {
+        // Move timeline to show current time while preserving zoom level
+        this.setCurrentTimeOnly(JulianDate.toDate(currentTime));
+      }
+
+      lastCurrentTime = JulianDate.clone(currentTime);
+    });
+  }
+
+  setupLocalTimeFormatting() {
+    if (!this.viewer.timeline || !this.viewer.animation) {
+      return;
+    }
+
+    // Store original makeLabel function and its context for timeline
+    const timeline = this.viewer.timeline;
+    const originalTimelineMakeLabel = timeline.makeLabel.bind(timeline);
+
+    // Override timeline makeLabel to support local time
+    this.viewer.timeline.makeLabel = function (time) {
+      try {
+        const satStore = useSatStore();
+
+        if (satStore.useLocalTime && satStore.groundStations.length > 0) {
+          // Get first ground station position for timezone
+          const groundStationPosition = {
+            latitude: satStore.groundStations[0].lat,
+            longitude: satStore.groundStations[0].lon,
+          };
+
+          // Format in ground station's local time
+          const date = JulianDate.toDate(time);
+          const timezone = TimeFormatHelper.getTimezoneFromCoordinates(groundStationPosition.latitude, groundStationPosition.longitude);
+
+          const tzOffset = TimeFormatHelper.getTimezoneOffset(timezone, date);
+
+          // Format in DD.MM HH:MM:SS format for timeline
+          const formatter = new Intl.DateTimeFormat("en-GB", {
+            timeZone: timezone,
+            day: "2-digit",
+            month: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            hour12: false,
+          });
+
+          const formatted = formatter.format(date);
+          // Format is "DD/MM/YYYY, HH:MM:SS" - convert to "DD.MM HH:MM:SS"
+          const parts = formatted.split(", ");
+          const datePart = parts[0].substring(0, 5).replace("/", "."); // Get DD.MM only
+          const timePart = parts[1];
+          return `${datePart} ${timePart} ${tzOffset}`;
+        }
+      } catch {
+        // Pinia store not ready yet or error accessing it, fall back to UTC
+      }
+
+      // Use original UTC formatting with proper context
+      return originalTimelineMakeLabel(time);
+    };
+
+    // Store original animation time formatter
+    const animation = this.viewer.animation;
+    const originalAnimationTimeFormatter = animation.viewModel.timeFormatter;
+
+    // Store original animation date formatter
+    const originalAnimationDateFormatter = animation.viewModel.dateFormatter;
+
+    // Override animation date formatter to support local time
+    animation.viewModel.dateFormatter = function (date, viewModel) {
+      try {
+        const satStore = useSatStore();
+
+        if (satStore && satStore.useLocalTime && satStore.groundStations && satStore.groundStations.length > 0) {
+          // Convert to JavaScript Date if needed
+          const jsDate = date instanceof Date ? date : new Date(date);
+
+          // Get first ground station position for timezone
+          const groundStationPosition = {
+            latitude: satStore.groundStations[0].lat,
+            longitude: satStore.groundStations[0].lon,
+          };
+
+          // Format in ground station's local time
+          const timezone = TimeFormatHelper.getTimezoneFromCoordinates(groundStationPosition.latitude, groundStationPosition.longitude);
+
+          // Format in MMM DD YYYY format (without timezone, that goes with time)
+          const formatter = new Intl.DateTimeFormat("en-US", {
+            timeZone: timezone,
+            month: "short",
+            day: "2-digit",
+            year: "numeric",
+          });
+
+          return formatter.format(jsDate);
+        }
+      } catch {
+        // Pinia store not ready yet or error accessing it, fall back to UTC
+      }
+
+      // Use original UTC formatting
+      return originalAnimationDateFormatter(date, viewModel);
+    };
+
+    // Override animation time formatter to support local time
+    animation.viewModel.timeFormatter = function (date, viewModel) {
+      try {
+        const satStore = useSatStore();
+
+        if (satStore && satStore.useLocalTime && satStore.groundStations && satStore.groundStations.length > 0) {
+          // Convert to JavaScript Date if needed (Cesium may pass JulianDate or other formats)
+          const jsDate = date instanceof Date ? date : new Date(date);
+
+          // Get first ground station position for timezone
+          const groundStationPosition = {
+            latitude: satStore.groundStations[0].lat,
+            longitude: satStore.groundStations[0].lon,
+          };
+
+          // Format in ground station's local time
+          const timezone = TimeFormatHelper.getTimezoneFromCoordinates(groundStationPosition.latitude, groundStationPosition.longitude);
+
+          const tzOffset = TimeFormatHelper.getTimezoneOffset(timezone, jsDate);
+
+          // Format in HH:MM:SS UTC+x format
+          const formatter = new Intl.DateTimeFormat("en-GB", {
+            timeZone: timezone,
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            hour12: false,
+          });
+
+          return `${formatter.format(jsDate)} ${tzOffset}`;
+        }
+      } catch {
+        // Pinia store not ready yet or error accessing it, fall back to UTC
+      }
+
+      // Use original UTC formatting
+      return originalAnimationTimeFormatter(date, viewModel);
+    };
+
+    // Update timeline when local time setting changes
+    this.viewer.timeline.updateFromClock();
+  }
+
+  setupGroundStationSelectionListener() {
+    // Listen for entity selection changes to show timeline highlights when ground station is selected
+    let lastSelectedEntity = null;
+
+    // Use selectedEntityChanged event to detect selection changes
+    this.viewer.selectedEntityChanged.addEventListener(() => {
+      const selectedEntity = this.viewer.selectedEntity;
+
+      // Only process if selection actually changed
+      if (selectedEntity === lastSelectedEntity) {
+        return;
+      }
+      lastSelectedEntity = selectedEntity;
+
+      // Check if the selected entity is a ground station
+      if (selectedEntity && selectedEntity.name && selectedEntity.name.includes("Groundstation")) {
+        console.log("Ground station selected:", selectedEntity.name);
+
+        // Find the ground station in the satellite manager
+        const groundStation = this.sats.groundStations.find((gs) => gs.entity === selectedEntity);
+
+        if (groundStation) {
+          // Get all passes for enabled satellites at this ground station
+          const currentTime = this.viewer.clock.currentTime;
+
+          // Clear existing satellite pass highlights
+          CesiumTimelineHelper.clearHighlightRanges(this.viewer);
+
+          // Add highlights for all passes of all enabled satellites
+          const enabledSatellites = this.sats.enabledSatellites;
+
+          enabledSatellites.forEach((satName) => {
+            const satellite = this.sats.getSatellite(satName);
+            if (satellite && satellite.props) {
+              // Update passes for this satellite
+              satellite.props.updatePasses(currentTime);
+
+              // Add highlights for this satellite's passes
+              if (satellite.props.passes && satellite.props.passes.length > 0) {
+                CesiumTimelineHelper.addHighlightRanges(this.viewer, satellite.props.passes, satName);
+              }
+            }
+          });
+
+          console.log(`Added timeline highlights for ${enabledSatellites.length} satellites`);
+        }
       }
     });
   }

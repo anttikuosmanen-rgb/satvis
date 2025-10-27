@@ -4,11 +4,11 @@ import {
   CallbackProperty,
   Cartesian2,
   Cartesian3,
+  Cartographic,
   Color,
   ColorGeometryInstanceAttribute,
-  CornerType,
-  CorridorGraphics,
   DistanceDisplayCondition,
+  EllipseGraphics,
   Entity,
   GeometryInstance,
   HeadingPitchRoll,
@@ -40,6 +40,7 @@ import { CesiumComponentCollection } from "./util/CesiumComponentCollection";
 import { CesiumTimelineHelper } from "./util/CesiumTimelineHelper";
 import { DescriptionHelper } from "./util/DescriptionHelper";
 import { CesiumCallbackHelper } from "./util/CesiumCallbackHelper";
+import { filterAndSortPasses } from "./util/PassFilter";
 
 export class SatelliteComponentCollection extends CesiumComponentCollection {
   constructor(viewer, tle, tags) {
@@ -67,6 +68,12 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       // Adjust label offset to avoid overlap with model
       if (this.components.Label) {
         this.components.Label.label.pixelOffset = new Cartesian2(20, 0);
+      }
+    } else if (name === "Height stick") {
+      // Refresh label to show elevation text when height stick is enabled
+      if (this.components.Label) {
+        this.disableComponent("Label");
+        this.enableComponent("Label");
       }
     } else if (name === "Orbit" && this.components[name] instanceof Primitive) {
       // Update the model matrix periodically to keep the orbit in the inertial frame
@@ -107,6 +114,27 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       if (this.components.Label) {
         this.components.Label.label.pixelOffset = new Cartesian2(10, 0);
       }
+    } else if (name === "Height stick") {
+      const component = this.components[name];
+      if (component) {
+        // Clean up tick mark entities
+        if (component._tickEntities) {
+          component._tickEntities.forEach((tickEntity) => {
+            this.viewer.entities.remove(tickEntity);
+          });
+          component._tickEntities.length = 0;
+        }
+      }
+      // Refresh label to hide elevation text when height stick is disabled
+      if (this.components.Label) {
+        const wasEnabled = this.componentNames.includes("Label");
+        if (wasEnabled) {
+          super.disableComponent(name);
+          this.disableComponent("Label");
+          this.enableComponent("Label");
+          return;
+        }
+      }
     }
     super.disableComponent(name);
 
@@ -125,17 +153,35 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
 
     // Set up event listeners
     this.eventListeners.selectedEntity = this.viewer.selectedEntityChanged.addEventListener((entity) => {
-      if (!entity || entity?.name === "Ground station") {
+      if (!entity) {
         CesiumTimelineHelper.clearHighlightRanges(this.viewer);
         return;
       }
+
+      if (entity?.name?.includes("Groundstation")) {
+        this.handleGroundStationHighlights(entity);
+        return;
+      }
+
       if (this.isSelected) {
+        // Force recalculation of passes when satellite is selected
+        this.props.clearPasses();
         this.props.updatePasses(this.viewer.clock.currentTime);
-        CesiumTimelineHelper.updateHighlightRanges(this.viewer, this.props.passes);
+        // Filter passes based on current filter settings (sunlight/eclipse)
+        const filteredPasses = filterAndSortPasses(this.props.passes, this.viewer.clock.currentTime);
+        // Use baseName to match the name in pass objects (without asterisk for future epochs)
+        CesiumTimelineHelper.updateHighlightRanges(this.viewer, filteredPasses, this.props.baseName);
       }
     });
 
     this.eventListeners.trackedEntity = this.viewer.trackedEntityChanged.addEventListener(() => {
+      // Handle ground station tracking (double-click to focus)
+      const trackedEntity = this.viewer.trackedEntity;
+      if (trackedEntity?.name?.includes("Groundstation")) {
+        this.handleGroundStationHighlights(trackedEntity);
+        return;
+      }
+
       if (this.isTracked) {
         this.artificiallyTrack();
       }
@@ -145,6 +191,39 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
         this.enableComponent("Orbit");
       }
     });
+  }
+
+  async handleGroundStationHighlights(entity) {
+    // Handle ground station selection/tracking - show all passes for that ground station
+    // Find the ground station that owns this entity
+    const groundStation = window.cc?.sats?.groundStations?.find((gs) => gs.components && Object.values(gs.components).includes(entity));
+
+    if (!groundStation) {
+      CesiumTimelineHelper.clearHighlightRanges(this.viewer);
+      return;
+    }
+
+    // Clear existing highlights immediately for responsive feedback
+    CesiumTimelineHelper.clearHighlightRanges(this.viewer);
+
+    // Yield to browser to keep UI responsive
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Calculate passes asynchronously
+    const passes = await groundStation.passesAsync(this.viewer.clock.currentTime);
+
+    if (passes.length > 0) {
+      // Show highlights for all passes from this ground station, grouped by satellite
+      const passesBySatellite = passes.reduce((acc, pass) => {
+        const satelliteName = pass.name || pass.satelliteName;
+        if (!acc[satelliteName]) acc[satelliteName] = [];
+        acc[satelliteName].push(pass);
+        return acc;
+      }, {});
+
+      // Add highlights asynchronously to avoid blocking
+      await CesiumTimelineHelper.addHighlightRangesAsync(this.viewer, passesBySatellite);
+    }
   }
 
   deinit() {
@@ -165,6 +244,8 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
           this.disableComponent("Orbit");
           this.enableComponent("Orbit");
         }
+      } else if (type === "Height stick") {
+        component.position = fixed;
       } else if (type === "Sensor cone") {
         component.position = fixed;
         component.orientation = new CallbackProperty((time) => {
@@ -200,11 +281,11 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       case "Orbit track":
         this.createOrbitTrack();
         break;
-      case "Ground track":
+      case "Visibility area":
         this.createGroundTrack();
         break;
-      case "Sensor cone":
-        this.createCone();
+      case "Height stick":
+        this.createHeightStick();
         break;
       case "3D model":
         this.createModel();
@@ -219,6 +300,10 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
 
   createDescription() {
     this.description = DescriptionHelper.cachedCallbackProperty((time) => {
+      // Update passes if needed when time changes significantly
+      if (this.props.groundStationAvailable) {
+        this.props.updatePasses(time);
+      }
       const cartographic = this.props.orbit.positionGeodetic(JulianDate.toDate(time), true);
       const content = DescriptionHelper.renderSatelliteDescription(time, cartographic, this.props);
       return content;
@@ -259,7 +344,25 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
 
   createLabel() {
     const label = new LabelGraphics({
-      text: this.props.name,
+      text: new CallbackProperty((time) => {
+        // Only add elevation when height stick is enabled
+        if (!this.components["Height stick"]) {
+          return this.props.name;
+        }
+
+        // Only add elevation for satellites with orbital period under 120 minutes (same as height stick)
+        if (this.props.orbit.orbitalPeriod > 120) {
+          return this.props.name;
+        }
+
+        const cartographic = this.props.orbit.positionGeodetic(JulianDate.toDate(time), true);
+        if (!cartographic) {
+          return this.props.name;
+        }
+
+        const heightKm = Math.round(cartographic.height / 1000); // Round to nearest km
+        return `${this.props.name} ${heightKm}km`;
+      }, false),
       font: "15px Arial",
       style: LabelStyle.FILL_AND_OUTLINE,
       outlineColor: Color.DIMGREY,
@@ -363,19 +466,123 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
   }
 
   createGroundTrack() {
+    // Only show ground tracks for Low Earth Orbit (LEO) satellites
+    // Satellites with orbital periods > 2 hours are typically in higher orbits
+    // where ground track visualization becomes less meaningful
     if (this.props.orbit.orbitalPeriod > 60 * 2) {
-      // Ground track unavailable for non-LEO satellites
       return;
     }
-    const corridor = new CorridorGraphics({
-      cornerType: CornerType.MITERED,
-      height: 1000,
-      heightReference: HeightReference.CLAMP_TO_GROUND,
+
+    // Create a circle showing the satellite's visibility footprint on Earth's surface
+    // This represents the area where the satellite can be observed above 10° elevation
+    const visibilityCircle = new EllipseGraphics({
+      // Semi-transparent dark red material for visibility without obscuring terrain
       material: Color.DARKRED.withAlpha(0.25),
-      positions: new CallbackProperty((time) => this.props.groundTrack(time), false),
-      width: this.props.swath * 1000,
+
+      // Add a subtle outline to make the circle more visible
+      outline: true,
+      outlineColor: Color.DARKRED.withAlpha(0.8),
+      outlineWidth: 2,
+
+      // Elevate slightly above ground to avoid clipping at corners
+      height: 5000, // 5km above surface
+      heightReference: HeightReference.RELATIVE_TO_GROUND,
+
+      // Dynamic radius based on satellite altitude and 10° minimum elevation
+      // The radius represents the distance from subsatellite point to 10° horizon
+      semiMajorAxis: new CallbackProperty((time) => {
+        const visibleWidthKm = this.props.getVisibleAreaWidth(time);
+        const radiusKm = visibleWidthKm / 2; // Convert diameter to radius
+        const expandedRadiusKm = radiusKm * 1.15; // Expand by 15% for better visibility
+        const radiusM = expandedRadiusKm * 1000; // Convert to meters
+
+        return radiusM;
+      }, false),
+
+      semiMinorAxis: new CallbackProperty((time) => {
+        const visibleWidthKm = this.props.getVisibleAreaWidth(time);
+        const radiusKm = visibleWidthKm / 2; // Convert diameter to radius
+        const expandedRadiusKm = radiusKm * 1.15; // Expand by 15% for better visibility
+        return expandedRadiusKm * 1000; // Convert to meters
+      }, false),
     });
-    this.createCesiumSatelliteEntity("Ground track", "corridor", corridor);
+
+    // Add the visibility circle to the Cesium scene
+    this.createCesiumSatelliteEntity("Visibility area", "ellipse", visibilityCircle);
+  }
+
+  createHeightStick() {
+    // Only show height stick for satellites with orbital period under 120 minutes
+    if (this.props.orbit.orbitalPeriod > 120) {
+      return;
+    }
+
+    // Create the main vertical line entity
+    const entity = new Entity({
+      polyline: new PolylineGraphics({
+        positions: new CallbackProperty((time) => {
+          const satellitePosition = this.props.position(time);
+          const cartographic = Cartographic.fromCartesian(satellitePosition);
+          const surfacePosition = Cartesian3.fromRadians(cartographic.longitude, cartographic.latitude, 0);
+          return [surfacePosition, satellitePosition];
+        }, false),
+        followSurface: false,
+        material: Color.CYAN,
+        width: 1,
+        distanceDisplayCondition: new DistanceDisplayCondition(2000, 8e7),
+        translucencyByDistance: new NearFarScalar(6e7, 1.0, 8e7, 0.0),
+      }),
+    });
+
+    // Create static tick marks (simplified approach to avoid clock interference)
+    const tickEntities = [];
+    const maxAltitude = 1000; // Max altitude in km for tick marks
+
+    // Create tick marks every 100km up to maxAltitude
+    for (let altitude = 100; altitude <= maxAltitude; altitude += 100) {
+      const is500km = altitude % 500 === 0;
+      const tickId = `heightstick-tick-${this.props.satnum}-${altitude}`;
+
+      const tickEntity = new Entity({
+        id: tickId,
+        polyline: new PolylineGraphics({
+          positions: new CallbackProperty((time) => {
+            const satellitePosition = this.props.position(time);
+            const cartographic = Cartographic.fromCartesian(satellitePosition);
+            const currentHeight = cartographic.height / 1000;
+
+            // Only show tick if satellite is above this altitude
+            if (currentHeight < altitude) {
+              return [];
+            }
+
+            const tickPosition = Cartesian3.fromRadians(cartographic.longitude, cartographic.latitude, altitude * 1000);
+
+            // Calculate eastward direction for tick
+            const up = Cartesian3.normalize(satellitePosition, new Cartesian3());
+            const east = Cartesian3.cross(Cartesian3.UNIT_Z, up, new Cartesian3());
+            Cartesian3.normalize(east, east);
+
+            const tickLength = is500km ? 8000 : 4000;
+            const tickEnd = Cartesian3.add(tickPosition, Cartesian3.multiplyByScalar(east, tickLength, new Cartesian3()), new Cartesian3());
+
+            return [tickPosition, tickEnd];
+          }, false),
+          followSurface: false,
+          material: Color.CYAN,
+          width: is500km ? 2 : 1,
+          distanceDisplayCondition: new DistanceDisplayCondition(2000, 8e7),
+          translucencyByDistance: new NearFarScalar(6e7, 1.0, 8e7, 0.0),
+        }),
+      });
+
+      this.viewer.entities.add(tickEntity);
+      tickEntities.push(tickEntity);
+    }
+
+    // Store tick entities for cleanup
+    entity._tickEntities = tickEntities;
+    this.components["Height stick"] = entity;
   }
 
   createCone(fov = 10) {
@@ -418,18 +625,80 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     this.createCesiumSatelliteEntity("Ground station link", "polyline", polyline);
   }
 
+  createPassArc() {
+    if (!this.props.groundStationAvailable || !this.isSelected) {
+      return;
+    }
+
+    // Find current pass
+    const getCurrentPass = (time) => {
+      const currentTime = new Date(JulianDate.toDate(time));
+      return this.props.passes.find((pass) => {
+        const passStart = new Date(pass.start);
+        const passEnd = new Date(pass.end);
+        return currentTime >= passStart && currentTime <= passEnd;
+      });
+    };
+
+    // Create dynamic material that changes color based on eclipse status
+    const dynamicMaterial = new CallbackProperty((time) => {
+      try {
+        const isEclipsed = this.props.orbit.isInEclipse(JulianDate.toDate(time));
+        return isEclipsed
+          ? Color.DARKRED.withAlpha(0.8) // Dark red for eclipsed portions
+          : Color.CYAN.withAlpha(0.9); // Bright cyan for sunlit portions during pass
+      } catch {
+        // Fallback to cyan if eclipse calculation fails
+        return Color.CYAN.withAlpha(0.8);
+      }
+    }, false);
+
+    const path = new PathGraphics({
+      leadTime: new CallbackProperty((time) => {
+        const currentPass = getCurrentPass(time);
+        if (!currentPass) return 0;
+
+        const currentTime = JulianDate.toDate(time);
+        const passEnd = new Date(currentPass.end);
+        return Math.max(0, (passEnd.getTime() - currentTime.getTime()) / 1000);
+      }, false),
+      trailTime: new CallbackProperty((time) => {
+        const currentPass = getCurrentPass(time);
+        if (!currentPass) return 0;
+
+        const currentTime = JulianDate.toDate(time);
+        const passStart = new Date(currentPass.start);
+        return Math.max(0, (currentTime.getTime() - passStart.getTime()) / 1000);
+      }, false),
+      material: dynamicMaterial,
+      resolution: 120, // Higher resolution for more detailed pass arc
+      width: 4, // Wider to make it stand out
+      show: new CallbackProperty((time) => {
+        // Only show when satellite is selected and during a pass
+        return this.isSelected && this.props.passIntervals.contains(time);
+      }, false),
+    });
+    this.createCesiumSatelliteEntity("Pass arc", "path", path);
+  }
+
   set groundStations(groundStations) {
-    // No groundstation calculation for GEO satellites
+    // Always set ground stations, even for GEO satellites
+    // This ensures groundStationAvailable returns true
+    this.props.groundStations = groundStations;
+
+    // No groundstation pass calculation for GEO satellites
     if (this.props.orbit.orbitalPeriod > 60 * 12) {
       return;
     }
 
-    this.props.groundStations = groundStations;
     this.props.clearPasses();
     if (this.isSelected || this.isTracked) {
       this.props.updatePasses(this.viewer.clock.currentTime);
       if (this.isSelected) {
-        CesiumTimelineHelper.updateHighlightRanges(this.viewer, this.props.passes);
+        // Filter passes based on current filter settings (sunlight/eclipse)
+        const filteredPasses = filterAndSortPasses(this.props.passes, this.viewer.clock.currentTime);
+        // Use baseName to match the name in pass objects (without asterisk for future epochs)
+        CesiumTimelineHelper.updateHighlightRanges(this.viewer, filteredPasses, this.props.baseName);
       }
     }
     if (this.created) {

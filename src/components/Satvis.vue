@@ -8,7 +8,13 @@
         <button v-tooltip="'Satellite elements'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('sat')">
           <font-awesome-icon icon="fas fa-layer-group" />
         </button>
-        <button v-tooltip="'Ground station'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('gs')">
+        <button
+          v-tooltip="'Ground station (double-click to toggle focus)'"
+          type="button"
+          class="cesium-button cesium-toolbar-button"
+          @click="toggleMenu('gs')"
+          @dblclick="focusFirstGroundStation"
+        >
           <i class="icon svg-groundstation"></i>
         </button>
         <button v-tooltip="'Map'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('map')">
@@ -41,28 +47,40 @@
       <div v-show="menu.gs" class="toolbarSwitches">
         <div class="toolbarTitle">Ground station</div>
         <label class="toolbarSwitch">
-          <input v-model="pickMode" type="checkbox" />
+          <input v-model="pickMode" type="checkbox" :disabled="isInZenithView" />
           <span class="slider"></span>
           Pick on globe
         </label>
         <label class="toolbarSwitch">
-          <input type="button" @click="cc.setGroundStationFromGeolocation()" />
+          <input type="button" :disabled="isInZenithView" @click="cc.setGroundStationFromGeolocation()" />
           Set from geolocation
         </label>
         <label class="toolbarSwitch">
-          <input type="button" @click="cc.sats.focusGroundStation()" />
+          <input type="button" :disabled="isInZenithView" @click="cc.sats.focusGroundStation()" />
           Focus
         </label>
-        <div class="toolbarTitle">Overpass calculation</div>
         <label class="toolbarSwitch">
-          <input v-model="overpassMode" type="radio" value="elevation" />
-          <span class="slider"></span>
-          Elevation
+          <input type="button" @click="toggleZenithView()" />
+          {{ isInZenithView ? "Normal view" : "Zenith view" }}
         </label>
         <label class="toolbarSwitch">
-          <input v-model="overpassMode" type="radio" value="swath" />
+          <input v-model="hideSunlightPasses" type="checkbox" />
           <span class="slider"></span>
-          Swath
+          Hide passes in daylight
+        </label>
+        <label class="toolbarSwitch">
+          <input v-model="showOnlyLitPasses" type="checkbox" />
+          <span class="slider"></span>
+          Show only lit satellites
+        </label>
+        <label class="toolbarSwitch">
+          <input v-model="useLocalTime" type="checkbox" :disabled="!canUseLocalTime" />
+          <span class="slider"></span>
+          Use local time
+        </label>
+        <label class="toolbarSwitch">
+          <input type="button" :disabled="isInZenithView" @click="removeGroundStation()" />
+          Remove ground station
         </label>
       </div>
       <div v-show="menu.map" class="toolbarSwitches">
@@ -124,6 +142,11 @@
           FPS
         </label>
         <label class="toolbarSwitch">
+          <input v-model="showCameraAltitude" type="checkbox" />
+          <span class="slider"></span>
+          Camera Altitude
+        </label>
+        <label class="toolbarSwitch">
           <input v-model="cc.viewer.scene.requestRenderMode" type="checkbox" />
           <span class="slider"></span>
           RequestRender
@@ -161,20 +184,62 @@
           <input type="button" @click="cc.jumpTo('HalfDome')" />
           Jump to HalfDome
         </label>
+        <div class="toolbarTitle">Planets</div>
+        <label class="toolbarSwitch">
+          <input v-model="planetsEnabled" type="checkbox" @change="togglePlanets" />
+          <span class="slider"></span>
+          Show planets
+        </label>
+        <template v-if="planetsEnabled">
+          <label class="toolbarSwitch">
+            <input v-model="planetRenderMode" type="radio" value="billboard" @change="setPlanetRenderMode" />
+            <span class="slider"></span>
+            Billboard
+          </label>
+          <label class="toolbarSwitch">
+            <input v-model="planetRenderMode" type="radio" value="point" @change="setPlanetRenderMode" />
+            <span class="slider"></span>
+            Point Primitive
+          </label>
+        </template>
+        <div class="toolbarTitle">Overpass calculation</div>
+        <label class="toolbarSwitch">
+          <input v-model="enableSwathPasses" type="checkbox" />
+          <span class="slider"></span>
+          Enable swath passes
+        </label>
+        <template v-if="enableSwathPasses">
+          <label class="toolbarSwitch">
+            <input v-model="overpassMode" type="radio" value="elevation" />
+            <span class="slider"></span>
+            Elevation
+          </label>
+          <label class="toolbarSwitch">
+            <input v-model="overpassMode" type="radio" value="swath" />
+            <span class="slider"></span>
+            Swath
+          </label>
+        </template>
       </div>
     </div>
     <div id="toolbarRight">
-      <a v-if="showUI" v-tooltip="'Github'" class="cesium-button cesium-toolbar-button" href="https://github.com/Flowm/satvis/" target="_blank" rel="noopener">
+      <a v-if="showUI" v-tooltip="'Github'" class="cesium-button cesium-toolbar-button" href="https://github.com/anttikuosmanen-rgb/satvis" target="_blank" rel="noopener">
         <font-awesome-icon icon="fab fa-github" />
       </a>
       <button v-tooltip="'Toggle UI'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleUI">
         <font-awesome-icon icon="fas fa-eye" />
       </button>
     </div>
+    <div v-show="showUI && !isIos" id="timelineControls">
+      <button v-tooltip="'Zoom In Timeline'" type="button" class="cesium-button cesium-toolbar-button timeline-button" @click="zoomInTimeline">+</button>
+      <button v-tooltip="'Zoom Out Timeline'" type="button" class="cesium-button cesium-toolbar-button timeline-button" @click="zoomOutTimeline">-</button>
+    </div>
+    <div v-if="showCameraAltitude" id="cameraAltitudeDisplay">Camera Altitude: {{ formattedCameraAltitude }}</div>
   </div>
 </template>
 
 <script>
+import * as Cesium from "@cesium/engine";
 import { mapWritableState } from "pinia";
 import { useCesiumStore } from "../stores/cesium";
 import { useSatStore } from "../stores/sat";
@@ -197,11 +262,36 @@ export default {
         dbg: false,
       },
       showUI: true,
+      zenithViewActive: false, // Local reactive state for zenith view
+      planetsEnabled: true, // Planet rendering enabled state
+      planetRenderMode: "billboard", // 'billboard' or 'point'
+      showCameraAltitude: false,
+      cameraAltitude: 0,
     };
   },
   computed: {
     ...mapWritableState(useCesiumStore, ["layers", "terrainProvider", "sceneMode", "cameraMode", "qualityPreset", "showFps", "background", "pickMode"]),
-    ...mapWritableState(useSatStore, ["enabledComponents", "groundStations", "overpassMode"]),
+    ...mapWritableState(useSatStore, ["enabledComponents", "groundStations", "overpassMode", "hideSunlightPasses", "showOnlyLitPasses", "useLocalTime", "enableSwathPasses"]),
+    isIos() {
+      return DeviceDetect.isIos();
+    },
+    canUseLocalTime() {
+      return this.groundStations && this.groundStations.length > 0;
+    },
+    isInZenithView() {
+      // Use local reactive state instead of checking cc.sats directly
+      return this.zenithViewActive;
+    },
+    formattedCameraAltitude() {
+      const altitudeKm = this.cameraAltitude / 1000;
+      if (altitudeKm >= 1000000) {
+        return `${(altitudeKm / 1000000).toFixed(2)} million km`;
+      } else if (altitudeKm >= 1000) {
+        return `${(altitudeKm / 1000).toFixed(2)} thousand km`;
+      } else {
+        return `${altitudeKm.toFixed(2)} km`;
+      }
+    },
   },
   watch: {
     layers: {
@@ -241,6 +331,14 @@ export default {
     enabledComponents: {
       handler(newComponents) {
         cc.sats.enabledComponents = newComponents;
+        // Update planet label visibility based on enabled components
+        if (cc.planets) {
+          cc.planets.updateComponents(newComponents);
+        }
+        // Update Earth/Moon label visibility based on enabled components
+        if (cc.earthMoon) {
+          cc.earthMoon.updateComponents(newComponents);
+        }
       },
       deep: true,
     },
@@ -250,9 +348,62 @@ export default {
         return;
       }
       cc.setGroundStations(newGroundStations);
+
+      // Disable local time if no ground stations exist
+      if (newGroundStations.length === 0 && this.useLocalTime) {
+        this.useLocalTime = false;
+      }
     },
     overpassMode(newMode) {
       cc.sats.overpassMode = newMode;
+    },
+    hideSunlightPasses() {
+      // Invalidate pass cache and refresh highlights when filter changes
+      this.refreshGroundStationHighlights();
+    },
+    showOnlyLitPasses() {
+      // Invalidate pass cache and refresh highlights when filter changes
+      this.refreshGroundStationHighlights();
+    },
+    useLocalTime() {
+      // Update timeline and clock formatting when local time setting changes
+      if (cc.viewer && cc.viewer.timeline) {
+        cc.viewer.timeline.updateFromClock();
+        // Force timeline to re-render labels
+        if (cc.viewer.timeline._makeTics) {
+          cc.viewer.timeline._makeTics();
+        }
+      }
+      // Force animation widget to update - the clock naturally updates every tick
+      // so we just need to make sure the next tick happens soon
+      if (cc.viewer && cc.viewer.clock) {
+        // Store current animation state
+        const wasAnimating = cc.viewer.clock.shouldAnimate;
+        // Temporarily enable animation for one frame to trigger formatter
+        cc.viewer.clock.shouldAnimate = true;
+        setTimeout(() => {
+          // Restore original state
+          cc.viewer.clock.shouldAnimate = wasAnimating;
+        }, 100);
+      }
+      // Refresh info boxes to update time display
+      this.refreshGroundStationHighlights();
+    },
+    showCameraAltitude(enabled) {
+      if (enabled) {
+        // Start updating camera altitude
+        this.cameraAltitudeInterval = setInterval(() => {
+          if (cc.viewer && cc.viewer.camera) {
+            this.cameraAltitude = cc.viewer.camera.positionCartographic.height;
+          }
+        }, 100); // Update every 100ms
+      } else {
+        // Stop updating
+        if (this.cameraAltitudeInterval) {
+          clearInterval(this.cameraAltitudeInterval);
+          this.cameraAltitudeInterval = null;
+        }
+      }
     },
   },
   mounted() {
@@ -260,6 +411,50 @@ export default {
       cc.setTime(this.$route.query.time);
     }
     this.showUI = !DeviceDetect.inIframe();
+
+    // Set lighting fade distances - very high so lighting always visible
+    this.$nextTick(() => {
+      if (cc.viewer && cc.viewer.scene && cc.viewer.scene.globe) {
+        const lightingFadeOut = 100000000; // 100,000 km
+        const lightingFadeIn = 50000000; // 50,000 km
+        cc.viewer.scene.globe.lightingFadeOutDistance = lightingFadeOut;
+        cc.viewer.scene.globe.lightingFadeInDistance = lightingFadeIn;
+
+        // Set night imagery fade distances - keep higher for visibility
+        const nightFadeDistance = 10000000;
+        cc.viewer.scene.globe.nightFadeOutDistance = nightFadeDistance;
+        cc.viewer.scene.globe.nightFadeInDistance = nightFadeDistance * 0.5;
+      }
+    });
+
+    // Listen for zenith view state changes
+    this.zenithViewChangeHandler = (event) => {
+      this.zenithViewActive = event.detail.active;
+    };
+    window.addEventListener("zenithViewChanged", this.zenithViewChangeHandler);
+
+    // Enable planets by default
+    if (this.planetsEnabled) {
+      this.$nextTick(() => {
+        if (cc.planets) {
+          cc.planets.enable(this.planetRenderMode);
+        }
+        // Also enable Earth/Moon rendering with same mode
+        if (cc.earthMoon) {
+          cc.earthMoon.enable(this.planetRenderMode);
+        }
+      });
+    }
+  },
+  beforeUnmount() {
+    // Clean up event listener
+    if (this.zenithViewChangeHandler) {
+      window.removeEventListener("zenithViewChanged", this.zenithViewChangeHandler);
+    }
+    // Clean up camera altitude interval
+    if (this.cameraAltitudeInterval) {
+      clearInterval(this.cameraAltitudeInterval);
+    }
   },
   methods: {
     toggleMenu(name) {
@@ -269,12 +464,275 @@ export default {
       });
       this.menu[name] = !oldState;
     },
+    focusFirstGroundStation() {
+      // Toggle between focusing on first ground station and returning to normal view
+      const currentTrackedEntity = this.cc.viewer.trackedEntity;
+
+      // Check if we're currently tracking a ground station
+      // Ground stations now have names like "Groundstation [60.81°, 23.95°]"
+      const isTrackingGroundStation = currentTrackedEntity && currentTrackedEntity.name && currentTrackedEntity.name.includes("Groundstation");
+
+      if (isTrackingGroundStation) {
+        // Return to normal view focused on center of Earth
+        this.cc.viewer.trackedEntity = undefined;
+        this.cc.viewer.selectedEntity = undefined;
+
+        // Focus camera on center of Earth with a nice overview
+        this.cc.viewer.camera.setView({
+          destination: Cesium.Cartesian3.fromDegrees(0, 0, 15000000), // 15,000 km above Earth center
+          orientation: {
+            heading: 0,
+            pitch: -Cesium.Math.PI_OVER_TWO, // Look straight down
+            roll: 0,
+          },
+        });
+      } else {
+        // Focus on the first ground station
+        if (this.groundStations && this.groundStations.length > 0) {
+          this.cc.sats.focusGroundStation(this.groundStations[0]);
+        }
+      }
+    },
     toggleUI() {
       this.showUI = !this.showUI;
       if (!cc.minimalUI) {
         cc.showUI = this.showUI;
       }
     },
+    formatDate(timestamp) {
+      const date = new Date(timestamp);
+      return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+    },
+    formatDuration(duration) {
+      const minutes = Math.floor(duration / 60000);
+      const seconds = Math.floor((duration % 60000) / 1000);
+      return `${minutes}m ${seconds}s`;
+    },
+    formatAzimuth(azimuth) {
+      const directions = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+      const index = Math.round(azimuth / 45) % 8;
+      return `${azimuth.toFixed(0)}° (${directions[index]})`;
+    },
+    formatTime(timestamp) {
+      const date = new Date(timestamp);
+      return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    },
+    refreshGroundStationHighlights() {
+      // Invalidate cache on all ground stations
+      if (this.cc && this.cc.sats && this.cc.sats.groundStations) {
+        this.cc.sats.groundStations.forEach((gs) => {
+          if (gs.invalidatePassCache) {
+            gs.invalidatePassCache();
+          }
+        });
+      }
+
+      // Refresh highlights if a ground station is currently selected/tracked
+      const selectedEntity = this.cc.viewer.selectedEntity;
+      if (selectedEntity && selectedEntity.name && selectedEntity.name.includes("Groundstation")) {
+        // Trigger a refresh by setting the selected entity again
+        this.cc.viewer.selectedEntity = undefined;
+        setTimeout(() => {
+          this.cc.viewer.selectedEntity = selectedEntity;
+        }, 10);
+      }
+    },
+    toggleZenithView() {
+      if (this.cc.sats.isInZenithView) {
+        // Exit zenith view (event will be dispatched by SatelliteManager)
+        this.cc.sats.exitZenithView();
+      } else {
+        // Enter zenith view (event will be dispatched by SatelliteManager)
+        this.cc.sats.zenithViewFromGroundStation();
+      }
+    },
+    removeGroundStation() {
+      // Exit zenith view if active (event will be dispatched by SatelliteManager)
+      if (this.cc.sats.isInZenithView) {
+        this.cc.sats.exitZenithView();
+      }
+
+      // Check if we're currently tracking a ground station and unfocus first
+      const currentTrackedEntity = this.cc.viewer.trackedEntity;
+      const isTrackingGroundStation = currentTrackedEntity && currentTrackedEntity.name && currentTrackedEntity.name.includes("Groundstation");
+
+      if (isTrackingGroundStation) {
+        // Return to normal view focused on center of Earth
+        this.cc.viewer.trackedEntity = undefined;
+        this.cc.viewer.selectedEntity = undefined;
+        this.cc.viewer.camera.setView({
+          destination: Cesium.Cartesian3.fromDegrees(0, 0, 15000000),
+          orientation: {
+            heading: 0,
+            pitch: -Cesium.Math.PI_OVER_TWO,
+            roll: 0,
+          },
+        });
+      }
+
+      // Remove ground station entities from Cesium viewer
+      this.cc.sats.groundStations.forEach((groundStation) => {
+        // Hide components first
+        groundStation.hide();
+
+        // Ensure all entities are removed from the viewer
+        Object.values(groundStation.components).forEach((component) => {
+          if (component instanceof Cesium.Entity && this.cc.viewer.entities.contains(component)) {
+            this.cc.viewer.entities.remove(component);
+          }
+        });
+      });
+
+      // Additional cleanup: remove any remaining ground station entities from viewer
+      // This handles cases where entities might not be properly tracked by the component system
+      const entitiesToRemove = [];
+      this.cc.viewer.entities.values.forEach((entity) => {
+        if (entity.name && entity.name.includes("Groundstation")) {
+          entitiesToRemove.push(entity);
+        }
+      });
+      entitiesToRemove.forEach((entity) => {
+        this.cc.viewer.entities.remove(entity);
+      });
+
+      // Remove ground station by setting empty array
+      this.cc.sats.groundStations = [];
+    },
+    zoomInTimeline() {
+      if (!this.cc.viewer.timeline) {
+        return;
+      }
+
+      try {
+        // Use Cesium's timeline zoom functionality directly
+        // Get current timeline range and zoom in by reducing the range
+        const timeline = this.cc.viewer.timeline;
+        const clock = this.cc.viewer.clock;
+
+        const currentStart = clock.startTime;
+        const currentStop = clock.stopTime;
+        const currentTime = clock.currentTime;
+
+        // Calculate current range in seconds
+        const totalSeconds = Cesium.JulianDate.secondsDifference(currentStop, currentStart);
+
+        // Zoom in by reducing the range to 75% of current
+        const newRangeSeconds = totalSeconds * 0.75;
+        const halfRange = newRangeSeconds / 2;
+
+        // Center the new range around current time
+        const newStart = Cesium.JulianDate.addSeconds(currentTime, -halfRange, new Cesium.JulianDate());
+        const newStop = Cesium.JulianDate.addSeconds(currentTime, halfRange, new Cesium.JulianDate());
+
+        // Constrain timeline bounds first to prevent invalid dates
+        if (this.cc.constrainTimelineBounds) {
+          this.cc.constrainTimelineBounds();
+        }
+
+        // Update clock and timeline
+        clock.startTime = newStart;
+        clock.stopTime = newStop;
+        timeline.updateFromClock();
+        timeline.zoomTo(newStart, newStop);
+
+        // Trigger daytime range recalculation after a small delay
+        setTimeout(() => {
+          this.cc.sats.checkAndUpdateDaytimeRanges();
+        }, 100);
+      } catch (error) {
+        console.error("Error in timeline zoom in:", error);
+      }
+    },
+    zoomOutTimeline() {
+      if (!this.cc.viewer.timeline) {
+        return;
+      }
+
+      try {
+        // Use Cesium's timeline zoom functionality directly
+        // Get current timeline range and zoom out by increasing the range
+        const timeline = this.cc.viewer.timeline;
+        const clock = this.cc.viewer.clock;
+
+        const currentStart = clock.startTime;
+        const currentStop = clock.stopTime;
+        const currentTime = clock.currentTime;
+
+        // Calculate current range in seconds
+        const totalSeconds = Cesium.JulianDate.secondsDifference(currentStop, currentStart);
+
+        // Zoom out by increasing the range to 133% of current
+        const newRangeSeconds = totalSeconds * 1.33;
+        const halfRange = newRangeSeconds / 2;
+
+        // Center the new range around current time
+        const newStart = Cesium.JulianDate.addSeconds(currentTime, -halfRange, new Cesium.JulianDate());
+        const newStop = Cesium.JulianDate.addSeconds(currentTime, halfRange, new Cesium.JulianDate());
+
+        // Constrain timeline bounds first to prevent invalid dates
+        if (this.cc.constrainTimelineBounds) {
+          this.cc.constrainTimelineBounds();
+        }
+
+        // Update clock and timeline
+        clock.startTime = newStart;
+        clock.stopTime = newStop;
+        timeline.updateFromClock();
+        timeline.zoomTo(newStart, newStop);
+
+        // Trigger daytime range recalculation after a small delay
+        setTimeout(() => {
+          this.cc.sats.checkAndUpdateDaytimeRanges();
+        }, 100);
+      } catch (error) {
+        console.error("Error in timeline zoom out:", error);
+      }
+    },
+    togglePlanets() {
+      if (this.planetsEnabled) {
+        // Enable planet rendering with current mode
+        this.cc.planets.enable(this.planetRenderMode);
+        // Also enable Earth/Moon rendering with same mode
+        this.cc.earthMoon.enable(this.planetRenderMode);
+      } else {
+        // Disable planet rendering
+        this.cc.planets.disable();
+        // Also disable Earth/Moon rendering
+        this.cc.earthMoon.disable();
+      }
+    },
+    setPlanetRenderMode() {
+      // Update render mode if planets are enabled
+      if (this.planetsEnabled) {
+        this.cc.planets.setRenderMode(this.planetRenderMode);
+        // Also update Earth/Moon render mode
+        this.cc.earthMoon.setRenderMode(this.planetRenderMode);
+      }
+    },
   },
 };
 </script>
+
+<style scoped>
+.toolbarText {
+  color: #aaa;
+  padding: 10px;
+  text-align: center;
+  font-style: italic;
+}
+
+#cameraAltitudeDisplay {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: rgba(42, 42, 42, 0.8);
+  color: #edffff;
+  padding: 5px 15px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 14px;
+  z-index: 1000;
+  pointer-events: none;
+}
+</style>
