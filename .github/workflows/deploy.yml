@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - master
+  pull_request:
+    branches:
+      - master
 
 jobs:
   deploy:
@@ -44,13 +47,16 @@ jobs:
         run: npm run build
 
       - name: Setup Pages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         uses: actions/configure-pages@v4
 
       - name: Upload artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         uses: actions/upload-pages-artifact@v3
         with:
           path: './dist'
 
       - name: Deploy to GitHub Pages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         id: deployment
         uses: actions/deploy-pages@v4
