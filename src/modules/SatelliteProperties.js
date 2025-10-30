@@ -337,7 +337,7 @@ export class SatelliteProperties {
     return this.groundStations.length > 0;
   }
 
-  updatePasses(time) {
+  async updatePasses(time) {
     if (!this.groundStationAvailable) {
       return false;
     }
@@ -361,20 +361,24 @@ export class SatelliteProperties {
     const epochJulianDate = new JulianDate(julianDayNumber, secondsOfDay);
     const epochTime = JulianDate.toDate(epochJulianDate);
 
-    this.groundStations.forEach((groundStation) => {
+    // Calculate passes for all ground stations in parallel
+    const passPromises = this.groundStations.map(async (groundStation) => {
       let passes;
       if (this.overpassMode === "swath") {
-        passes = this.orbit.computePassesSwath(groundStation.position, this.swath, JulianDate.toDate(this.passInterval.start), JulianDate.toDate(this.passInterval.stopPrediction));
+        passes = await this.orbit.computePassesSwath(groundStation.position, this.swath, JulianDate.toDate(this.passInterval.start), JulianDate.toDate(this.passInterval.stopPrediction));
       } else {
-        passes = this.orbit.computePassesElevation(groundStation.position, JulianDate.toDate(this.passInterval.start), JulianDate.toDate(this.passInterval.stopPrediction));
+        passes = await this.orbit.computePassesElevation(groundStation.position, JulianDate.toDate(this.passInterval.start), JulianDate.toDate(this.passInterval.stopPrediction));
       }
       passes.forEach((pass) => {
         pass.groundStationName = groundStation.name;
         pass.epochInFuture = epochInFuture;
         pass.epochTime = epochTime;
       });
-      allPasses.push(...passes);
+      return passes;
     });
+
+    const passArrays = await Promise.all(passPromises);
+    allPasses = passArrays.flat();
 
     // Sort passes by time
     allPasses = allPasses.sort((a, b) => a.start - b.start);

@@ -2,6 +2,7 @@ import * as satellitejs from "satellite.js";
 import dayjs from "dayjs";
 import * as Astronomy from "astronomy-engine";
 import { GroundStationConditions } from "./util/GroundStationConditions";
+import { SGP4WorkerPool } from "../workers/SGP4WorkerPool";
 
 const deg2rad = Math.PI / 180;
 const rad2deg = 180 / Math.PI;
@@ -61,7 +62,34 @@ export default class Orbit {
     };
   }
 
-  computePassesElevation(groundStationPosition, startDate = dayjs().toDate(), endDate = dayjs(startDate).add(7, "day").toDate(), minElevation = 5, maxPasses = 50) {
+  async computePassesElevation(groundStationPosition, startDate = dayjs().toDate(), endDate = dayjs(startDate).add(7, "day").toDate(), minElevation = 5, maxPasses = 50) {
+    // Try to use WebWorker if available, otherwise fall back to main thread
+    if (SGP4WorkerPool.isAvailable()) {
+      try {
+        const passes = await SGP4WorkerPool.computePassesElevation(this.tle, groundStationPosition, startDate.getTime(), endDate.getTime(), minElevation, maxPasses);
+
+        // Add additional data that worker can't calculate (requires astronomy-engine)
+        for (const pass of passes) {
+          pass.name = this.name;
+          pass.groundStationDarkAtStart = GroundStationConditions.isInDarkness(groundStationPosition, new Date(pass.start));
+          pass.satelliteEclipsedAtStart = this.isInEclipse(new Date(pass.start));
+          pass.groundStationDarkAtEnd = GroundStationConditions.isInDarkness(groundStationPosition, new Date(pass.end));
+          pass.satelliteEclipsedAtEnd = this.isInEclipse(new Date(pass.end));
+          pass.eclipseTransitions = this.findEclipseTransitions(pass.start, pass.end, 30);
+        }
+
+        return passes;
+      } catch (error) {
+        console.warn("WebWorker pass calculation failed, falling back to main thread:", error);
+        // Fall through to main thread calculation
+      }
+    }
+
+    // Main thread calculation (fallback)
+    return this.computePassesElevationSync(groundStationPosition, startDate, endDate, minElevation, maxPasses);
+  }
+
+  computePassesElevationSync(groundStationPosition, startDate = dayjs().toDate(), endDate = dayjs(startDate).add(7, "day").toDate(), minElevation = 5, maxPasses = 50) {
     // Skip pass calculation for satellites with very long orbital periods
     // (e.g., geostationary satellites at ~1436 minutes)
     // These satellites stay continuously visible and don't have traditional "passes"
@@ -178,7 +206,34 @@ export default class Orbit {
     return passes;
   }
 
-  computePassesSwath(groundStationPosition, swathKm, startDate = dayjs().toDate(), endDate = dayjs(startDate).add(7, "day").toDate(), maxPasses = 50) {
+  async computePassesSwath(groundStationPosition, swathKm, startDate = dayjs().toDate(), endDate = dayjs(startDate).add(7, "day").toDate(), maxPasses = 50) {
+    // Try to use WebWorker if available, otherwise fall back to main thread
+    if (SGP4WorkerPool.isAvailable()) {
+      try {
+        const passes = await SGP4WorkerPool.computePassesSwath(this.tle, groundStationPosition, swathKm, startDate.getTime(), endDate.getTime(), maxPasses);
+
+        // Add additional data that worker can't calculate (requires astronomy-engine)
+        for (const pass of passes) {
+          pass.name = this.name;
+          pass.groundStationDarkAtStart = GroundStationConditions.isInDarkness(groundStationPosition, new Date(pass.start));
+          pass.satelliteEclipsedAtStart = this.isInEclipse(new Date(pass.start));
+          pass.groundStationDarkAtEnd = GroundStationConditions.isInDarkness(groundStationPosition, new Date(pass.end));
+          pass.satelliteEclipsedAtEnd = this.isInEclipse(new Date(pass.end));
+          pass.eclipseTransitions = this.findEclipseTransitions(pass.start, pass.end, 30);
+        }
+
+        return passes;
+      } catch (error) {
+        console.warn("WebWorker swath calculation failed, falling back to main thread:", error);
+        // Fall through to main thread calculation
+      }
+    }
+
+    // Main thread calculation (fallback)
+    return this.computePassesSwathSync(groundStationPosition, swathKm, startDate, endDate, maxPasses);
+  }
+
+  computePassesSwathSync(groundStationPosition, swathKm, startDate = dayjs().toDate(), endDate = dayjs(startDate).add(7, "day").toDate(), maxPasses = 50) {
     // For satellites with future epochs, ensure we don't try to calculate before the epoch
     // SGP4 propagation is unreliable before the TLE epoch time
     // Allow calculation from 1 hour before epoch to show pre-launch position

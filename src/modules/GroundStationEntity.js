@@ -101,15 +101,41 @@ export class GroundStationEntity extends CesiumComponentCollection {
       }
     }
 
-    // Calculate new passes
+    // Calculate new passes synchronously (using fallback sync methods)
+    // For sync context, we can't await, so passes may not include worker-calculated data
+    // This is used in CallbackProperties where async is not supported
+    // The passesAsync method should be preferred when possible
     let passes = [];
-    // Aggregate passes from all active satellites (enabled by tags/names)
-    // Use activeSatellites instead of visibleSatellites to include satellites
-    // even when all visual components are disabled
+    let needsAsyncUpdate = false;
+
     this.sats.activeSatellites.forEach((sat) => {
-      sat.props.updatePasses(this.viewer.clock.currentTime);
-      passes.push(...sat.props.passes);
+      // Note: updatePasses is now async, but we're in a sync context
+      // The passes array will be updated asynchronously, so we use cached data
+      // if available, otherwise return empty for this satellite
+      if (sat.props.passes && sat.props.passes.length > 0) {
+        passes.push(...sat.props.passes);
+      } else {
+        needsAsyncUpdate = true;
+      }
     });
+
+    // If we need async updates, trigger them and request a refresh when done
+    if (needsAsyncUpdate) {
+      const asyncPromises = this.sats.activeSatellites.map((sat) =>
+        sat.props.updatePasses(this.viewer.clock.currentTime).catch((err) => {
+          console.warn("Pass calculation failed:", err);
+        })
+      );
+
+      // When all async calculations complete, invalidate cache to force UI refresh
+      Promise.all(asyncPromises).then(() => {
+        this.invalidatePassCache();
+        // Request a scene render to update the UI
+        if (this.viewer && this.viewer.scene) {
+          this.viewer.scene.requestRender();
+        }
+      });
+    }
 
     // Filter passes based on groundstation (do this before caching)
     passes = passes.filter((pass) => pass.groundStationName === this.name);
@@ -152,28 +178,19 @@ export class GroundStationEntity extends CesiumComponentCollection {
       }
     }
 
-    // Calculate new passes in chunks to avoid blocking UI
+    // Calculate new passes in parallel using async updatePasses
     let passes = [];
-    // Use activeSatellites instead of visibleSatellites to include satellites
-    // even when all visual components are disabled
     const activeSatellites = this.sats.activeSatellites;
 
-    // Process satellites in chunks of 5 to avoid blocking
-    const chunkSize = 5;
-    for (let i = 0; i < activeSatellites.length; i += chunkSize) {
-      const chunk = activeSatellites.slice(i, i + chunkSize);
+    // Process all satellites in parallel (WebWorkers will handle distribution)
+    const passPromises = activeSatellites.map(async (sat) => {
+      await sat.props.updatePasses(this.viewer.clock.currentTime);
+      return sat.props.passes;
+    });
 
-      // Process this chunk
-      chunk.forEach((sat) => {
-        sat.props.updatePasses(this.viewer.clock.currentTime);
-        passes.push(...sat.props.passes);
-      });
-
-      // Yield to browser after each chunk
-      if (i + chunkSize < activeSatellites.length) {
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      }
-    }
+    // Wait for all pass calculations to complete
+    const passArrays = await Promise.all(passPromises);
+    passes = passArrays.flat();
 
     // Filter passes based on groundstation (do this before caching)
     passes = passes.filter((pass) => pass.groundStationName === this.name);

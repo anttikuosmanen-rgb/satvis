@@ -23,9 +23,9 @@ import { CesiumTimelineHelper } from "./util/CesiumTimelineHelper";
 export class SatelliteManager {
   #enabledComponents = ["Point", "Label"];
 
-  #enabledTags = [];
+  #enabledTags = new Set();
 
-  #enabledSatellites = [];
+  #enabledSatellites = new Set();
 
   #groundStations = [];
 
@@ -35,6 +35,7 @@ export class SatelliteManager {
     this.viewer = viewer;
 
     this.satellites = [];
+    this.satellitesByName = new Map(); // O(1) lookup by name
     this.availableComponents = ["Point", "Label", "Orbit", "Orbit track", "Visibility area", "Height stick", "3D model"];
 
     this.viewer.trackedEntityChanged.addEventListener(() => {
@@ -164,8 +165,8 @@ export class SatelliteManager {
       .then((response) => response.text())
       .then((data) => {
         const lines = data.split(/\r?\n/);
-        for (let i = 3; i < lines.length; i + 3) {
-          const tle = lines.splice(i - 3, i).join("\n");
+        for (let i = 3; i < lines.length; i += 3) {
+          const tle = lines.slice(i - 3, i).join("\n");
           this.addFromTle(tle, tags, updateStore);
         }
       })
@@ -183,10 +184,10 @@ export class SatelliteManager {
   }
 
   #add(newSat) {
-    const existingSat = this.satellites.find((sat) => sat.props.satnum === newSat.props.satnum && sat.props.name === newSat.props.name);
-    if (existingSat) {
+    const existingSat = this.satellitesByName.get(newSat.props.name);
+    if (existingSat && existingSat.props.satnum === newSat.props.satnum) {
       existingSat.props.addTags(newSat.props.tags);
-      if (newSat.props.tags.some((tag) => this.#enabledTags.includes(tag))) {
+      if (newSat.props.tags.some((tag) => this.#enabledTags.has(tag))) {
         existingSat.show(this.#enabledComponents);
       }
       return;
@@ -197,6 +198,7 @@ export class SatelliteManager {
     // Set overpass mode for newly added satellite
     newSat.props.overpassMode = this.#overpassMode;
     this.satellites.push(newSat);
+    this.satellitesByName.set(newSat.props.name, newSat); // Add to index
 
     if (this.satIsActive(newSat)) {
       newSat.show(this.#enabledComponents);
@@ -268,7 +270,7 @@ export class SatelliteManager {
   }
 
   getSatellite(name) {
-    return this.satellites.find((sat) => sat.props.name === name);
+    return this.satellitesByName.get(name);
   }
 
   refreshLabels() {
@@ -282,11 +284,11 @@ export class SatelliteManager {
   }
 
   get enabledSatellites() {
-    return this.#enabledSatellites;
+    return Array.from(this.#enabledSatellites);
   }
 
   set enabledSatellites(newSats) {
-    this.#enabledSatellites = newSats;
+    this.#enabledSatellites = new Set(newSats);
     this.showEnabledSatellites();
 
     // Invalidate pass cache since visible satellites changed
@@ -311,8 +313,8 @@ export class SatelliteManager {
    * @returns {boolean} true if the satellite is enabled
    */
   satIsActive(sat) {
-    const enabledByTag = this.#enabledTags.some((tag) => sat.props.hasTag(tag));
-    const enabledByName = this.#enabledSatellites.includes(sat.props.name);
+    const enabledByTag = sat.props.tags.some((tag) => this.#enabledTags.has(tag));
+    const enabledByName = this.#enabledSatellites.has(sat.props.name);
     return enabledByTag || enabledByName;
   }
 
@@ -321,24 +323,75 @@ export class SatelliteManager {
   }
 
   showEnabledSatellites() {
+    const toShow = [];
+    const toHide = [];
+
+    // First pass: categorize satellites
     this.satellites.forEach((sat) => {
       if (this.satIsActive(sat)) {
-        sat.show(this.#enabledComponents);
+        toShow.push(sat);
       } else {
-        sat.hide();
+        toHide.push(sat);
       }
     });
-    if (this.visibleSatellites.length === 0) {
-      CesiumCleanupHelper.cleanup(this.viewer);
+
+    // Batch process satellites using requestIdleCallback for better performance
+    const batchSize = 20;
+
+    // Process satellites to show in batches
+    const processBatch = (list, operation, index = 0) => {
+      if (index >= list.length) {
+        // Done with this operation
+        if (operation === 'show' && toHide.length > 0) {
+          // Start hiding after showing is complete
+          processBatch(toHide, 'hide');
+        } else if (operation === 'hide' && this.visibleSatellites.length === 0) {
+          CesiumCleanupHelper.cleanup(this.viewer);
+        }
+        // Request render after batch completion
+        if (this.viewer && this.viewer.scene) {
+          this.viewer.scene.requestRender();
+        }
+        return;
+      }
+
+      const batch = list.slice(index, index + batchSize);
+      batch.forEach((sat) => {
+        if (operation === 'show') {
+          sat.show(this.#enabledComponents);
+        } else {
+          sat.hide();
+        }
+      });
+
+      // Request render after this batch
+      if (this.viewer && this.viewer.scene) {
+        this.viewer.scene.requestRender();
+      }
+
+      // Schedule next batch
+      if (typeof requestIdleCallback !== 'undefined') {
+        requestIdleCallback(() => processBatch(list, operation, index + batchSize), { timeout: 100 });
+      } else {
+        // Fallback for browsers without requestIdleCallback
+        setTimeout(() => processBatch(list, operation, index + batchSize), 0);
+      }
+    };
+
+    // Start processing
+    if (toShow.length > 0) {
+      processBatch(toShow, 'show');
+    } else if (toHide.length > 0) {
+      processBatch(toHide, 'hide');
     }
   }
 
   get enabledTags() {
-    return this.#enabledTags;
+    return Array.from(this.#enabledTags);
   }
 
   set enabledTags(newTags) {
-    this.#enabledTags = newTags;
+    this.#enabledTags = new Set(newTags);
     this.showEnabledSatellites();
 
     // Invalidate pass cache since visible satellites changed
@@ -878,10 +931,13 @@ export class SatelliteManager {
     for (let i = 0; i < satellitesWithGS.length; i += batchSize) {
       const batch = satellitesWithGS.slice(i, i + batchSize);
 
-      // Process this batch
-      batch.forEach((sat) => {
-        sat.props.updatePasses(this.viewer.clock.currentTime);
-      });
+      // Process this batch asynchronously
+      const batchPromises = batch.map((sat) =>
+        sat.props.updatePasses(this.viewer.clock.currentTime).catch((err) => {
+          console.warn(`Failed to update passes for ${sat.props.name}:`, err);
+        })
+      );
+      await Promise.all(batchPromises);
 
       // Yield to browser after each batch to keep UI responsive
       if (i + batchSize < satellitesWithGS.length) {

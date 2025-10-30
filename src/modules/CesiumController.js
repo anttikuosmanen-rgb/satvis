@@ -84,8 +84,7 @@ export class CesiumController {
     this.viewer.scene.globe.enableLighting = true;
     this.viewer.scene.highDynamicRange = true;
     this.viewer.scene.maximumRenderTimeChange = 1 / 30;
-    // Comment out requestRenderMode temporarily to see if it's interfering
-    // this.viewer.scene.requestRenderMode = true;
+    this.viewer.scene.requestRenderMode = true;
 
     // Cesium Performance Tools
     // this.viewer.scene.debugShowFramesPerSecond = true;
@@ -785,9 +784,12 @@ export class CesiumController {
           const satellite = this.sats.getSatellite(satelliteName);
           if (satellite) {
             // Update passes for this satellite and show all its pass highlights
-            satellite.props.updatePasses(this.viewer.clock.currentTime);
-            CesiumTimelineHelper.clearHighlightRanges(this.viewer);
-            CesiumTimelineHelper.addHighlightRanges(this.viewer, satellite.props.passes, satelliteName);
+            satellite.props.updatePasses(this.viewer.clock.currentTime).then(() => {
+              CesiumTimelineHelper.clearHighlightRanges(this.viewer);
+              CesiumTimelineHelper.addHighlightRanges(this.viewer, satellite.props.passes, satelliteName);
+            }).catch((err) => {
+              console.warn("Failed to update passes for pass click:", err);
+            });
           } else {
             // Fallback to showing just the clicked pass if satellite not found
             CesiumTimelineHelper.clearHighlightRanges(this.viewer);
@@ -1082,17 +1084,24 @@ export class CesiumController {
           // Add highlights for all passes of all enabled satellites
           const enabledSatellites = this.sats.enabledSatellites;
 
-          enabledSatellites.forEach((satName) => {
+          // Update passes for all enabled satellites asynchronously
+          const passPromises = enabledSatellites.map((satName) => {
             const satellite = this.sats.getSatellite(satName);
             if (satellite && satellite.props) {
-              // Update passes for this satellite
-              satellite.props.updatePasses(currentTime);
-
-              // Add highlights for this satellite's passes
-              if (satellite.props.passes && satellite.props.passes.length > 0) {
-                CesiumTimelineHelper.addHighlightRanges(this.viewer, satellite.props.passes, satName);
-              }
+              return satellite.props.updatePasses(currentTime).then(() => {
+                // Add highlights for this satellite's passes
+                if (satellite.props.passes && satellite.props.passes.length > 0) {
+                  CesiumTimelineHelper.addHighlightRanges(this.viewer, satellite.props.passes, satName);
+                }
+              }).catch((err) => {
+                console.warn(`Failed to update passes for ${satName}:`, err);
+              });
             }
+            return Promise.resolve();
+          });
+
+          Promise.all(passPromises).then(() => {
+            console.log(`Added timeline highlights for ${enabledSatellites.length} satellites`);
           });
 
           console.log(`Added timeline highlights for ${enabledSatellites.length} satellites`);
