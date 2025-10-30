@@ -503,6 +503,14 @@ export class SatelliteManager {
     // Clear any tracked entity
     this.viewer.trackedEntity = undefined;
 
+    // If camera is in Inertial mode, switch to Fixed mode for zenith view
+    // Zenith view needs to stay aligned with the rotating Earth
+    let previousCameraMode = null;
+    if (window.cc && window.cc.cameraMode === "Inertial") {
+      previousCameraMode = "Inertial";
+      window.cc.cameraMode = "Fixed";
+    }
+
     // Clean up any existing zenith view handler
     if (this.zenithViewCleanup) {
       this.zenithViewCleanup();
@@ -738,6 +746,10 @@ export class SatelliteManager {
       zenithEntities.forEach((entity) => {
         this.viewer.entities.remove(entity);
       });
+      // Restore previous camera mode if it was changed
+      if (previousCameraMode && window.cc) {
+        window.cc.cameraMode = previousCameraMode;
+      }
       this.zenithViewCleanup = null;
     };
 

@@ -15,7 +15,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 
 const props = defineProps({
   show: {
@@ -40,12 +40,12 @@ let intervalId = null;
 
 const minutes = computed(() => {
   const totalMinutes = Math.floor(Math.abs(countdown.value) / 60);
-  return String(totalMinutes).padStart(2, '0').split('');
+  return String(totalMinutes).padStart(2, "0").split("");
 });
 
 const seconds = computed(() => {
   const totalSeconds = Math.floor(Math.abs(countdown.value) % 60);
-  return String(totalSeconds).padStart(2, '0').split('');
+  return String(totalSeconds).padStart(2, "0").split("");
 });
 
 const updateCountdown = () => {
@@ -79,7 +79,7 @@ const findNextPass = () => {
   const now = Date.now();
 
   // Find the next upcoming pass or current pass
-  const upcomingPass = props.passes.find(pass => {
+  const upcomingPass = props.passes.find((pass) => {
     const passEnd = new Date(pass.end).getTime();
     return passEnd > now;
   });
@@ -95,21 +95,28 @@ const findNextPass = () => {
 };
 
 // Watch for tracked satellite changes
-watch(() => props.trackedSatellite, (newSat) => {
-  if (newSat) {
-    findNextPass();
-  } else {
-    showTimer.value = false;
-    nextPass.value = null;
-  }
-});
+watch(
+  () => props.trackedSatellite,
+  (newSat) => {
+    if (newSat) {
+      findNextPass();
+    } else {
+      showTimer.value = false;
+      nextPass.value = null;
+    }
+  },
+);
 
 // Watch for passes changes
-watch(() => props.passes, () => {
-  if (props.trackedSatellite) {
-    findNextPass();
-  }
-}, { deep: true });
+watch(
+  () => props.passes,
+  () => {
+    if (props.trackedSatellite) {
+      findNextPass();
+    }
+  },
+  { deep: true },
+);
 
 onMounted(() => {
   // Update countdown every second
@@ -159,7 +166,7 @@ onUnmounted(() => {
   display: inline-block;
   font-size: 12vh;
   font-weight: 300;
-  font-family: 'DSEG7 Classic', 'Segment7', 'Courier New', monospace;
+  font-family: "DSEG7 Classic", "Segment7", "Courier New", monospace;
   color: #ff0000;
   text-shadow: 0 0 20px rgba(255, 0, 0, 0.6);
   line-height: 1;

@@ -1,12 +1,7 @@
 <template>
   <div class="cesium">
     <!-- iOS Pass Countdown Timer -->
-    <pass-countdown-timer
-      v-if="isIos"
-      :show="showPassCountdown"
-      :tracked-satellite="trackedSatelliteName"
-      :passes="trackedSatellitePasses"
-    />
+    <pass-countdown-timer v-if="isIos" :show="showPassCountdown" :tracked-satellite="trackedSatelliteName" :passes="trackedSatellitePasses" />
 
     <div v-show="showUI" id="toolbarLeft">
       <div class="toolbarButtons">
@@ -312,7 +307,16 @@ export default {
   },
   computed: {
     ...mapWritableState(useCesiumStore, ["layers", "terrainProvider", "sceneMode", "cameraMode", "qualityPreset", "showFps", "background", "pickMode"]),
-    ...mapWritableState(useSatStore, ["enabledComponents", "groundStations", "overpassMode", "hideSunlightPasses", "showOnlyLitPasses", "useLocalTime", "enableSwathPasses", "trackedSatellite"]),
+    ...mapWritableState(useSatStore, [
+      "enabledComponents",
+      "groundStations",
+      "overpassMode",
+      "hideSunlightPasses",
+      "showOnlyLitPasses",
+      "useLocalTime",
+      "enableSwathPasses",
+      "trackedSatellite",
+    ]),
     isIos() {
       return DeviceDetect.isIos();
     },
@@ -883,15 +887,15 @@ export default {
 
         if (this.useLocalTime && this.canUseLocalTime) {
           // Show local time
-          const hours = String(date.getHours()).padStart(2, '0');
-          const minutes = String(date.getMinutes()).padStart(2, '0');
-          const seconds = String(date.getSeconds()).padStart(2, '0');
+          const hours = String(date.getHours()).padStart(2, "0");
+          const minutes = String(date.getMinutes()).padStart(2, "0");
+          const seconds = String(date.getSeconds()).padStart(2, "0");
           this.currentTime = `${hours}:${minutes}:${seconds} Local`;
         } else {
           // Show UTC time
-          const hours = String(date.getUTCHours()).padStart(2, '0');
-          const minutes = String(date.getUTCMinutes()).padStart(2, '0');
-          const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+          const hours = String(date.getUTCHours()).padStart(2, "0");
+          const minutes = String(date.getUTCMinutes()).padStart(2, "0");
+          const seconds = String(date.getUTCSeconds()).padStart(2, "0");
           this.currentTime = `${hours}:${minutes}:${seconds} UTC`;
         }
       }
