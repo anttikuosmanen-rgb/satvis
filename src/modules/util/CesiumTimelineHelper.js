@@ -13,6 +13,14 @@ export class CesiumTimelineHelper {
 
     const highlightRanges = viewer.timeline._highlightRanges;
 
+    // Clean up event listeners before removing ranges to prevent memory leaks
+    highlightRanges.forEach((range) => {
+      if (range._base === 0 && range._clickListener && range._element) {
+        range._element.removeEventListener("click", range._clickListener);
+        range._clickListener = null;
+      }
+    });
+
     viewer.timeline._highlightRanges = highlightRanges.filter(
       (range) =>
         // Keep daytime ranges (priority -1), remove satellite pass ranges (priority 0)

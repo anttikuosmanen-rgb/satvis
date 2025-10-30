@@ -926,8 +926,8 @@ export class SatelliteManager {
 
     console.log(`Recalculating passes for ${satellitesWithGS.length} satellites in async mode...`);
 
-    // Process satellites in small batches to keep UI responsive
-    const batchSize = 5;
+    // Process satellites in batches - WebWorkers handle parallelization
+    const batchSize = 20;
     for (let i = 0; i < satellitesWithGS.length; i += batchSize) {
       const batch = satellitesWithGS.slice(i, i + batchSize);
 

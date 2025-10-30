@@ -324,6 +324,7 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
           console.warn("Pass update failed in description callback:", err);
         });
       }
+      // Use positionGeodetic for description (needs proper error handling)
       const cartographic = this.props.orbit.positionGeodetic(JulianDate.toDate(time), true);
       const content = DescriptionHelper.renderSatelliteDescription(time, cartographic, this.props);
       return content;
@@ -392,11 +393,13 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
           return this.props.name;
         }
 
-        const cartographic = this.props.orbit.positionGeodetic(JulianDate.toDate(time), true);
-        if (!cartographic) {
+        // Use cached position instead of recalculating with positionGeodetic
+        const position = this.props.position(time);
+        if (!position) {
           return this.props.name;
         }
 
+        const cartographic = Cartographic.fromCartesian(position);
         const heightKm = Math.round(cartographic.height / 1000); // Round to nearest km
         return `${this.props.name} ${heightKm}km`;
       }, false),
