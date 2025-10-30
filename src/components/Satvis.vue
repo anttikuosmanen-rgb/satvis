@@ -159,6 +159,11 @@
           <span class="slider"></span>
           Camera Altitude
         </label>
+        <label v-if="isIos" class="toolbarSwitch">
+          <input v-model="showIosClock" type="checkbox" />
+          <span class="slider"></span>
+          Show iOS Clock
+        </label>
         <label class="toolbarSwitch">
           <input v-model="cc.viewer.scene.requestRenderMode" type="checkbox" />
           <span class="slider"></span>
@@ -265,7 +270,7 @@
       <button v-tooltip="'Zoom Out Timeline'" type="button" class="cesium-button cesium-toolbar-button timeline-button" @click="zoomOutTimeline">-</button>
     </div>
     <div v-if="showCameraAltitude" id="cameraAltitudeDisplay">Camera Altitude: {{ formattedCameraAltitude }}</div>
-    <div v-if="isIos" id="currentTimeDisplay">{{ currentTime }}</div>
+    <div v-if="isIos && showIosClock" id="currentTimeDisplay">{{ currentTime }}</div>
   </div>
 </template>
 
@@ -302,6 +307,7 @@ export default {
       showCameraAltitude: false,
       cameraAltitude: 0,
       showPassCountdown: false, // Toggle for pass countdown timer visibility
+      showIosClock: false, // Toggle for iOS clock visibility (default off)
       currentTime: "",
     };
   },
@@ -520,6 +526,23 @@ export default {
         this.showPassCountdown = false;
       }
     },
+    showIosClock(enabled) {
+      if (this.isIos) {
+        if (enabled) {
+          // Start updating current time
+          this.updateCurrentTime();
+          this.currentTimeInterval = setInterval(() => {
+            this.updateCurrentTime();
+          }, 1000);
+        } else {
+          // Stop updating
+          if (this.currentTimeInterval) {
+            clearInterval(this.currentTimeInterval);
+            this.currentTimeInterval = null;
+          }
+        }
+      }
+    },
   },
   mounted() {
     if (this.$route.query.time) {
@@ -567,14 +590,8 @@ export default {
       cc.viewer.selectedEntityChanged.addEventListener(this.selectedEntityChangeHandler);
     }
 
-    // Update current time display for iOS and set clock to real-time
+    // Set clock to follow real-time on iOS
     if (this.isIos) {
-      this.updateCurrentTime();
-      this.currentTimeInterval = setInterval(() => {
-        this.updateCurrentTime();
-      }, 1000);
-
-      // Set clock to follow real-time on iOS
       this.$nextTick(() => {
         if (cc.viewer && cc.viewer.clock) {
           cc.viewer.clock.shouldAnimate = true;
