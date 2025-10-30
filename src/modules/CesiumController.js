@@ -53,9 +53,12 @@ export class CesiumController {
     this.preloadReferenceFrameData();
     this.minimalUI = DeviceDetect.inIframe() || DeviceDetect.isIos();
 
+    // Use online imagery for iOS devices to avoid texture loading issues
+    const baseImageryLayer = DeviceDetect.isIos() ? "OSM" : "OfflineHighres";
+
     this.viewer = new Viewer("cesiumContainer", {
       animation: !this.minimalUI,
-      baseLayer: this.createImageryLayer("OfflineHighres"),
+      baseLayer: this.createImageryLayer(baseImageryLayer),
       baseLayerPicker: false,
       fullscreenButton: !this.minimalUI,
       fullscreenElement: document.body,
@@ -398,6 +401,10 @@ export class CesiumController {
   }
 
   setTime(current, start = dayjs.utc(current).subtract(12, "hour").toISOString(), stop = dayjs.utc(current).add(7, "day").toISOString()) {
+    // Skip time changes on iOS
+    if (DeviceDetect.isIos()) {
+      return;
+    }
     this.viewer.clock.startTime = JulianDate.fromIso8601(dayjs.utc(start).toISOString());
     this.viewer.clock.stopTime = JulianDate.fromIso8601(dayjs.utc(stop).toISOString());
     this.viewer.clock.currentTime = JulianDate.fromIso8601(dayjs.utc(current).toISOString());
@@ -408,6 +415,10 @@ export class CesiumController {
   }
 
   setCurrentTimeOnly(current) {
+    // Skip time changes on iOS
+    if (DeviceDetect.isIos()) {
+      return;
+    }
     const newCurrentTime = JulianDate.fromIso8601(dayjs.utc(current).toISOString());
     this.viewer.clock.currentTime = newCurrentTime;
 

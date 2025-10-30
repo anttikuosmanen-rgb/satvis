@@ -1,5 +1,13 @@
 <template>
   <div class="cesium">
+    <!-- iOS Pass Countdown Timer -->
+    <pass-countdown-timer
+      v-if="isIos"
+      :show="showPassCountdown"
+      :tracked-satellite="trackedSatelliteName"
+      :passes="trackedSatellitePasses"
+    />
+
     <div v-show="showUI" id="toolbarLeft">
       <div class="toolbarButtons">
         <button v-tooltip="'Satellite selection'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('cat')">
@@ -22,6 +30,16 @@
         </button>
         <button v-if="cc.minimalUI" v-tooltip="'Mobile'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('ios')">
           <font-awesome-icon icon="fas fa-mobile-alt" />
+        </button>
+        <button
+          v-if="isIos && trackedSatelliteName && hasUpcomingPass"
+          v-tooltip="'Pass Countdown'"
+          type="button"
+          class="cesium-button cesium-toolbar-button pass-countdown-button"
+          :class="{ active: showPassCountdown, 'pass-active': isPassActive }"
+          @click="togglePassCountdown"
+        >
+          <font-awesome-icon icon="fas fa-stopwatch" />
         </button>
         <button v-tooltip="'Debug'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('dbg')">
           <font-awesome-icon icon="fas fa-hammer" />
@@ -201,6 +219,23 @@
             <span class="slider"></span>
             Point Primitive
           </label>
+          <label class="toolbarSwitch">
+            <input v-model="enabledComponents" type="checkbox" value="Moon orbit" />
+            <span class="slider"></span>
+            Moon orbit
+          </label>
+          <template v-if="enabledComponents.includes('Moon orbit')">
+            <label class="toolbarSwitch">
+              <input v-model="moonOrbitHeliocentric" type="checkbox" @change="toggleMoonOrbitMode" />
+              <span class="slider"></span>
+              Heliocentric Moon orbit
+            </label>
+          </template>
+          <label class="toolbarSwitch">
+            <input v-model="enabledComponents" type="checkbox" value="Planet orbits" />
+            <span class="slider"></span>
+            Planet orbits
+          </label>
         </template>
         <div class="toolbarTitle">Overpass calculation</div>
         <label class="toolbarSwitch">
@@ -235,6 +270,7 @@
       <button v-tooltip="'Zoom Out Timeline'" type="button" class="cesium-button cesium-toolbar-button timeline-button" @click="zoomOutTimeline">-</button>
     </div>
     <div v-if="showCameraAltitude" id="cameraAltitudeDisplay">Camera Altitude: {{ formattedCameraAltitude }}</div>
+    <div v-if="isIos" id="currentTimeDisplay">{{ currentTime }}</div>
   </div>
 </template>
 
@@ -246,10 +282,12 @@ import { useSatStore } from "../stores/sat";
 
 import { DeviceDetect } from "../modules/util/DeviceDetect";
 import SatelliteSelect from "./SatelliteSelect.vue";
+import PassCountdownTimer from "./PassCountdownTimer.vue";
 
 export default {
   components: {
     "satellite-select": SatelliteSelect,
+    "pass-countdown-timer": PassCountdownTimer,
   },
   data() {
     return {
@@ -265,13 +303,16 @@ export default {
       zenithViewActive: false, // Local reactive state for zenith view
       planetsEnabled: true, // Planet rendering enabled state
       planetRenderMode: "billboard", // 'billboard' or 'point'
+      moonOrbitHeliocentric: true, // Toggle for Moon orbit mode (heliocentric vs Earth-centric)
       showCameraAltitude: false,
       cameraAltitude: 0,
+      showPassCountdown: false, // Toggle for pass countdown timer visibility
+      currentTime: "",
     };
   },
   computed: {
     ...mapWritableState(useCesiumStore, ["layers", "terrainProvider", "sceneMode", "cameraMode", "qualityPreset", "showFps", "background", "pickMode"]),
-    ...mapWritableState(useSatStore, ["enabledComponents", "groundStations", "overpassMode", "hideSunlightPasses", "showOnlyLitPasses", "useLocalTime", "enableSwathPasses"]),
+    ...mapWritableState(useSatStore, ["enabledComponents", "groundStations", "overpassMode", "hideSunlightPasses", "showOnlyLitPasses", "useLocalTime", "enableSwathPasses", "trackedSatellite"]),
     isIos() {
       return DeviceDetect.isIos();
     },
@@ -291,6 +332,60 @@ export default {
       } else {
         return `${altitudeKm.toFixed(2)} km`;
       }
+    },
+    trackedSatelliteName() {
+      // Get the currently tracked satellite name from Pinia store
+      return this.trackedSatellite || null;
+    },
+    trackedSatellitePasses() {
+      // Get passes for the tracked satellite
+      if (!this.trackedSatelliteName || !cc || !cc.sats) {
+        return [];
+      }
+
+      const satellite = cc.sats.getSatellite(this.trackedSatelliteName);
+      if (satellite && satellite.props && satellite.props.passes) {
+        return satellite.props.passes;
+      }
+      return [];
+    },
+    hasUpcomingPass() {
+      // Check if there's a tracked satellite with a pass within the next hour
+      // Passes require a ground station to be calculated
+      if (!this.trackedSatelliteName || this.trackedSatellitePasses.length === 0 || this.groundStations.length === 0) {
+        return false;
+      }
+
+      const now = Date.now();
+      const oneHourFromNow = now + 3600000; // 1 hour in milliseconds
+
+      // Find if there's any pass that starts within the next hour or is currently active
+      const upcomingPass = this.trackedSatellitePasses.find((pass) => {
+        const passEnd = new Date(pass.end).getTime();
+        const passStart = new Date(pass.start).getTime();
+        // Pass is either currently active or starts within 1 hour
+        return passEnd > now && passStart <= oneHourFromNow;
+      });
+
+      return !!upcomingPass;
+    },
+    isPassActive() {
+      // Check if the pass is currently active (ongoing)
+      if (!this.trackedSatelliteName || this.trackedSatellitePasses.length === 0) {
+        return false;
+      }
+
+      const now = Date.now();
+
+      // Find if there's a pass currently active
+      const activePass = this.trackedSatellitePasses.find((pass) => {
+        const passEnd = new Date(pass.end).getTime();
+        const passStart = new Date(pass.start).getTime();
+        // Pass is currently active (now is between start and end)
+        return now >= passStart && now <= passEnd;
+      });
+
+      return !!activePass;
     },
   },
   watch: {
@@ -388,6 +483,10 @@ export default {
       }
       // Refresh info boxes to update time display
       this.refreshGroundStationHighlights();
+      // Update current time display immediately for iOS
+      if (this.isIos) {
+        this.updateCurrentTime();
+      }
     },
     showCameraAltitude(enabled) {
       if (enabled) {
@@ -403,6 +502,18 @@ export default {
           clearInterval(this.cameraAltitudeInterval);
           this.cameraAltitudeInterval = null;
         }
+      }
+    },
+    trackedSatelliteName(newSat, oldSat) {
+      // Hide countdown timer when tracked satellite changes
+      if (newSat !== oldSat && this.showPassCountdown) {
+        this.showPassCountdown = false;
+      }
+    },
+    hasUpcomingPass(newValue) {
+      // Hide countdown timer if there's no longer an upcoming pass
+      if (!newValue && this.showPassCountdown) {
+        this.showPassCountdown = false;
       }
     },
   },
@@ -433,6 +544,43 @@ export default {
     };
     window.addEventListener("zenithViewChanged", this.zenithViewChangeHandler);
 
+    // Monitor selected entity changes to hide countdown timer
+    this.selectedEntityChangeHandler = () => {
+      const selectedEntity = cc.viewer.selectedEntity;
+      if (selectedEntity && this.showPassCountdown) {
+        // Check if selected entity is a different satellite or a ground station
+        const isGroundStation = selectedEntity.name && selectedEntity.name.includes("Groundstation");
+        const isDifferentSatellite = selectedEntity.name && selectedEntity.name !== this.trackedSatelliteName;
+
+        if (isGroundStation || isDifferentSatellite) {
+          this.showPassCountdown = false;
+        }
+      }
+    };
+
+    // Listen to Cesium's selectedEntityChanged event
+    if (cc.viewer) {
+      cc.viewer.selectedEntityChanged.addEventListener(this.selectedEntityChangeHandler);
+    }
+
+    // Update current time display for iOS and set clock to real-time
+    if (this.isIos) {
+      this.updateCurrentTime();
+      this.currentTimeInterval = setInterval(() => {
+        this.updateCurrentTime();
+      }, 1000);
+
+      // Set clock to follow real-time on iOS
+      this.$nextTick(() => {
+        if (cc.viewer && cc.viewer.clock) {
+          cc.viewer.clock.shouldAnimate = true;
+          cc.viewer.clock.multiplier = 1;
+          // Set clock to system time mode
+          cc.viewer.clock.clockStep = Cesium.ClockStep.SYSTEM_CLOCK;
+        }
+      });
+    }
+
     // Enable planets by default
     if (this.planetsEnabled) {
       this.$nextTick(() => {
@@ -451,9 +599,17 @@ export default {
     if (this.zenithViewChangeHandler) {
       window.removeEventListener("zenithViewChanged", this.zenithViewChangeHandler);
     }
+    // Clean up selected entity listener
+    if (this.selectedEntityChangeHandler && cc.viewer) {
+      cc.viewer.selectedEntityChanged.removeEventListener(this.selectedEntityChangeHandler);
+    }
     // Clean up camera altitude interval
     if (this.cameraAltitudeInterval) {
       clearInterval(this.cameraAltitudeInterval);
+    }
+    // Clean up current time interval
+    if (this.currentTimeInterval) {
+      clearInterval(this.currentTimeInterval);
     }
   },
   methods: {
@@ -709,6 +865,37 @@ export default {
         this.cc.earthMoon.setRenderMode(this.planetRenderMode);
       }
     },
+    toggleMoonOrbitMode() {
+      // Toggle Moon orbit between heliocentric and Earth-centric modes
+      if (this.cc.earthMoon) {
+        this.cc.earthMoon.setMoonOrbitMode(this.moonOrbitHeliocentric);
+      }
+    },
+    togglePassCountdown() {
+      // Toggle the pass countdown timer visibility
+      this.showPassCountdown = !this.showPassCountdown;
+    },
+    updateCurrentTime() {
+      // Update current time from Cesium clock
+      if (cc.viewer && cc.viewer.clock) {
+        const julianDate = cc.viewer.clock.currentTime;
+        const date = Cesium.JulianDate.toDate(julianDate);
+
+        if (this.useLocalTime && this.canUseLocalTime) {
+          // Show local time
+          const hours = String(date.getHours()).padStart(2, '0');
+          const minutes = String(date.getMinutes()).padStart(2, '0');
+          const seconds = String(date.getSeconds()).padStart(2, '0');
+          this.currentTime = `${hours}:${minutes}:${seconds} Local`;
+        } else {
+          // Show UTC time
+          const hours = String(date.getUTCHours()).padStart(2, '0');
+          const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+          const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+          this.currentTime = `${hours}:${minutes}:${seconds} UTC`;
+        }
+      }
+    },
   },
 };
 </script>
@@ -734,5 +921,29 @@ export default {
   font-size: 14px;
   z-index: 1000;
   pointer-events: none;
+}
+
+#currentTimeDisplay {
+  position: fixed;
+  bottom: 15px;
+  left: 0px;
+  background-color: rgba(0, 0, 0, 0.5);
+  color: #ffffff;
+  padding: 8px 15px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 16px;
+  font-weight: 500;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+/* Pass countdown button colors */
+.pass-countdown-button {
+  color: #ff0000 !important; /* Red for upcoming pass */
+}
+
+.pass-countdown-button.pass-active {
+  color: #00ff00 !important; /* Green for ongoing pass */
 }
 </style>
