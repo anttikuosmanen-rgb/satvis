@@ -41,6 +41,7 @@ import { CesiumTimelineHelper } from "./util/CesiumTimelineHelper";
 import { DescriptionHelper } from "./util/DescriptionHelper";
 import { CesiumCallbackHelper } from "./util/CesiumCallbackHelper";
 import { filterAndSortPasses } from "./util/PassFilter";
+import { VisibilityCulling } from "./util/VisibilityCulling";
 
 export class SatelliteComponentCollection extends CesiumComponentCollection {
   constructor(viewer, tle, tags) {
@@ -343,8 +344,25 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
   }
 
   createLabel() {
+    // Create LOD calculator for distance-based optimization
+    const lodCalculator = VisibilityCulling.createLODCalculator(this.viewer, (time) => this.props.position(time));
+
     const label = new LabelGraphics({
       text: new CallbackProperty((time) => {
+        // Check LOD level for distance-based optimization
+        const lod = lodCalculator(time);
+
+        // LOD 3 (> 200,000 km): Skip label entirely (handled by distanceDisplayCondition)
+        if (lod >= 3) {
+          return this.props.name;
+        }
+
+        // LOD 2 (50,000-200,000 km): Static name only, no altitude calculation
+        if (lod >= 2) {
+          return this.props.name;
+        }
+
+        // LOD 0-1 (< 50,000 km): Full detail with altitude if height stick enabled
         // Only add elevation when height stick is enabled
         if (!this.components["Height stick"]) {
           return this.props.name;
@@ -473,6 +491,14 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       return;
     }
 
+    // Create LOD calculator for distance-based optimization
+    const lodCalculator = VisibilityCulling.createLODCalculator(this.viewer, (time) => this.props.position(time));
+
+    // Cache radius calculation to avoid repeated expensive calls
+    let cachedRadius = null;
+    let lastRadiusCalcTime = null;
+    const radiusCacheTime = 2.0; // Cache for 2 seconds
+
     // Create a circle showing the satellite's visibility footprint on Earth's surface
     // This represents the area where the satellite can be observed above 10° elevation
     const visibilityCircle = new EllipseGraphics({
@@ -491,19 +517,53 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       // Dynamic radius based on satellite altitude and 10° minimum elevation
       // The radius represents the distance from subsatellite point to 10° horizon
       semiMajorAxis: new CallbackProperty((time) => {
+        // Check LOD level - skip calculations for distant satellites
+        const lod = lodCalculator(time);
+        if (lod >= 2) {
+          // Return cached value or approximate radius for distant satellites
+          return cachedRadius || 2000000; // ~2000 km default radius
+        }
+
+        // Check cache
+        const currentSeconds = time.dayNumber * 86400 + time.secondsOfDay;
+        if (lastRadiusCalcTime && Math.abs(currentSeconds - lastRadiusCalcTime) < radiusCacheTime && cachedRadius) {
+          return cachedRadius;
+        }
+
+        // Calculate fresh radius
         const visibleWidthKm = this.props.getVisibleAreaWidth(time);
         const radiusKm = visibleWidthKm / 2; // Convert diameter to radius
         const expandedRadiusKm = radiusKm * 1.15; // Expand by 15% for better visibility
         const radiusM = expandedRadiusKm * 1000; // Convert to meters
 
+        // Update cache
+        cachedRadius = radiusM;
+        lastRadiusCalcTime = currentSeconds;
+
         return radiusM;
       }, false),
 
       semiMinorAxis: new CallbackProperty((time) => {
+        // Use same cached radius calculation for minor axis (circular)
+        const lod = lodCalculator(time);
+        if (lod >= 2) {
+          return cachedRadius || 2000000;
+        }
+
+        const currentSeconds = time.dayNumber * 86400 + time.secondsOfDay;
+        if (lastRadiusCalcTime && Math.abs(currentSeconds - lastRadiusCalcTime) < radiusCacheTime && cachedRadius) {
+          return cachedRadius;
+        }
+
         const visibleWidthKm = this.props.getVisibleAreaWidth(time);
-        const radiusKm = visibleWidthKm / 2; // Convert diameter to radius
-        const expandedRadiusKm = radiusKm * 1.15; // Expand by 15% for better visibility
-        return expandedRadiusKm * 1000; // Convert to meters
+        const radiusKm = visibleWidthKm / 2;
+        const expandedRadiusKm = radiusKm * 1.15;
+        const radiusM = expandedRadiusKm * 1000;
+
+        cachedRadius = radiusM;
+        lastRadiusCalcTime = currentSeconds;
+
+        return radiusM;
       }, false),
     });
 
@@ -517,10 +577,17 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       return;
     }
 
+    // Create visibility checker for frustum culling
+    const visibilityChecker = VisibilityCulling.createCachedVisibilityChecker(this.viewer, (time) => this.props.position(time), 0.5);
+
     // Create the main vertical line entity
     const entity = new Entity({
       polyline: new PolylineGraphics({
         positions: new CallbackProperty((time) => {
+          // Skip expensive calculations if not visible
+          if (!visibilityChecker(time)) {
+            return [];
+          }
           const satellitePosition = this.props.position(time);
           const cartographic = Cartographic.fromCartesian(satellitePosition);
           const surfacePosition = Cartesian3.fromRadians(cartographic.longitude, cartographic.latitude, 0);
@@ -547,6 +614,10 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
         id: tickId,
         polyline: new PolylineGraphics({
           positions: new CallbackProperty((time) => {
+            // Skip expensive calculations if parent satellite not visible
+            if (!visibilityChecker(time)) {
+              return [];
+            }
             const satellitePosition = this.props.position(time);
             const cartographic = Cartographic.fromCartesian(satellitePosition);
             const currentHeight = cartographic.height / 1000;
@@ -607,6 +678,10 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     if (!this.props.groundStationAvailable) {
       return;
     }
+
+    // Create visibility checker for frustum culling
+    const visibilityChecker = VisibilityCulling.createCachedVisibilityChecker(this.viewer, (time) => this.props.position(time), 0.5);
+
     const polyline = new PolylineGraphics({
       followSurface: false,
       material: new PolylineGlowMaterialProperty({
@@ -614,6 +689,10 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
         color: Color.FORESTGREEN,
       }),
       positions: new CallbackProperty((time) => {
+        // Skip if satellite not visible in frustum
+        if (!visibilityChecker(time)) {
+          return [];
+        }
         const satPosition = this.props.position(time);
         const groundPosition = this.props.groundStationPosition.cartesian;
         const positions = [satPosition, groundPosition];
