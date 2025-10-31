@@ -8,6 +8,12 @@ const deg2rad = Math.PI / 180;
 const rad2deg = 180 / Math.PI;
 
 export default class Orbit {
+  // Eclipse calculation cache - stores results keyed by time bucket
+  // Time bucket size: 30 seconds (30000ms) provides good balance between cache hits and accuracy
+  static ECLIPSE_CACHE_BUCKET_SIZE = 30000;
+  static eclipseCache = new Map(); // key: `${satnum}_${timeBucket}`, value: boolean
+  static eclipseCacheMaxSize = 10000; // Limit cache size to prevent memory bloat
+
   constructor(name, tle) {
     this.name = name;
     this.tle = tle.split("\n");
@@ -351,6 +357,16 @@ export default class Orbit {
    * @returns {boolean} True if satellite is in Earth's shadow
    */
   isInEclipse(date) {
+    // Round timestamp to nearest bucket for caching
+    const timestamp = date.getTime();
+    const timeBucket = Math.floor(timestamp / Orbit.ECLIPSE_CACHE_BUCKET_SIZE) * Orbit.ECLIPSE_CACHE_BUCKET_SIZE;
+    const cacheKey = `${this.satnum}_${timeBucket}`;
+
+    // Check cache first
+    if (Orbit.eclipseCache.has(cacheKey)) {
+      return Orbit.eclipseCache.get(cacheKey);
+    }
+
     try {
       // Get satellite position in ECF coordinates
       const satEcf = this.positionECF(date);
@@ -386,7 +402,17 @@ export default class Orbit {
       const earthRadius = 6378.137;
 
       // Calculate if satellite is in Earth's shadow
-      return this.calculateEarthShadow(satPos, sunPos, earthRadius);
+      const result = this.calculateEarthShadow(satPos, sunPos, earthRadius);
+
+      // Store in cache, evicting old entries if cache is too large
+      if (Orbit.eclipseCache.size >= Orbit.eclipseCacheMaxSize) {
+        // Remove oldest entry (first key in the Map)
+        const firstKey = Orbit.eclipseCache.keys().next().value;
+        Orbit.eclipseCache.delete(firstKey);
+      }
+      Orbit.eclipseCache.set(cacheKey, result);
+
+      return result;
     } catch (error) {
       console.warn("Eclipse calculation failed:", error);
       return false; // Default to sunlit if calculation fails

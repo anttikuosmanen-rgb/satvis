@@ -44,6 +44,7 @@ import { SatelliteManager } from "./SatelliteManager";
 import { TimeFormatHelper } from "./util/TimeFormatHelper";
 import { PlanetManager } from "./PlanetManager";
 import { EarthManager } from "./EarthManager";
+import { filterAndSortPasses } from "./util/PassFilter";
 
 dayjs.extend(utc);
 
@@ -1069,12 +1070,17 @@ export class CesiumController {
 
       // Check if the selected entity is a ground station
       if (selectedEntity && selectedEntity.name && selectedEntity.name.includes("Groundstation")) {
-        console.log("Ground station selected:", selectedEntity.name);
+        console.log("[GS Selection] Ground station selected:", selectedEntity.name);
 
         // Find the ground station in the satellite manager
-        const groundStation = this.sats.groundStations.find((gs) => gs.entity === selectedEntity);
+        const groundStation = this.sats.groundStations.find((gs) => gs.components.Groundstation === selectedEntity);
+
+        console.log("[GS Selection] Ground stations in manager:", this.sats.groundStations.length);
+        console.log("[GS Selection] Selected entity ID:", selectedEntity.id);
 
         if (groundStation) {
+          console.log("[GS Selection] Found ground station in manager");
+
           // Get all passes for enabled satellites at this ground station
           const currentTime = this.viewer.clock.currentTime;
 
@@ -1083,28 +1089,42 @@ export class CesiumController {
 
           // Add highlights for all passes of all enabled satellites
           const enabledSatellites = this.sats.enabledSatellites;
+          const activeSatellites = this.sats.activeSatellites;
 
-          // Update passes for all enabled satellites asynchronously
-          const passPromises = enabledSatellites.map((satName) => {
-            const satellite = this.sats.getSatellite(satName);
+          console.log(`[GS Selection] Enabled satellites (by name): ${enabledSatellites.length}`, enabledSatellites);
+          console.log(`[GS Selection] Active satellites (by name or tag): ${activeSatellites.length}`, activeSatellites.map(s => s.props.name));
+
+          // Use activeSatellites to include satellites enabled by tags
+          const passPromises = activeSatellites.map((satellite) => {
             if (satellite && satellite.props) {
               return satellite.props.updatePasses(currentTime).then(() => {
-                // Add highlights for this satellite's passes
-                if (satellite.props.passes && satellite.props.passes.length > 0) {
-                  CesiumTimelineHelper.addHighlightRanges(this.viewer, satellite.props.passes, satName);
+                // Filter passes based on time and user preferences (sunlight/eclipse filters)
+                const filteredPasses = filterAndSortPasses(satellite.props.passes, JulianDate.toDate(currentTime));
+                const passCount = filteredPasses ? filteredPasses.length : 0;
+                console.log(`[GS Selection] ${satellite.props.name}: ${passCount} passes (after filtering)`);
+                if (filteredPasses && filteredPasses.length > 0) {
+                  CesiumTimelineHelper.addHighlightRanges(this.viewer, filteredPasses, satellite.props.name);
                 }
               }).catch((err) => {
-                console.warn(`Failed to update passes for ${satName}:`, err);
+                console.warn(`[GS Selection] Failed to update passes for ${satellite.props.name}:`, err);
               });
             }
             return Promise.resolve();
           });
 
           Promise.all(passPromises).then(() => {
-            console.log(`Added timeline highlights for ${enabledSatellites.length} satellites`);
+            console.log(`[GS Selection] Complete - added timeline highlights for ${activeSatellites.length} satellites`);
+            // Force an immediate timeline update after all passes are loaded
+            // This ensures highlights show on first ground station selection
+            if (this.viewer.timeline) {
+              this.viewer.timeline.updateFromClock();
+              if (this.viewer.timeline._makeTics) {
+                this.viewer.timeline._makeTics();
+              }
+            }
           });
-
-          console.log(`Added timeline highlights for ${enabledSatellites.length} satellites`);
+        } else {
+          console.log("[GS Selection] Ground station not found in manager");
         }
       }
     });
