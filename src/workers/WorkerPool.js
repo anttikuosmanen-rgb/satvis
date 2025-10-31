@@ -173,7 +173,7 @@ export class WorkerPool {
    * Clear the satrec cache in all workers
    */
   async clearCache() {
-    const promises = this.workers.map((worker) => this.execute("CLEAR_CACHE", {}));
+    const promises = this.workers.map(() => this.execute("CLEAR_CACHE", {}));
     return Promise.all(promises);
   }
 

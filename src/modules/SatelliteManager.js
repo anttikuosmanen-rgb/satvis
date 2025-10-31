@@ -218,7 +218,7 @@ export class SatelliteManager {
     // This handles the case where satellites finish loading after URL state (including
     // overpass mode) has already been applied
     if (this.#groundStations.length > 0 && this.activeSatellites.length > 0) {
-      console.log('[updateStore] Satellites loaded with existing ground station, triggering pass calculation');
+      console.log("[updateStore] Satellites loaded with existing ground station, triggering pass calculation");
       this.recalculatePassesAsync();
     }
   }
@@ -351,10 +351,10 @@ export class SatelliteManager {
     const processBatch = (list, operation, index = 0) => {
       if (index >= list.length) {
         // Done with this operation
-        if (operation === 'show' && toHide.length > 0) {
+        if (operation === "show" && toHide.length > 0) {
           // Start hiding after showing is complete
-          processBatch(toHide, 'hide');
-        } else if (operation === 'hide' && this.visibleSatellites.length === 0) {
+          processBatch(toHide, "hide");
+        } else if (operation === "hide" && this.visibleSatellites.length === 0) {
           CesiumCleanupHelper.cleanup(this.viewer);
         }
         // Request render after batch completion
@@ -366,7 +366,7 @@ export class SatelliteManager {
 
       const batch = list.slice(index, index + batchSize);
       batch.forEach((sat) => {
-        if (operation === 'show') {
+        if (operation === "show") {
           sat.show(this.#enabledComponents);
         } else {
           sat.hide();
@@ -379,7 +379,7 @@ export class SatelliteManager {
       }
 
       // Schedule next batch
-      if (typeof requestIdleCallback !== 'undefined') {
+      if (typeof requestIdleCallback !== "undefined") {
         requestIdleCallback(() => processBatch(list, operation, index + batchSize), { timeout: 100 });
       } else {
         // Fallback for browsers without requestIdleCallback
@@ -389,9 +389,9 @@ export class SatelliteManager {
 
     // Start processing
     if (toShow.length > 0) {
-      processBatch(toShow, 'show');
+      processBatch(toShow, "show");
     } else if (toHide.length > 0) {
-      processBatch(toHide, 'hide');
+      processBatch(toHide, "hide");
     }
   }
 
@@ -482,11 +482,11 @@ export class SatelliteManager {
   }
 
   updatePassHighlightsForEnabledSatellites() {
-    console.log('[updatePassHighlightsForEnabledSatellites] Called');
+    console.log("[updatePassHighlightsForEnabledSatellites] Called");
 
     // Only calculate if ground station exists
     if (this.#groundStations.length === 0) {
-      console.log('[updatePassHighlightsForEnabledSatellites] No ground stations, skipping');
+      console.log("[updatePassHighlightsForEnabledSatellites] No ground stations, skipping");
       return;
     }
 
@@ -495,12 +495,15 @@ export class SatelliteManager {
     const activeSatellites = this.activeSatellites;
 
     console.log(`[updatePassHighlightsForEnabledSatellites] Ground stations: ${this.#groundStations.length}, Active satellites: ${activeSatellites.length}`);
-    console.log(`[updatePassHighlightsForEnabledSatellites] Satellite names:`, activeSatellites.map(s => s.props.name));
+    console.log(
+      `[updatePassHighlightsForEnabledSatellites] Satellite names:`,
+      activeSatellites.map((s) => s.props.name),
+    );
     console.log(`[updatePassHighlightsForEnabledSatellites] Current overpass mode: ${this.#overpassMode}`);
 
     // Skip if no satellites enabled
     if (activeSatellites.length === 0) {
-      console.log('[updatePassHighlightsForEnabledSatellites] No active satellites, skipping');
+      console.log("[updatePassHighlightsForEnabledSatellites] No active satellites, skipping");
       return;
     }
 
@@ -510,17 +513,20 @@ export class SatelliteManager {
     // Update passes for all active satellites asynchronously
     const passPromises = activeSatellites.map((satellite) => {
       if (satellite && satellite.props) {
-        return satellite.props.updatePasses(currentTime).then(() => {
-          // Filter passes based on time and user preferences (sunlight/eclipse filters)
-          const filteredPasses = filterAndSortPasses(satellite.props.passes, JulianDate.toDate(currentTime));
-          const passCount = filteredPasses ? filteredPasses.length : 0;
-          console.log(`[updatePassHighlightsForEnabledSatellites] ${satellite.props.name}: ${passCount} passes (after filtering)`);
-          if (filteredPasses && filteredPasses.length > 0) {
-            CesiumTimelineHelper.addHighlightRanges(this.viewer, filteredPasses, satellite.props.name);
-          }
-        }).catch((err) => {
-          console.warn(`[updatePassHighlightsForEnabledSatellites] Failed to update passes for ${satellite.props.name}:`, err);
-        });
+        return satellite.props
+          .updatePasses(currentTime)
+          .then(() => {
+            // Filter passes based on time and user preferences (sunlight/eclipse filters)
+            const filteredPasses = filterAndSortPasses(satellite.props.passes, JulianDate.toDate(currentTime));
+            const passCount = filteredPasses ? filteredPasses.length : 0;
+            console.log(`[updatePassHighlightsForEnabledSatellites] ${satellite.props.name}: ${passCount} passes (after filtering)`);
+            if (filteredPasses && filteredPasses.length > 0) {
+              CesiumTimelineHelper.addHighlightRanges(this.viewer, filteredPasses, satellite.props.name);
+            }
+          })
+          .catch((err) => {
+            console.warn(`[updatePassHighlightsForEnabledSatellites] Failed to update passes for ${satellite.props.name}:`, err);
+          });
       }
       return Promise.resolve();
     });
@@ -1010,7 +1016,7 @@ export class SatelliteManager {
       const batchPromises = batch.map((sat) =>
         sat.props.updatePasses(this.viewer.clock.currentTime).catch((err) => {
           console.warn(`Failed to update passes for ${sat.props.name}:`, err);
-        })
+        }),
       );
       await Promise.all(batchPromises);
 

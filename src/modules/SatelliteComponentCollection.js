@@ -155,7 +155,11 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     // Set up event listeners
     this.eventListeners.selectedEntity = this.viewer.selectedEntityChanged.addEventListener((entity) => {
       if (!entity) {
-        CesiumTimelineHelper.clearHighlightRanges(this.viewer);
+        // Don't clear highlights if a ground station is still active
+        // This prevents clearing when clicking on an already-selected ground station
+        if (!window.cc?.sats?.groundStations || window.cc.sats.groundStations.length === 0) {
+          CesiumTimelineHelper.clearHighlightRanges(this.viewer);
+        }
         return;
       }
 
@@ -169,19 +173,22 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
         this.props.clearPasses();
 
         // Calculate passes asynchronously and update highlights when complete
-        this.props.updatePasses(this.viewer.clock.currentTime).then(() => {
-          // Filter passes based on current filter settings (sunlight/eclipse)
-          const filteredPasses = filterAndSortPasses(this.props.passes, this.viewer.clock.currentTime);
-          // Use baseName to match the name in pass objects (without asterisk for future epochs)
-          CesiumTimelineHelper.updateHighlightRanges(this.viewer, filteredPasses, this.props.baseName);
+        this.props
+          .updatePasses(this.viewer.clock.currentTime)
+          .then(() => {
+            // Filter passes based on current filter settings (sunlight/eclipse)
+            const filteredPasses = filterAndSortPasses(this.props.passes, this.viewer.clock.currentTime);
+            // Use baseName to match the name in pass objects (without asterisk for future epochs)
+            CesiumTimelineHelper.updateHighlightRanges(this.viewer, filteredPasses, this.props.baseName);
 
-          // Request a render to update the UI
-          if (this.viewer && this.viewer.scene) {
-            this.viewer.scene.requestRender();
-          }
-        }).catch((err) => {
-          console.warn("Failed to calculate passes for selected satellite:", err);
-        });
+            // Request a render to update the UI
+            if (this.viewer && this.viewer.scene) {
+              this.viewer.scene.requestRender();
+            }
+          })
+          .catch((err) => {
+            console.warn("Failed to calculate passes for selected satellite:", err);
+          });
       }
     });
 
@@ -315,14 +322,17 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       // Note: updatePasses is now async, but we're in a sync CallbackProperty context
       // The description will use cached passes data and trigger async updates in background
       if (this.props.groundStationAvailable) {
-        this.props.updatePasses(time).then(() => {
-          // Request render after passes are calculated to update the description
-          if (this.viewer && this.viewer.scene) {
-            this.viewer.scene.requestRender();
-          }
-        }).catch((err) => {
-          console.warn("Pass update failed in description callback:", err);
-        });
+        this.props
+          .updatePasses(time)
+          .then(() => {
+            // Request render after passes are calculated to update the description
+            if (this.viewer && this.viewer.scene) {
+              this.viewer.scene.requestRender();
+            }
+          })
+          .catch((err) => {
+            console.warn("Pass update failed in description callback:", err);
+          });
       }
       // Use positionGeodetic for description (needs proper error handling)
       const cartographic = this.props.orbit.positionGeodetic(JulianDate.toDate(time), true);
@@ -794,16 +804,19 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
 
     this.props.clearPasses();
     if (this.isSelected || this.isTracked) {
-      this.props.updatePasses(this.viewer.clock.currentTime).then(() => {
-        if (this.isSelected) {
-          // Filter passes based on current filter settings (sunlight/eclipse)
-          const filteredPasses = filterAndSortPasses(this.props.passes, this.viewer.clock.currentTime);
-          // Use baseName to match the name in pass objects (without asterisk for future epochs)
-          CesiumTimelineHelper.updateHighlightRanges(this.viewer, filteredPasses, this.props.baseName);
-        }
-      }).catch((err) => {
-        console.warn("Failed to update passes for ground station:", err);
-      });
+      this.props
+        .updatePasses(this.viewer.clock.currentTime)
+        .then(() => {
+          if (this.isSelected) {
+            // Filter passes based on current filter settings (sunlight/eclipse)
+            const filteredPasses = filterAndSortPasses(this.props.passes, this.viewer.clock.currentTime);
+            // Use baseName to match the name in pass objects (without asterisk for future epochs)
+            CesiumTimelineHelper.updateHighlightRanges(this.viewer, filteredPasses, this.props.baseName);
+          }
+        })
+        .catch((err) => {
+          console.warn("Failed to update passes for ground station:", err);
+        });
     }
     if (this.created) {
       this.createGroundStationLink();

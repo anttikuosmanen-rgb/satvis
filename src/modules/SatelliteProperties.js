@@ -365,7 +365,12 @@ export class SatelliteProperties {
     const passPromises = this.groundStations.map(async (groundStation) => {
       let passes;
       if (this.overpassMode === "swath") {
-        passes = await this.orbit.computePassesSwath(groundStation.position, this.swath, JulianDate.toDate(this.passInterval.start), JulianDate.toDate(this.passInterval.stopPrediction));
+        passes = await this.orbit.computePassesSwath(
+          groundStation.position,
+          this.swath,
+          JulianDate.toDate(this.passInterval.start),
+          JulianDate.toDate(this.passInterval.stopPrediction),
+        );
       } else {
         passes = await this.orbit.computePassesElevation(groundStation.position, JulianDate.toDate(this.passInterval.start), JulianDate.toDate(this.passInterval.stopPrediction));
       }

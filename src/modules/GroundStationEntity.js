@@ -124,7 +124,7 @@ export class GroundStationEntity extends CesiumComponentCollection {
       const asyncPromises = this.sats.activeSatellites.map((sat) =>
         sat.props.updatePasses(this.viewer.clock.currentTime).catch((err) => {
           console.warn("Pass calculation failed:", err);
-        })
+        }),
       );
 
       // When all async calculations complete, invalidate cache to force UI refresh

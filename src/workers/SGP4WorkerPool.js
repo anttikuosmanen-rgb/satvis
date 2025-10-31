@@ -1,4 +1,5 @@
 import { WorkerPool } from "./WorkerPool";
+// eslint-disable-next-line import/no-unresolved, import/extensions
 import SGP4Worker from "./sgp4.worker.js?worker";
 
 /**

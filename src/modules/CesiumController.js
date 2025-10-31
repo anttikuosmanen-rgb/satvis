@@ -785,12 +785,15 @@ export class CesiumController {
           const satellite = this.sats.getSatellite(satelliteName);
           if (satellite) {
             // Update passes for this satellite and show all its pass highlights
-            satellite.props.updatePasses(this.viewer.clock.currentTime).then(() => {
-              CesiumTimelineHelper.clearHighlightRanges(this.viewer);
-              CesiumTimelineHelper.addHighlightRanges(this.viewer, satellite.props.passes, satelliteName);
-            }).catch((err) => {
-              console.warn("Failed to update passes for pass click:", err);
-            });
+            satellite.props
+              .updatePasses(this.viewer.clock.currentTime)
+              .then(() => {
+                CesiumTimelineHelper.clearHighlightRanges(this.viewer);
+                CesiumTimelineHelper.addHighlightRanges(this.viewer, satellite.props.passes, satelliteName);
+              })
+              .catch((err) => {
+                console.warn("Failed to update passes for pass click:", err);
+              });
           } else {
             // Fallback to showing just the clicked pass if satellite not found
             CesiumTimelineHelper.clearHighlightRanges(this.viewer);
@@ -1092,22 +1095,28 @@ export class CesiumController {
           const activeSatellites = this.sats.activeSatellites;
 
           console.log(`[GS Selection] Enabled satellites (by name): ${enabledSatellites.length}`, enabledSatellites);
-          console.log(`[GS Selection] Active satellites (by name or tag): ${activeSatellites.length}`, activeSatellites.map(s => s.props.name));
+          console.log(
+            `[GS Selection] Active satellites (by name or tag): ${activeSatellites.length}`,
+            activeSatellites.map((s) => s.props.name),
+          );
 
           // Use activeSatellites to include satellites enabled by tags
           const passPromises = activeSatellites.map((satellite) => {
             if (satellite && satellite.props) {
-              return satellite.props.updatePasses(currentTime).then(() => {
-                // Filter passes based on time and user preferences (sunlight/eclipse filters)
-                const filteredPasses = filterAndSortPasses(satellite.props.passes, JulianDate.toDate(currentTime));
-                const passCount = filteredPasses ? filteredPasses.length : 0;
-                console.log(`[GS Selection] ${satellite.props.name}: ${passCount} passes (after filtering)`);
-                if (filteredPasses && filteredPasses.length > 0) {
-                  CesiumTimelineHelper.addHighlightRanges(this.viewer, filteredPasses, satellite.props.name);
-                }
-              }).catch((err) => {
-                console.warn(`[GS Selection] Failed to update passes for ${satellite.props.name}:`, err);
-              });
+              return satellite.props
+                .updatePasses(currentTime)
+                .then(() => {
+                  // Filter passes based on time and user preferences (sunlight/eclipse filters)
+                  const filteredPasses = filterAndSortPasses(satellite.props.passes, JulianDate.toDate(currentTime));
+                  const passCount = filteredPasses ? filteredPasses.length : 0;
+                  console.log(`[GS Selection] ${satellite.props.name}: ${passCount} passes (after filtering)`);
+                  if (filteredPasses && filteredPasses.length > 0) {
+                    CesiumTimelineHelper.addHighlightRanges(this.viewer, filteredPasses, satellite.props.name);
+                  }
+                })
+                .catch((err) => {
+                  console.warn(`[GS Selection] Failed to update passes for ${satellite.props.name}:`, err);
+                });
             }
             return Promise.resolve();
           });

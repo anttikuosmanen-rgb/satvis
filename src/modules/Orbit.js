@@ -1,8 +1,8 @@
 import * as satellitejs from "satellite.js";
 import dayjs from "dayjs";
 import * as Astronomy from "astronomy-engine";
-import { GroundStationConditions } from "./util/GroundStationConditions";
 import { SGP4WorkerPool } from "../workers/SGP4WorkerPool";
+import { GroundStationConditions } from "./util/GroundStationConditions";
 
 const deg2rad = Math.PI / 180;
 const rad2deg = 180 / Math.PI;
