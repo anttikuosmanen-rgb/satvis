@@ -43,9 +43,24 @@ jobs:
           SSH_HOST: ${{ secrets.SSH_DEPLOY_HOST }}
         run: |
           mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
           echo "${{ secrets.SSH_DEPLOY_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H ${SSH_HOST} >> ~/.ssh/known_hosts
+
+          # Verify SSH_HOST is set
+          if [ -z "${SSH_HOST}" ]; then
+            echo "Error: SSH_HOST is not set"
+            exit 1
+          fi
+
+          # Add server to known_hosts
+          echo "Adding ${SSH_HOST} to known_hosts..."
+          ssh-keyscan -H "${SSH_HOST}" >> ~/.ssh/known_hosts 2>&1 || {
+            echo "Failed to scan SSH host keys"
+            exit 1
+          }
+
+          echo "SSH setup completed successfully"
 
       - name: Deploy to server
         env:
