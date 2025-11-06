@@ -12,3 +12,6 @@ report/
 prelaunch.txt
 data/tle/prelaunch.txt
 data/tle/groups/*.txt
+
+# Deployment secrets (private setup documentation)
+DEPLOYMENT-SETUP.md

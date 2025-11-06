@@ -1,0 +1,107 @@
+name: Deploy to Server
+
+on:
+  push:
+    branches:
+      - production  # Deploy only on push to production branch
+  workflow_dispatch:  # Allow manual deployment from Actions tab
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Update TLE data
+        run: npm run update-tle
+
+      - name: Update prelaunch data
+        run: |
+          cd data/tle
+          sh update-prelaunch-data.sh
+          mv prelaunch.txt groups/
+
+      - name: Build project
+        run: npm run build
+
+      - name: Setup SSH
+        env:
+          SSH_HOST: ${{ secrets.SSH_DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_DEPLOY_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${SSH_HOST} >> ~/.ssh/known_hosts
+
+      - name: Deploy to server
+        env:
+          SSH_HOST: ${{ secrets.SSH_DEPLOY_HOST }}
+          SSH_USER: ${{ secrets.SSH_DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.SSH_DEPLOY_PATH }}
+        run: |
+          # Create deployment archive
+          cd dist
+          tar -czf ../satvis-deploy.tar.gz .
+          cd ..
+
+          # Upload the archive
+          scp -i ~/.ssh/deploy_key satvis-deploy.tar.gz ${SSH_USER}@${SSH_HOST}:${DEPLOY_PATH}/
+
+          # Extract and deploy on server
+          ssh -i ~/.ssh/deploy_key ${SSH_USER}@${SSH_HOST} << 'ENDSSH'
+            set -e
+            cd ${DEPLOY_PATH}
+
+            # Backup current deployment
+            if [ -d "current" ]; then
+              BACKUP_DIR="backup-$(date +%Y%m%d-%H%M%S)"
+              mv current "$BACKUP_DIR"
+              echo "✓ Backed up current deployment to $BACKUP_DIR"
+
+              # Keep only last 5 backups
+              ls -dt backup-* 2>/dev/null | tail -n +6 | xargs -r rm -rf
+            fi
+
+            # Extract new deployment
+            mkdir -p current
+            tar -xzf satvis-deploy.tar.gz -C current/
+            rm satvis-deploy.tar.gz
+
+            # Set correct permissions
+            chmod -R 755 current/
+
+            echo "✓ Deployment completed successfully"
+          ENDSSH
+
+      - name: Verify deployment
+        env:
+          SSH_HOST: ${{ secrets.SSH_DEPLOY_HOST }}
+          SSH_USER: ${{ secrets.SSH_DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.SSH_DEPLOY_PATH }}
+        run: |
+          ssh -i ~/.ssh/deploy_key ${SSH_USER}@${SSH_HOST} \
+            "test -f ${DEPLOY_PATH}/current/index.html && echo '✓ Verified: index.html exists'"
+
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
+
+      - name: Deployment summary
+        if: success()
+        run: |
+          echo "## ✅ Deployment Successful" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
