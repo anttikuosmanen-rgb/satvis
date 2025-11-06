@@ -7,7 +7,7 @@ export const presets = {
     title: "Satellite Orbit Visualization",
     config: {
       sat: {
-        enabledTags: ["Weather"],
+        enabled2: ["Weather"],
       },
     },
     tleData: [

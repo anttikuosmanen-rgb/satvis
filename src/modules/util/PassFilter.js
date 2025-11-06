@@ -9,8 +9,12 @@ import { useSatStore } from "../../stores/sat";
  * @returns {Array} Filtered and sorted passes
  */
 export function filterAndSortPasses(passes, time, deltaHours = 48) {
-  // Filter passes based on time
-  let filtered = passes.filter((pass) => dayjs(pass.start).diff(time, "hours") < deltaHours);
+  // Filter passes based on time - include passes that start within deltaHours from current time
+  // Use absolute value to handle both forward and backward time travel
+  let filtered = passes.filter((pass) => {
+    const hoursDiff = dayjs(pass.start).diff(time, "hours", true); // true = floating point
+    return hoursDiff >= 0 && hoursDiff < deltaHours;
+  });
 
   // Filter out passes before epoch - 90 minutes for future epoch satellites
   // This must happen BEFORE sunlight filtering to ensure correct filtering order

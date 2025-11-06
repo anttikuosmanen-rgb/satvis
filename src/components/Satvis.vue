@@ -150,6 +150,11 @@
       <div v-show="menu.dbg" class="toolbarSwitches">
         <div class="toolbarTitle">Debug</div>
         <label class="toolbarSwitch">
+          <input v-model="debugConsoleLog" type="checkbox" />
+          <span class="slider"></span>
+          Console Logging
+        </label>
+        <label class="toolbarSwitch">
           <input v-model="showFps" type="checkbox" />
           <span class="slider"></span>
           FPS
@@ -322,6 +327,7 @@ export default {
       "useLocalTime",
       "enableSwathPasses",
       "trackedSatellite",
+      "debugConsoleLog",
     ]),
     isIos() {
       return DeviceDetect.isIos();

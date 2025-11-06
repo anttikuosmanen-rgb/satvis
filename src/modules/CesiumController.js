@@ -520,14 +520,13 @@ export class CesiumController {
     let orbitPositions = [];
     let orbitTimes = [];
     let wasAnimating = false;
-    let lastScrubTime = null; // Track last scrubbed time to detect orbit jumps
-    let lastLoggedOrbit = null; // Track last logged orbit number for orbit boundary detection
     let extendCooldown = 0; // Cooldown counter to prevent immediate re-extension
     let minTimeReached = null; // Track the earliest time we've scrubbed to
     let maxTimeReached = null; // Track the latest time we've scrubbed to
     let currentOrbitNumber = null; // Track which orbit we're currently on
     let lastOrbitJumpTime = null; // Track when we last jumped to a different orbit
     let isFirstScrubbingMove = false; // Track if this is the first mouse move after clicking
+    let scrubThrottleTimeout = null; // Timeout for throttling scrub updates
 
     handler.setInputAction((event) => {
       const { pickMode } = useCesiumStore();
@@ -613,14 +612,30 @@ export class CesiumController {
             isFirstScrubbingMove = true;
 
             // Change cursor to indicate scrubbing mode
-            this.viewer.canvas.style.cursor = 'ew-resize';
+            this.viewer.canvas.style.cursor = "ew-resize";
           }
         }
       }
     }, ScreenSpaceEventType.LEFT_DOWN);
 
-    // MOUSE_MOVE: Update time based on orbit position
+    // MOUSE_MOVE: Update time based on orbit position (throttled to 50ms)
     handler.setInputAction((movement) => {
+      if (isDraggingSatellite && draggedSatellite && orbitPositions.length > 0) {
+        // Clear any pending throttle timeout
+        if (scrubThrottleTimeout) {
+          clearTimeout(scrubThrottleTimeout);
+        }
+
+        // Throttle updates to every 50ms for smoother performance
+        scrubThrottleTimeout = setTimeout(() => {
+          // Execute the scrubbing logic after 50ms delay
+          performOrbitScrub(movement);
+        }, 50);
+      }
+    }, ScreenSpaceEventType.MOUSE_MOVE);
+
+    // Extract scrubbing logic into a separate function for throttling
+    const performOrbitScrub = (movement) => {
       if (isDraggingSatellite && draggedSatellite && orbitPositions.length > 0) {
         // On the first mouse move, find the sample closest to the satellite's current position
         // This prevents jumping to the far side of Earth
@@ -655,7 +670,6 @@ export class CesiumController {
                 this.viewer.timeline.updateFromClock();
               }
 
-              lastScrubTime = JulianDate.clone(initialScrubTime);
               this.viewer.scene.requestRender();
             }
           }
@@ -721,7 +735,7 @@ export class CesiumController {
           if (!orbitClosestSamples.has(orbitNumber) || angularDistance < orbitClosestSamples.get(orbitNumber).angularDistance) {
             orbitClosestSamples.set(orbitNumber, {
               index: i,
-              angularDistance: angularDistance
+              angularDistance: angularDistance,
             });
           }
         }
@@ -741,7 +755,7 @@ export class CesiumController {
         // Orbit jump cooldown: 500ms between jumps (prevents rapid multi-orbit jumps)
         const ORBIT_JUMP_COOLDOWN_MS = 500;
         const now = Date.now();
-        const canJumpToNewOrbit = !lastOrbitJumpTime || (now - lastOrbitJumpTime) > ORBIT_JUMP_COOLDOWN_MS;
+        const canJumpToNewOrbit = !lastOrbitJumpTime || now - lastOrbitJumpTime > ORBIT_JUMP_COOLDOWN_MS;
 
         for (const [orbitNum, data] of orbitClosestSamples.entries()) {
           // Only consider this orbit if:
@@ -760,20 +774,6 @@ export class CesiumController {
 
         // Only update if we found a valid visible position
         if (closestIndex >= 0 && closestIndex < orbitTimes.length && closestAngularDistance < Number.POSITIVE_INFINITY) {
-          // Calculate degree position based on actual time, not array index
-          // This makes the calculation stable across array extensions
-          const startTime = orbitTimes[0];
-          const currentTime = orbitTimes[closestIndex];
-          const timeElapsed = JulianDate.secondsDifference(currentTime, startTime);
-          const orbitalPeriodMinutes = draggedSatellite.props.orbit.orbitalPeriod;
-          const orbitalPeriodSeconds = orbitalPeriodMinutes * 60;
-          const orbitsElapsed = timeElapsed / orbitalPeriodSeconds;
-          const degreePosition = orbitsElapsed * 360;
-
-          // Also calculate position within current orbit (0-360°)
-          const orbitDegree = degreePosition % 360;
-          const orbitNumber = Math.floor(degreePosition / 360);
-
           // Track orbit changes and update cooldown
           if (currentOrbitNumber !== null && selectedOrbitNum !== currentOrbitNumber) {
             lastOrbitJumpTime = Date.now();
@@ -819,7 +819,6 @@ export class CesiumController {
 
           // Extend sample arrays when approaching time boundaries
           if (isNearStartTime) {
-
             // Get fresh satellite reference to avoid stale propagator state
             const satelliteName = draggedSatellite.props.name;
             const freshSatellite = this.sats.getSatellite(satelliteName);
@@ -908,7 +907,8 @@ export class CesiumController {
             // Calculate time step between samples
             const timeStep = (orbitalPeriodSeconds * orbitsToAdd) / samplesToAdd;
 
-            for (let i = 1; i <= samplesToAdd; i++) { // Start from i=1 to skip duplicate at junction
+            for (let i = 1; i <= samplesToAdd; i++) {
+              // Start from i=1 to skip duplicate at junction
               const sampleTime = JulianDate.addSeconds(currentEndTime, timeStep * i, new JulianDate());
               const { positionFixed } = freshSatellite.props.computePosition(sampleTime);
 
@@ -944,14 +944,11 @@ export class CesiumController {
             }
           }
 
-          // Update lastScrubTime for tracking
-          lastScrubTime = JulianDate.clone(currentScrubTime);
-
           // Request render to show satellite at new position
           this.viewer.scene.requestRender();
         }
       }
-    }, ScreenSpaceEventType.MOUSE_MOVE);
+    }; // End of performOrbitScrub function
 
     // LEFT_UP: End orbit scrubbing
     handler.setInputAction(() => {
@@ -960,8 +957,6 @@ export class CesiumController {
         draggedSatellite = null;
         orbitPositions = [];
         orbitTimes = [];
-        lastScrubTime = null; // Reset time tracking
-        lastLoggedOrbit = null; // Reset logged orbit tracking
         currentOrbitNumber = null; // Reset orbit tracking
         lastOrbitJumpTime = null; // Reset jump cooldown
         isFirstScrubbingMove = false; // Reset first move flag
@@ -969,28 +964,23 @@ export class CesiumController {
         // Restore animation state
         this.viewer.clock.shouldAnimate = wasAnimating;
 
-        // Re-enable camera controls
-        this.viewer.scene.screenSpaceCameraController.enableRotate = true;
-        this.viewer.scene.screenSpaceCameraController.enableZoom = true;
-        this.viewer.scene.screenSpaceCameraController.enableLook = true;
-        this.viewer.scene.screenSpaceCameraController.enableTilt = true;
-        this.viewer.scene.screenSpaceCameraController.enableTranslate = true;
+        // Apply appropriate camera controls based on current view mode (zenith or normal)
+        if (this.sats) {
+          this.sats.applyCameraControlsForCurrentMode();
+        }
 
         // Restore cursor
-        this.viewer.canvas.style.cursor = 'default';
+        this.viewer.canvas.style.cursor = "default";
 
         // Request final render
         this.viewer.scene.requestRender();
       }
     }, ScreenSpaceEventType.LEFT_UP);
 
-    // Right-click handler for individual satellite orbit toggle
-    handler.setInputAction((event) => {
-      // Only handle right-click when both global Orbit and Orbit track components are disabled
-      if (this.sats.enabledComponents.includes("Orbit") || this.sats.enabledComponents.includes("Orbit track")) {
-        return;
-      }
-
+    // Right-click handler for individual satellite path mode toggle
+    // Cycles through: Plain (off) → Smart Path (colored visibility/lighting)
+    // Works independently of global Orbit/Orbit track components
+    handler.setInputAction(() => {
       // Get the currently selected satellite
       const selectedEntity = this.viewer.selectedEntity;
       if (!selectedEntity || !selectedEntity.name) {
@@ -1005,8 +995,8 @@ export class CesiumController {
       // Get the satellite object
       const satellite = this.sats.getSatellite(satelliteName);
       if (satellite) {
-        // Toggle the individual orbit mode
-        satellite.cycleIndividualOrbitMode();
+        // Toggle the path mode (null ↔ Smart Path)
+        satellite.cyclePathMode();
 
         // Request render to update the view
         this.viewer.scene.requestRender();
@@ -1015,10 +1005,10 @@ export class CesiumController {
 
     // Add keyboard shortcut for debug info during scrubbing
     // Press 'D' key to dump visibility debug info while dragging
-    document.addEventListener('keydown', (event) => {
-      if (event.key === 'd' || event.key === 'D') {
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "d" || event.key === "D") {
         if (isDraggingSatellite && draggedSatellite && orbitPositions.length > 0) {
-          console.log('=== SCRUBBING DEBUG INFO (D key pressed) ===');
+          console.log("=== SCRUBBING DEBUG INFO (D key pressed) ===");
 
           // Calculate visible orbit info
           const cameraPosition = this.viewer.camera.positionWC;
@@ -1044,7 +1034,7 @@ export class CesiumController {
 
             // Track orbit boundaries
             if (!orbitBoundaries.has(sampleOrbitNumber)) {
-              orbitBoundaries.set(sampleOrbitNumber, {first: i, last: i});
+              orbitBoundaries.set(sampleOrbitNumber, { first: i, last: i });
             } else {
               orbitBoundaries.get(sampleOrbitNumber).last = i;
             }
@@ -1070,28 +1060,36 @@ export class CesiumController {
           }
 
           console.log(`Total array size: ${orbitPositions.length} samples`);
-          console.log(`Visible samples: ${visibleCount} (${(visibleCount / orbitPositions.length * 100).toFixed(1)}%)`);
+          console.log(`Visible samples: ${visibleCount} (${((visibleCount / orbitPositions.length) * 100).toFixed(1)}%)`);
           console.log(`Visible sample range: ${minVisibleIndex} to ${maxVisibleIndex}`);
-          console.log(`Visible orbit numbers: ${Array.from(visibleOrbits).sort((a, b) => a - b).join(', ')}`);
+          console.log(
+            `Visible orbit numbers: ${Array.from(visibleOrbits)
+              .sort((a, b) => a - b)
+              .join(", ")}`,
+          );
 
           // Show sample count per orbit
-          console.log('Visible samples per orbit:');
-          Array.from(visibleOrbits).sort((a, b) => a - b).forEach(orbitNum => {
-            const count = orbitSampleCounts.get(orbitNum);
-            console.log(`  Orbit ${orbitNum}: ${count} samples`);
-          });
+          console.log("Visible samples per orbit:");
+          Array.from(visibleOrbits)
+            .sort((a, b) => a - b)
+            .forEach((orbitNum) => {
+              const count = orbitSampleCounts.get(orbitNum);
+              console.log(`  Orbit ${orbitNum}: ${count} samples`);
+            });
 
           // Show all orbit boundaries to understand the array structure
-          console.log('All orbit boundaries in array:');
-          Array.from(orbitBoundaries.entries()).sort((a, b) => a[0] - b[0]).forEach(([orbitNum, bounds]) => {
-            const totalSamples = bounds.last - bounds.first + 1;
-            console.log(`  Orbit ${orbitNum + 1}: samples ${bounds.first}-${bounds.last} (${totalSamples} total)`);
-          });
+          console.log("All orbit boundaries in array:");
+          Array.from(orbitBoundaries.entries())
+            .sort((a, b) => a[0] - b[0])
+            .forEach(([orbitNum, bounds]) => {
+              const totalSamples = bounds.last - bounds.first + 1;
+              console.log(`  Orbit ${orbitNum + 1}: samples ${bounds.first}-${bounds.last} (${totalSamples} total)`);
+            });
 
           // Debug: Check angles for samples at the boundary
-          console.log('\nAngle check for samples near visibility boundary:');
+          console.log("\nAngle check for samples near visibility boundary:");
           const samplesToCheck = [1055, 1056, 1057, 1058, 1127, 1128, 1129, 1130, 1131, 1132, 1140, 1150, 1160]; // Around the boundary and deeper into orbit 5
-          samplesToCheck.forEach(idx => {
+          samplesToCheck.forEach((idx) => {
             if (idx < orbitPositions.length) {
               const orbitPos = orbitPositions[idx];
               const earthCenter = Cartesian3.ZERO;
@@ -1113,12 +1111,12 @@ export class CesiumController {
               // Show the actual time in ISO format for debugging
               const timeStr = JulianDate.toIso8601(sampleTime);
 
-              console.log(`  Sample ${idx} (Orbit ${orbitNum + 1}): ${angleDeg.toFixed(2)}° ${angleDeg <= 120 ? '✓ visible' : '✗ filtered'} | Pos: ${posStr} | Time: ${timeStr}`);
+              console.log(`  Sample ${idx} (Orbit ${orbitNum + 1}): ${angleDeg.toFixed(2)}° ${angleDeg <= 120 ? "✓ visible" : "✗ filtered"} | Pos: ${posStr} | Time: ${timeStr}`);
             }
           });
 
           console.log(`\nArray time range: ${JulianDate.toIso8601(orbitTimes[0])} to ${JulianDate.toIso8601(orbitTimes[orbitTimes.length - 1])}`);
-          console.log('=====================================');
+          console.log("=====================================");
         }
       }
     });
@@ -1384,6 +1382,12 @@ export class CesiumController {
           // Find the satellite object
           const satellite = this.sats.getSatellite(satelliteName);
           if (satellite) {
+            // If this satellite has Smart Path mode enabled, regenerate the path for the new time
+            // This preserves the Smart Path toggle state while updating the visualization for the selected pass
+            if (satellite.individualOrbitMode === "Smart Path") {
+              satellite.regenerateSmartPath();
+            }
+
             // Update passes for this satellite and show all its pass highlights
             satellite.props
               .updatePasses(this.viewer.clock.currentTime)

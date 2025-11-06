@@ -14,8 +14,10 @@ export class GroundStationEntity extends CesiumComponentCollection {
 
     // Cache for pass calculations to avoid recalculating on every click
     this._passesCache = null;
-    this._passesCacheTime = null;
+    this._passesCacheTime = null; // JavaScript timestamp when cache was created
+    this._passesCacheCesiumTime = null; // Cesium time when cache was created
     this._cachedFilterState = null;
+    this._cacheIsValid = false; // Quick validity check flag
 
     this.createEntities();
   }
@@ -28,6 +30,8 @@ export class GroundStationEntity extends CesiumComponentCollection {
   invalidatePassCache() {
     this._passesCache = null;
     this._passesCacheTime = null;
+    this._passesCacheCesiumTime = null;
+    this._cacheIsValid = false;
 
     // Force description refresh by recreating it
     // This ensures the passes list in the info panel updates
@@ -89,14 +93,25 @@ export class GroundStationEntity extends CesiumComponentCollection {
       this._cachedFilterState = currentFilterState;
     }
 
-    // Check if we can use cached results
-    const currentTimeMs = JulianDate.toDate(time).getTime();
-    const cacheValidityMs = 60 * 1000; // Cache valid for 60 seconds
+    // Quick validity check using cached boolean flag
+    if (this._cacheIsValid && this._passesCache) {
+      return filterAndSortPasses(this._passesCache, time, deltaHours);
+    }
 
-    if (this._passesCache && this._passesCacheTime) {
-      const cacheAge = currentTimeMs - this._passesCacheTime;
-      if (cacheAge < cacheValidityMs) {
-        // Return cached passes, filtered by current time window
+    // Only do expensive validation if quick check failed
+    if (this._passesCache && this._passesCacheTime && this._passesCacheCesiumTime) {
+      const currentTimeMs = JulianDate.toDate(time).getTime();
+      const cacheValidityMs = 60 * 1000; // Cache valid for 60 seconds (real time)
+      const cacheValidityHours = 1; // Cache valid if Cesium time hasn't jumped more than 1 hour
+
+      const realTimeCacheAge = currentTimeMs - this._passesCacheTime;
+      const cesiumTimeDiff = Math.abs(JulianDate.secondsDifference(time, this._passesCacheCesiumTime)) / 3600; // Hours
+
+      // Cache is valid if:
+      // 1. Real-world time hasn't passed more than 60 seconds, AND
+      // 2. Cesium simulated time hasn't jumped more than 1 hour
+      if (realTimeCacheAge < cacheValidityMs && cesiumTimeDiff < cacheValidityHours) {
+        this._cacheIsValid = true; // Mark as valid for next quick check
         return filterAndSortPasses(this._passesCache, time, deltaHours);
       }
     }
@@ -140,9 +155,11 @@ export class GroundStationEntity extends CesiumComponentCollection {
     // Filter passes based on groundstation (do this before caching)
     passes = passes.filter((pass) => pass.groundStationName === this.name);
 
-    // Cache the raw passes
+    // Cache the raw passes with both real time and Cesium time
     this._passesCache = passes;
-    this._passesCacheTime = currentTimeMs;
+    this._passesCacheTime = JulianDate.toDate(time).getTime();
+    this._passesCacheCesiumTime = JulianDate.clone(time);
+    this._cacheIsValid = true; // Mark as valid
 
     // Filter and return
     return filterAndSortPasses(passes, time, deltaHours);
@@ -166,14 +183,25 @@ export class GroundStationEntity extends CesiumComponentCollection {
       this._cachedFilterState = currentFilterState;
     }
 
-    // Check if we can use cached results
-    const currentTimeMs = JulianDate.toDate(time).getTime();
-    const cacheValidityMs = 60 * 1000; // Cache valid for 60 seconds
+    // Quick validity check using cached boolean flag
+    if (this._cacheIsValid && this._passesCache) {
+      return filterAndSortPasses(this._passesCache, time, deltaHours);
+    }
 
-    if (this._passesCache && this._passesCacheTime) {
-      const cacheAge = currentTimeMs - this._passesCacheTime;
-      if (cacheAge < cacheValidityMs) {
-        // Return cached passes, filtered by current time window
+    // Only do expensive validation if quick check failed
+    if (this._passesCache && this._passesCacheTime && this._passesCacheCesiumTime) {
+      const currentTimeMs = JulianDate.toDate(time).getTime();
+      const cacheValidityMs = 60 * 1000; // Cache valid for 60 seconds (real time)
+      const cacheValidityHours = 1; // Cache valid if Cesium time hasn't jumped more than 1 hour
+
+      const realTimeCacheAge = currentTimeMs - this._passesCacheTime;
+      const cesiumTimeDiff = Math.abs(JulianDate.secondsDifference(time, this._passesCacheCesiumTime)) / 3600; // Hours
+
+      // Cache is valid if:
+      // 1. Real-world time hasn't passed more than 60 seconds, AND
+      // 2. Cesium simulated time hasn't jumped more than 1 hour
+      if (realTimeCacheAge < cacheValidityMs && cesiumTimeDiff < cacheValidityHours) {
+        this._cacheIsValid = true; // Mark as valid for next quick check
         return filterAndSortPasses(this._passesCache, time, deltaHours);
       }
     }
@@ -195,9 +223,11 @@ export class GroundStationEntity extends CesiumComponentCollection {
     // Filter passes based on groundstation (do this before caching)
     passes = passes.filter((pass) => pass.groundStationName === this.name);
 
-    // Cache the raw passes
+    // Cache the raw passes with both real time and Cesium time
     this._passesCache = passes;
-    this._passesCacheTime = currentTimeMs;
+    this._passesCacheTime = JulianDate.toDate(time).getTime();
+    this._passesCacheCesiumTime = JulianDate.clone(time);
+    this._cacheIsValid = true; // Mark as valid
 
     // Filter and return
     return filterAndSortPasses(passes, time, deltaHours);
