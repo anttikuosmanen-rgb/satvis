@@ -15,6 +15,26 @@ body {
   user-select: none;
 }
 
+/* Prevent long-press text selection on iOS for Cesium canvas */
+#cesiumContainer canvas {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Prevent long-press editing mode on all Cesium viewer elements */
+.cesium-viewer,
+.cesium-viewer * {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
 [v-cloak] {
     display: none;
 }

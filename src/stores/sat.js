@@ -14,6 +14,7 @@ export const useSatStore = defineStore("sat", {
     showOnlyLitPasses: true,
     useLocalTime: false,
     enableSwathPasses: false,
+    debugConsoleLog: false,
   }),
   urlsync: {
     enabled: true,

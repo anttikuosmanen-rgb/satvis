@@ -1,12 +1,19 @@
 import * as satellitejs from "satellite.js";
 import dayjs from "dayjs";
 import * as Astronomy from "astronomy-engine";
+import { SGP4WorkerPool } from "../workers/SGP4WorkerPool";
 import { GroundStationConditions } from "./util/GroundStationConditions";
 
 const deg2rad = Math.PI / 180;
 const rad2deg = 180 / Math.PI;
 
 export default class Orbit {
+  // Eclipse calculation cache - stores results keyed by time bucket
+  // Time bucket size: 30 seconds (30000ms) provides good balance between cache hits and accuracy
+  static ECLIPSE_CACHE_BUCKET_SIZE = 30000;
+  static eclipseCache = new Map(); // key: `${satnum}_${timeBucket}`, value: boolean
+  static eclipseCacheMaxSize = 10000; // Limit cache size to prevent memory bloat
+
   constructor(name, tle) {
     this.name = name;
     this.tle = tle.split("\n");
@@ -61,7 +68,34 @@ export default class Orbit {
     };
   }
 
-  computePassesElevation(groundStationPosition, startDate = dayjs().toDate(), endDate = dayjs(startDate).add(7, "day").toDate(), minElevation = 5, maxPasses = 50) {
+  async computePassesElevation(groundStationPosition, startDate = dayjs().toDate(), endDate = dayjs(startDate).add(7, "day").toDate(), minElevation = 5, maxPasses = 50) {
+    // Try to use WebWorker if available, otherwise fall back to main thread
+    if (SGP4WorkerPool.isAvailable()) {
+      try {
+        const passes = await SGP4WorkerPool.computePassesElevation(this.tle, groundStationPosition, startDate.getTime(), endDate.getTime(), minElevation, maxPasses);
+
+        // Add additional data that worker can't calculate (requires astronomy-engine)
+        for (const pass of passes) {
+          pass.name = this.name;
+          pass.groundStationDarkAtStart = GroundStationConditions.isInDarkness(groundStationPosition, new Date(pass.start));
+          pass.satelliteEclipsedAtStart = this.isInEclipse(new Date(pass.start));
+          pass.groundStationDarkAtEnd = GroundStationConditions.isInDarkness(groundStationPosition, new Date(pass.end));
+          pass.satelliteEclipsedAtEnd = this.isInEclipse(new Date(pass.end));
+          pass.eclipseTransitions = this.findEclipseTransitions(pass.start, pass.end, 30);
+        }
+
+        return passes;
+      } catch (error) {
+        console.warn("WebWorker pass calculation failed, falling back to main thread:", error);
+        // Fall through to main thread calculation
+      }
+    }
+
+    // Main thread calculation (fallback)
+    return this.computePassesElevationSync(groundStationPosition, startDate, endDate, minElevation, maxPasses);
+  }
+
+  computePassesElevationSync(groundStationPosition, startDate = dayjs().toDate(), endDate = dayjs(startDate).add(7, "day").toDate(), minElevation = 5, maxPasses = 50) {
     // Skip pass calculation for satellites with very long orbital periods
     // (e.g., geostationary satellites at ~1436 minutes)
     // These satellites stay continuously visible and don't have traditional "passes"
@@ -178,7 +212,34 @@ export default class Orbit {
     return passes;
   }
 
-  computePassesSwath(groundStationPosition, swathKm, startDate = dayjs().toDate(), endDate = dayjs(startDate).add(7, "day").toDate(), maxPasses = 50) {
+  async computePassesSwath(groundStationPosition, swathKm, startDate = dayjs().toDate(), endDate = dayjs(startDate).add(7, "day").toDate(), maxPasses = 50) {
+    // Try to use WebWorker if available, otherwise fall back to main thread
+    if (SGP4WorkerPool.isAvailable()) {
+      try {
+        const passes = await SGP4WorkerPool.computePassesSwath(this.tle, groundStationPosition, swathKm, startDate.getTime(), endDate.getTime(), maxPasses);
+
+        // Add additional data that worker can't calculate (requires astronomy-engine)
+        for (const pass of passes) {
+          pass.name = this.name;
+          pass.groundStationDarkAtStart = GroundStationConditions.isInDarkness(groundStationPosition, new Date(pass.start));
+          pass.satelliteEclipsedAtStart = this.isInEclipse(new Date(pass.start));
+          pass.groundStationDarkAtEnd = GroundStationConditions.isInDarkness(groundStationPosition, new Date(pass.end));
+          pass.satelliteEclipsedAtEnd = this.isInEclipse(new Date(pass.end));
+          pass.eclipseTransitions = this.findEclipseTransitions(pass.start, pass.end, 30);
+        }
+
+        return passes;
+      } catch (error) {
+        console.warn("WebWorker swath calculation failed, falling back to main thread:", error);
+        // Fall through to main thread calculation
+      }
+    }
+
+    // Main thread calculation (fallback)
+    return this.computePassesSwathSync(groundStationPosition, swathKm, startDate, endDate, maxPasses);
+  }
+
+  computePassesSwathSync(groundStationPosition, swathKm, startDate = dayjs().toDate(), endDate = dayjs(startDate).add(7, "day").toDate(), maxPasses = 50) {
     // For satellites with future epochs, ensure we don't try to calculate before the epoch
     // SGP4 propagation is unreliable before the TLE epoch time
     // Allow calculation from 1 hour before epoch to show pre-launch position
@@ -296,6 +357,16 @@ export default class Orbit {
    * @returns {boolean} True if satellite is in Earth's shadow
    */
   isInEclipse(date) {
+    // Round timestamp to nearest bucket for caching
+    const timestamp = date.getTime();
+    const timeBucket = Math.floor(timestamp / Orbit.ECLIPSE_CACHE_BUCKET_SIZE) * Orbit.ECLIPSE_CACHE_BUCKET_SIZE;
+    const cacheKey = `${this.satnum}_${timeBucket}`;
+
+    // Check cache first
+    if (Orbit.eclipseCache.has(cacheKey)) {
+      return Orbit.eclipseCache.get(cacheKey);
+    }
+
     try {
       // Get satellite position in ECF coordinates
       const satEcf = this.positionECF(date);
@@ -331,7 +402,17 @@ export default class Orbit {
       const earthRadius = 6378.137;
 
       // Calculate if satellite is in Earth's shadow
-      return this.calculateEarthShadow(satPos, sunPos, earthRadius);
+      const result = this.calculateEarthShadow(satPos, sunPos, earthRadius);
+
+      // Store in cache, evicting old entries if cache is too large
+      if (Orbit.eclipseCache.size >= Orbit.eclipseCacheMaxSize) {
+        // Remove oldest entry (first key in the Map)
+        const firstKey = Orbit.eclipseCache.keys().next().value;
+        Orbit.eclipseCache.delete(firstKey);
+      }
+      Orbit.eclipseCache.set(cacheKey, result);
+
+      return result;
     } catch (error) {
       console.warn("Eclipse calculation failed:", error);
       return false; // Default to sunlit if calculation fails

@@ -34,6 +34,7 @@ import {
   defined,
 } from "@cesium/engine";
 import CesiumSensorVolumes from "cesium-sensor-volumes";
+import * as satellitejs from "satellite.js";
 
 import { SatelliteProperties } from "./SatelliteProperties";
 import { CesiumComponentCollection } from "./util/CesiumComponentCollection";
@@ -41,12 +42,20 @@ import { CesiumTimelineHelper } from "./util/CesiumTimelineHelper";
 import { DescriptionHelper } from "./util/DescriptionHelper";
 import { CesiumCallbackHelper } from "./util/CesiumCallbackHelper";
 import { filterAndSortPasses } from "./util/PassFilter";
+import { VisibilityCulling } from "./util/VisibilityCulling";
 
 export class SatelliteComponentCollection extends CesiumComponentCollection {
   constructor(viewer, tle, tags) {
     super(viewer);
     this.props = new SatelliteProperties(tle, tags);
     this.eventListeners = {};
+    // Track individual path mode: null (off), "Smart Path" (colored visibility/lighting), or "Orbit track"
+    this.individualOrbitMode = null;
+    // Cache for smart path segments with metadata
+    this._smartPathCache = {
+      time: null, // JulianDate when path was created
+      entities: null, // Array of polyline entities
+    };
   }
 
   enableComponent(name) {
@@ -114,6 +123,15 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       if (this.components.Label) {
         this.components.Label.label.pixelOffset = new Cartesian2(10, 0);
       }
+    } else if (name === "Smart Path") {
+      const component = this.components[name];
+      if (component && component._entities) {
+        // Clean up all polyline segment entities
+        component._entities.forEach((entity) => {
+          this.viewer.entities.remove(entity);
+        });
+        component._entities.length = 0;
+      }
     } else if (name === "Height stick") {
       const component = this.components[name];
       if (component) {
@@ -154,7 +172,11 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     // Set up event listeners
     this.eventListeners.selectedEntity = this.viewer.selectedEntityChanged.addEventListener((entity) => {
       if (!entity) {
-        CesiumTimelineHelper.clearHighlightRanges(this.viewer);
+        // Don't clear highlights if a ground station is still active
+        // This prevents clearing when clicking on an already-selected ground station
+        if (!window.cc?.sats?.groundStations || window.cc.sats.groundStations.length === 0) {
+          CesiumTimelineHelper.clearHighlightRanges(this.viewer);
+        }
         return;
       }
 
@@ -164,13 +186,46 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       }
 
       if (this.isSelected) {
-        // Force recalculation of passes when satellite is selected
-        this.props.clearPasses();
-        this.props.updatePasses(this.viewer.clock.currentTime);
-        // Filter passes based on current filter settings (sunlight/eclipse)
-        const filteredPasses = filterAndSortPasses(this.props.passes, this.viewer.clock.currentTime);
-        // Use baseName to match the name in pass objects (without asterisk for future epochs)
-        CesiumTimelineHelper.updateHighlightRanges(this.viewer, filteredPasses, this.props.baseName);
+        // Check if passes already exist
+        const hasExistingPasses = this.props.passes && this.props.passes.length > 0;
+
+        if (hasExistingPasses) {
+          // Passes already exist - show highlights immediately
+          // Clear existing highlights before adding new ones
+          CesiumTimelineHelper.clearHighlightRanges(this.viewer);
+
+          // Filter passes based on current filter settings (sunlight/eclipse)
+          const filteredPasses = filterAndSortPasses(this.props.passes, this.viewer.clock.currentTime);
+          // Use baseName to match the name in pass objects (without asterisk for future epochs)
+          CesiumTimelineHelper.updateHighlightRanges(this.viewer, filteredPasses, this.props.baseName);
+
+          // Request a render to update the UI
+          if (this.viewer && this.viewer.scene) {
+            this.viewer.scene.requestRender();
+          }
+        } else {
+          // No passes yet - calculate them
+          // Clear existing highlights before recalculating
+          CesiumTimelineHelper.clearHighlightRanges(this.viewer);
+
+          // Calculate passes asynchronously and update highlights when complete
+          this.props
+            .updatePasses(this.viewer.clock.currentTime)
+            .then(() => {
+              // Filter passes based on current filter settings (sunlight/eclipse)
+              const filteredPasses = filterAndSortPasses(this.props.passes, this.viewer.clock.currentTime);
+              // Use baseName to match the name in pass objects (without asterisk for future epochs)
+              CesiumTimelineHelper.updateHighlightRanges(this.viewer, filteredPasses, this.props.baseName);
+
+              // Request a render to update the UI
+              if (this.viewer && this.viewer.scene) {
+                this.viewer.scene.requestRender();
+              }
+            })
+            .catch((err) => {
+              console.warn("Failed to calculate passes for selected satellite:", err);
+            });
+        }
       }
     });
 
@@ -191,6 +246,11 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
         this.enableComponent("Orbit");
       }
     });
+
+    // Add clock listener for Smart Path updates on significant time changes
+    this.eventListeners.clockTick = this.viewer.clock.onTick.addEventListener(() => {
+      this.checkSmartPathUpdate();
+    });
   }
 
   async handleGroundStationHighlights(entity) {
@@ -203,13 +263,23 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       return;
     }
 
+    // Check if highlights already exist for this ground station
+    // If the timeline already has highlights and the ground station is already selected, skip recalculation
+    const hasExistingHighlights = this.viewer.timeline?._highlightRanges?.length > 0;
+    const isAlreadySelected = this.viewer.selectedEntity === entity || this.viewer.trackedEntity === entity;
+
+    if (hasExistingHighlights && isAlreadySelected) {
+      // Highlights already exist and ground station is already selected - no need to recalculate
+      return;
+    }
+
     // Clear existing highlights immediately for responsive feedback
     CesiumTimelineHelper.clearHighlightRanges(this.viewer);
 
     // Yield to browser to keep UI responsive
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    // Calculate passes asynchronously
+    // Calculate passes asynchronously (will use cache if available)
     const passes = await groundStation.passesAsync(this.viewer.clock.currentTime);
 
     if (passes.length > 0) {
@@ -231,6 +301,9 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     this.eventListeners.sampledPosition();
     this.eventListeners.selectedEntity();
     this.eventListeners.trackedEntity();
+
+    // Reset individual orbit mode when satellite is fully hidden
+    this.individualOrbitMode = null;
   }
 
   updatedSampledPositionForComponents(update = false) {
@@ -278,6 +351,9 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       case "Orbit":
         this.createOrbit();
         break;
+      case "Smart Path":
+        this.createSmartOrbitPath();
+        break;
       case "Orbit track":
         this.createOrbitTrack();
         break;
@@ -301,9 +377,22 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
   createDescription() {
     this.description = DescriptionHelper.cachedCallbackProperty((time) => {
       // Update passes if needed when time changes significantly
+      // Note: updatePasses is now async, but we're in a sync CallbackProperty context
+      // The description will use cached passes data and trigger async updates in background
       if (this.props.groundStationAvailable) {
-        this.props.updatePasses(time);
+        this.props
+          .updatePasses(time)
+          .then(() => {
+            // Request render after passes are calculated to update the description
+            if (this.viewer && this.viewer.scene) {
+              this.viewer.scene.requestRender();
+            }
+          })
+          .catch((err) => {
+            console.warn("Pass update failed in description callback:", err);
+          });
       }
+      // Use positionGeodetic for description (needs proper error handling)
       const cartographic = this.props.orbit.positionGeodetic(JulianDate.toDate(time), true);
       const content = DescriptionHelper.renderSatelliteDescription(time, cartographic, this.props);
       return content;
@@ -343,8 +432,25 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
   }
 
   createLabel() {
+    // Create LOD calculator for distance-based optimization
+    const lodCalculator = VisibilityCulling.createLODCalculator(this.viewer, (time) => this.props.position(time));
+
     const label = new LabelGraphics({
       text: new CallbackProperty((time) => {
+        // Check LOD level for distance-based optimization
+        const lod = lodCalculator(time);
+
+        // LOD 3 (> 200,000 km): Skip label entirely (handled by distanceDisplayCondition)
+        if (lod >= 3) {
+          return this.props.name;
+        }
+
+        // LOD 2 (50,000-200,000 km): Static name only, no altitude calculation
+        if (lod >= 2) {
+          return this.props.name;
+        }
+
+        // LOD 0-1 (< 50,000 km): Full detail with altitude if height stick enabled
         // Only add elevation when height stick is enabled
         if (!this.components["Height stick"]) {
           return this.props.name;
@@ -355,11 +461,13 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
           return this.props.name;
         }
 
-        const cartographic = this.props.orbit.positionGeodetic(JulianDate.toDate(time), true);
-        if (!cartographic) {
+        // Use cached position instead of recalculating with positionGeodetic
+        const position = this.props.position(time);
+        if (!position) {
           return this.props.name;
         }
 
+        const cartographic = Cartographic.fromCartesian(position);
         const heightKm = Math.round(cartographic.height / 1000); // Round to nearest km
         return `${this.props.name} ${heightKm}km`;
       }, false),
@@ -465,6 +573,170 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     this.createCesiumSatelliteEntity("Orbit track", "path", path);
   }
 
+  /**
+   * Create smart orbital path with color coding based on visibility and lighting
+   * - Cyan: Satellite visible from ground station (elevation > 0°)
+   * - Yellow: Satellite visible AND in sunlight (not eclipsed)
+   * - Alpha varies: 0.15 for 0-10° elevation, 0.6-0.8 for >10° elevation
+   * - White (low alpha): Not visible from ground station (below horizon)
+   */
+  createSmartOrbitPath() {
+    const deg2rad = Math.PI / 180;
+    const minElevation = 0; // degrees - show from horizon
+    const lowElevationThreshold = 10; // degrees - use reduced alpha below this
+
+    // Get orbit positions (360 samples around the orbit for smooth visualization)
+    const currentTime = this.viewer.clock.currentTime;
+    const orbitalPeriod = this.props.orbit.orbitalPeriod * 60; // seconds
+    const numSamples = 360;
+    const timeStep = orbitalPeriod / numSamples; // seconds per sample
+
+    // Sample the orbit and calculate colors
+    const samples = [];
+
+    for (let i = 0; i <= numSamples; i++) {
+      const sampleTime = JulianDate.addSeconds(currentTime, i * timeStep, new JulianDate());
+      const position = this.props.position(sampleTime);
+
+      if (!position) continue;
+
+      // Determine color state:
+      // 0 = not visible (below horizon)
+      // 1 = visible+eclipsed, low elevation (0-10°)
+      // 2 = visible+sunlit, low elevation (0-10°)
+      // 3 = visible+eclipsed, high elevation (>10°)
+      // 4 = visible+sunlit, high elevation (>10°)
+      let colorState = 0;
+
+      // Check if ground station is available
+      if (this.props.groundStationAvailable) {
+        try {
+          // Get satellite position in ECF for visibility calculation
+          const date = JulianDate.toDate(sampleTime);
+          const positionEcf = this.props.orbit.positionECF(date);
+
+          if (positionEcf) {
+            // Use the first ground station for visibility calculation
+            const groundStation = {
+              latitude: this.props.groundStations[0].position.latitude * deg2rad,
+              longitude: this.props.groundStations[0].position.longitude * deg2rad,
+              height: this.props.groundStations[0].position.height / 1000, // Convert to km
+            };
+
+            // Calculate look angles from ground station to satellite
+            const lookAngles = satellitejs.ecfToLookAngles(groundStation, positionEcf);
+            const elevation = lookAngles.elevation / deg2rad; // Convert to degrees
+
+            // Check if satellite is visible (elevation > minElevation)
+            if (elevation > minElevation) {
+              // Satellite is visible - check if it's also in sunlight
+              const isEclipsed = this.props.orbit.isInEclipse(date);
+              const isLowElevation = elevation <= lowElevationThreshold;
+
+              if (isLowElevation) {
+                // Low elevation (0-10°): use states 1 or 2
+                colorState = isEclipsed ? 1 : 2;
+              } else {
+                // High elevation (>10°): use states 3 or 4
+                colorState = isEclipsed ? 3 : 4;
+              }
+            }
+          }
+        } catch (error) {
+          // If visibility calculation fails, use default (not visible)
+          console.warn("Smart path visibility calculation failed:", error);
+        }
+      }
+
+      samples.push({ position, colorState });
+    }
+
+    // Create polyline segments grouped by color
+    const segments = [];
+    let currentSegment = null;
+
+    for (let i = 0; i < samples.length; i++) {
+      const sample = samples[i];
+
+      // Start a new segment if color changes or this is the first sample
+      if (!currentSegment || currentSegment.colorState !== sample.colorState) {
+        // Close previous segment if it exists
+        if (currentSegment) {
+          // Add current sample's position to close the segment
+          currentSegment.positions.push(sample.position);
+          segments.push(currentSegment);
+        }
+
+        // Start new segment
+        currentSegment = {
+          colorState: sample.colorState,
+          positions: [sample.position],
+        };
+      } else {
+        // Continue current segment
+        currentSegment.positions.push(sample.position);
+      }
+    }
+
+    // Close last segment
+    if (currentSegment && currentSegment.positions.length > 0) {
+      segments.push(currentSegment);
+    }
+
+    // Create entities for each segment
+    const entities = [];
+    for (const segment of segments) {
+      if (segment.positions.length < 2) continue; // Need at least 2 points for a line
+
+      // Determine color based on colorState
+      let color;
+      switch (segment.colorState) {
+        case 4:
+          // High elevation, visible and sunlit - yellow with high alpha
+          color = Color.YELLOW.withAlpha(0.8);
+          break;
+        case 3:
+          // High elevation, visible but eclipsed - cyan with medium alpha
+          color = Color.CYAN.withAlpha(0.6);
+          break;
+        case 2:
+          // Low elevation (0-10°), visible and sunlit - yellow with low alpha
+          color = Color.YELLOW.withAlpha(0.3);
+          break;
+        case 1:
+          // Low elevation (0-10°), visible but eclipsed - cyan with low alpha
+          color = Color.CYAN.withAlpha(0.3);
+          break;
+        default:
+          // Not visible (below horizon) - white with low alpha
+          color = Color.WHITE.withAlpha(0.15);
+      }
+
+      const polyline = new PolylineGraphics({
+        positions: segment.positions,
+        width: 2,
+        material: color,
+        arcType: ArcType.NONE,
+      });
+
+      const entity = new Entity({
+        polyline,
+      });
+
+      entities.push(entity);
+      this.viewer.entities.add(entity);
+    }
+
+    // Store entities array as the component for cleanup
+    this.components["Smart Path"] = { _entities: entities };
+
+    // Update cache with current time and entities
+    this._smartPathCache = {
+      time: JulianDate.clone(currentTime),
+      entities: entities,
+    };
+  }
+
   createGroundTrack() {
     // Only show ground tracks for Low Earth Orbit (LEO) satellites
     // Satellites with orbital periods > 2 hours are typically in higher orbits
@@ -472,6 +744,14 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     if (this.props.orbit.orbitalPeriod > 60 * 2) {
       return;
     }
+
+    // Create LOD calculator for distance-based optimization
+    const lodCalculator = VisibilityCulling.createLODCalculator(this.viewer, (time) => this.props.position(time));
+
+    // Cache radius calculation to avoid repeated expensive calls
+    let cachedRadius = null;
+    let lastRadiusCalcTime = null;
+    const radiusCacheTime = 2.0; // Cache for 2 seconds
 
     // Create a circle showing the satellite's visibility footprint on Earth's surface
     // This represents the area where the satellite can be observed above 10° elevation
@@ -491,19 +771,53 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       // Dynamic radius based on satellite altitude and 10° minimum elevation
       // The radius represents the distance from subsatellite point to 10° horizon
       semiMajorAxis: new CallbackProperty((time) => {
+        // Check LOD level - skip calculations for distant satellites
+        const lod = lodCalculator(time);
+        if (lod >= 2) {
+          // Return cached value or approximate radius for distant satellites
+          return cachedRadius || 2000000; // ~2000 km default radius
+        }
+
+        // Check cache
+        const currentSeconds = time.dayNumber * 86400 + time.secondsOfDay;
+        if (lastRadiusCalcTime && Math.abs(currentSeconds - lastRadiusCalcTime) < radiusCacheTime && cachedRadius) {
+          return cachedRadius;
+        }
+
+        // Calculate fresh radius
         const visibleWidthKm = this.props.getVisibleAreaWidth(time);
         const radiusKm = visibleWidthKm / 2; // Convert diameter to radius
         const expandedRadiusKm = radiusKm * 1.15; // Expand by 15% for better visibility
         const radiusM = expandedRadiusKm * 1000; // Convert to meters
 
+        // Update cache
+        cachedRadius = radiusM;
+        lastRadiusCalcTime = currentSeconds;
+
         return radiusM;
       }, false),
 
       semiMinorAxis: new CallbackProperty((time) => {
+        // Use same cached radius calculation for minor axis (circular)
+        const lod = lodCalculator(time);
+        if (lod >= 2) {
+          return cachedRadius || 2000000;
+        }
+
+        const currentSeconds = time.dayNumber * 86400 + time.secondsOfDay;
+        if (lastRadiusCalcTime && Math.abs(currentSeconds - lastRadiusCalcTime) < radiusCacheTime && cachedRadius) {
+          return cachedRadius;
+        }
+
         const visibleWidthKm = this.props.getVisibleAreaWidth(time);
-        const radiusKm = visibleWidthKm / 2; // Convert diameter to radius
-        const expandedRadiusKm = radiusKm * 1.15; // Expand by 15% for better visibility
-        return expandedRadiusKm * 1000; // Convert to meters
+        const radiusKm = visibleWidthKm / 2;
+        const expandedRadiusKm = radiusKm * 1.15;
+        const radiusM = expandedRadiusKm * 1000;
+
+        cachedRadius = radiusM;
+        lastRadiusCalcTime = currentSeconds;
+
+        return radiusM;
       }, false),
     });
 
@@ -517,10 +831,17 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       return;
     }
 
+    // Create visibility checker for frustum culling
+    const visibilityChecker = VisibilityCulling.createCachedVisibilityChecker(this.viewer, (time) => this.props.position(time), 0.5);
+
     // Create the main vertical line entity
     const entity = new Entity({
       polyline: new PolylineGraphics({
         positions: new CallbackProperty((time) => {
+          // Skip expensive calculations if not visible
+          if (!visibilityChecker(time)) {
+            return [];
+          }
           const satellitePosition = this.props.position(time);
           const cartographic = Cartographic.fromCartesian(satellitePosition);
           const surfacePosition = Cartesian3.fromRadians(cartographic.longitude, cartographic.latitude, 0);
@@ -547,6 +868,10 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
         id: tickId,
         polyline: new PolylineGraphics({
           positions: new CallbackProperty((time) => {
+            // Skip expensive calculations if parent satellite not visible
+            if (!visibilityChecker(time)) {
+              return [];
+            }
             const satellitePosition = this.props.position(time);
             const cartographic = Cartographic.fromCartesian(satellitePosition);
             const currentHeight = cartographic.height / 1000;
@@ -607,6 +932,10 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     if (!this.props.groundStationAvailable) {
       return;
     }
+
+    // Create visibility checker for frustum culling
+    const visibilityChecker = VisibilityCulling.createCachedVisibilityChecker(this.viewer, (time) => this.props.position(time), 0.5);
+
     const polyline = new PolylineGraphics({
       followSurface: false,
       material: new PolylineGlowMaterialProperty({
@@ -614,6 +943,10 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
         color: Color.FORESTGREEN,
       }),
       positions: new CallbackProperty((time) => {
+        // Skip if satellite not visible in frustum
+        if (!visibilityChecker(time)) {
+          return [];
+        }
         const satPosition = this.props.position(time);
         const groundPosition = this.props.groundStationPosition.cartesian;
         const positions = [satPosition, groundPosition];
@@ -681,10 +1014,127 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     this.createCesiumSatelliteEntity("Pass arc", "path", path);
   }
 
+  /**
+   * Regenerate the Smart Path without changing the toggle state
+   * This is used when time changes significantly or pass is selected
+   */
+  regenerateSmartPath() {
+    // Only regenerate if Smart Path mode is currently active
+    if (this.individualOrbitMode !== "Smart Path") {
+      return;
+    }
+
+    // Directly recreate the smart path component
+    // First clean up existing entities
+    const component = this.components["Smart Path"];
+    if (component && component._entities) {
+      component._entities.forEach((entity) => {
+        this.viewer.entities.remove(entity);
+      });
+      component._entities.length = 0;
+    }
+
+    // Remove the component from the components object
+    delete this.components["Smart Path"];
+
+    // Recreate the smart path
+    this.createSmartOrbitPath();
+
+    // Enable the component (since we deleted it, we need to re-enable it)
+    super.enableComponent("Smart Path");
+
+    // Request render to update the view
+    if (this.viewer && this.viewer.scene) {
+      this.viewer.scene.requestRender();
+    }
+  }
+
+  /**
+   * Check if smart path needs to be updated due to significant time change
+   * Regenerates the smart path if:
+   * - Time has changed by more than 80 minutes (4800 seconds)
+   * - Path was created but time metadata is missing
+   * Uses throttling to avoid excessive checks (max once per second)
+   */
+  checkSmartPathUpdate() {
+    // Only update if Smart Path mode is currently active
+    if (this.individualOrbitMode !== "Smart Path") {
+      return;
+    }
+
+    // Check if smart path cache exists
+    if (!this._smartPathCache || !this._smartPathCache.time) {
+      return;
+    }
+
+    // Throttle updates - only check once per second
+    const currentTime = this.viewer.clock.currentTime;
+    const now = Date.now();
+
+    if (this._lastUpdateCheck && now - this._lastUpdateCheck < 1000) {
+      return;
+    }
+    this._lastUpdateCheck = now;
+
+    // Calculate time difference in seconds
+    const timeDiffSeconds = Math.abs(JulianDate.secondsDifference(currentTime, this._smartPathCache.time));
+
+    // Regenerate if time difference is greater than 80 minutes (4800 seconds)
+    if (timeDiffSeconds > 4800) {
+      // Regenerate Smart Path without changing toggle state
+      this.regenerateSmartPath();
+    }
+  }
+
+  /**
+   * Cycle through individual path modes: null ↔ "Smart Path"
+   * - null: Plain mode, functions as normal satellite
+   * - "Smart Path": Colored orbital path showing visibility (cyan) and sunlit visibility (yellow)
+   * This allows toggling path display for a single satellite when global orbit components are disabled
+   * When Smart Path is enabled, the label is also enabled (unless globally disabled)
+   * When Smart Path is disabled, the label respects the global setting
+   */
+  cyclePathMode() {
+    // Disable current individual orbit mode if any
+    if (this.individualOrbitMode) {
+      this.disableComponent(this.individualOrbitMode);
+    }
+
+    // Toggle between null and "Smart Path": null → "Smart Path" → null
+    if (this.individualOrbitMode === null) {
+      this.individualOrbitMode = "Smart Path";
+    } else {
+      // "Smart Path" → null
+      this.individualOrbitMode = null;
+      // Clear cache when returning to plain mode
+      this._smartPathCache = null;
+    }
+
+    // Enable the new individual orbit mode if not null
+    if (this.individualOrbitMode) {
+      this.enableComponent(this.individualOrbitMode);
+      // Also enable label when showing path
+      this.enableComponent("Label");
+    } else {
+      // When disabling Smart Path, only disable label if it's not globally enabled
+      // Check if Label is globally enabled by looking at SatelliteManager's enabled components
+      const isLabelGloballyEnabled = window.cc?.sats?.enabledComponents?.includes("Label");
+      if (!isLabelGloballyEnabled) {
+        this.disableComponent("Label");
+      }
+    }
+  }
+
   set groundStations(groundStations) {
     // Always set ground stations, even for GEO satellites
     // This ensures groundStationAvailable returns true
     this.props.groundStations = groundStations;
+
+    // Regenerate Smart Path immediately if it's currently enabled
+    // This ensures the path updates to reflect visibility from the new ground station
+    if (this.individualOrbitMode === "Smart Path") {
+      this.regenerateSmartPath();
+    }
 
     // No groundstation pass calculation for GEO satellites
     if (this.props.orbit.orbitalPeriod > 60 * 12) {
@@ -693,13 +1143,19 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
 
     this.props.clearPasses();
     if (this.isSelected || this.isTracked) {
-      this.props.updatePasses(this.viewer.clock.currentTime);
-      if (this.isSelected) {
-        // Filter passes based on current filter settings (sunlight/eclipse)
-        const filteredPasses = filterAndSortPasses(this.props.passes, this.viewer.clock.currentTime);
-        // Use baseName to match the name in pass objects (without asterisk for future epochs)
-        CesiumTimelineHelper.updateHighlightRanges(this.viewer, filteredPasses, this.props.baseName);
-      }
+      this.props
+        .updatePasses(this.viewer.clock.currentTime)
+        .then(() => {
+          if (this.isSelected) {
+            // Filter passes based on current filter settings (sunlight/eclipse)
+            const filteredPasses = filterAndSortPasses(this.props.passes, this.viewer.clock.currentTime);
+            // Use baseName to match the name in pass objects (without asterisk for future epochs)
+            CesiumTimelineHelper.updateHighlightRanges(this.viewer, filteredPasses, this.props.baseName);
+          }
+        })
+        .catch((err) => {
+          console.warn("Failed to update passes for ground station:", err);
+        });
     }
     if (this.created) {
       this.createGroundStationLink();

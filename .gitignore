@@ -9,5 +9,6 @@ cypress/support/
 report/
 
 # TLE data files
+prelaunch.txt
 data/tle/prelaunch.txt
 data/tle/groups/*.txt

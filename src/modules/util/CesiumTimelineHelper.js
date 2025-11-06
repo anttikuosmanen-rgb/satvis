@@ -5,6 +5,45 @@ export class CesiumTimelineHelper {
   // Store calculated range for each ground station to detect when recalculation is needed
   static _daytimeRangeCache = new Map();
 
+  // Timeline update batching - prevents redundant re-renders
+  static _timelineUpdateScheduled = false;
+  static _pendingViewers = new Set();
+
+  /**
+   * Schedule a batched timeline update using requestAnimationFrame
+   * Multiple calls within the same frame will be batched into a single update
+   * @param {Object} viewer - Cesium viewer with timeline
+   */
+  static scheduleTimelineUpdate(viewer) {
+    if (!viewer || !viewer.timeline) {
+      return;
+    }
+
+    // Add viewer to pending set
+    this._pendingViewers.add(viewer);
+
+    // Schedule update if not already scheduled
+    if (!this._timelineUpdateScheduled) {
+      this._timelineUpdateScheduled = true;
+
+      requestAnimationFrame(() => {
+        // Process all pending viewer updates
+        this._pendingViewers.forEach((v) => {
+          if (v.timeline) {
+            v.timeline.updateFromClock();
+            if (v.timeline._makeTics) {
+              v.timeline._makeTics();
+            }
+          }
+        });
+
+        // Clear pending set and reset flag
+        this._pendingViewers.clear();
+        this._timelineUpdateScheduled = false;
+      });
+    }
+  }
+
   static clearHighlightRanges(viewer) {
     if (!viewer.timeline || viewer.timeline._highlightRanges.length === 0) {
       return;
@@ -13,18 +52,23 @@ export class CesiumTimelineHelper {
 
     const highlightRanges = viewer.timeline._highlightRanges;
 
+    // Clean up event listeners before removing ranges to prevent memory leaks
+    highlightRanges.forEach((range) => {
+      if (range._base === 0 && range._clickListener && range._element) {
+        range._element.removeEventListener("click", range._clickListener);
+        range._clickListener = null;
+      }
+    });
+
     viewer.timeline._highlightRanges = highlightRanges.filter(
       (range) =>
         // Keep daytime ranges (priority -1), remove satellite pass ranges (priority 0)
 
         range._base === -1,
     );
-    viewer.timeline.updateFromClock();
-    // Force timeline to re-render by calling _makeTics directly
 
-    if (viewer.timeline._makeTics) {
-      viewer.timeline._makeTics();
-    }
+    // Use batched update instead of immediate update
+    this.scheduleTimelineUpdate(viewer);
   }
 
   static addHighlightRanges(viewer, ranges, satelliteName) {
@@ -122,13 +166,8 @@ export class CesiumTimelineHelper {
       }
     });
 
-    // Update timeline ONCE after adding all ranges (not in the loop)
-    viewer.timeline.updateFromClock();
-    // Force timeline to re-render by calling _makeTics directly
-
-    if (viewer.timeline._makeTics) {
-      viewer.timeline._makeTics();
-    }
+    // Use batched update instead of immediate update
+    this.scheduleTimelineUpdate(viewer);
   }
 
   static updateHighlightRanges(viewer, ranges, satelliteName) {
@@ -163,13 +202,8 @@ export class CesiumTimelineHelper {
       }
     }
 
-    // Trigger single re-render at the end to show all highlights
-    viewer.timeline.updateFromClock();
-    // Force timeline to re-render by calling _makeTics directly
-
-    if (viewer.timeline._makeTics) {
-      viewer.timeline._makeTics();
-    }
+    // Use batched update instead of immediate update
+    this.scheduleTimelineUpdate(viewer);
   }
 
   static _addHighlightRangesWithoutResize(viewer, ranges, satelliteName) {
@@ -268,7 +302,7 @@ export class CesiumTimelineHelper {
     return JulianDate.lessThan(currentStart, cachedRange.start) || JulianDate.greaterThan(currentStop, cachedRange.stop);
   }
 
-  static addGroundStationDaytimeRanges(viewer, groundStation) {
+  static async addGroundStationDaytimeRanges(viewer, groundStation) {
     if (!viewer.timeline || !groundStation) {
       return;
     }
@@ -276,9 +310,10 @@ export class CesiumTimelineHelper {
     const startTime = viewer.clock.startTime;
     const stopTime = viewer.clock.stopTime;
 
-    // Calculate daytime periods for a broader range (extend by 7 days on each side)
-    const extendedStart = JulianDate.addDays(startTime, -7, new JulianDate());
-    const extendedStop = JulianDate.addDays(stopTime, 7, new JulianDate());
+    // Calculate daytime periods for a broader range (extend by 60 days on each side)
+    // This reduces recalculation frequency by 8x compared to 7-day buffer
+    const extendedStart = JulianDate.addDays(startTime, -60, new JulianDate());
+    const extendedStop = JulianDate.addDays(stopTime, 60, new JulianDate());
 
     // Cache the calculated range for this ground station
     const cacheKey = `${groundStation.position.latitude}_${groundStation.position.longitude}`;
@@ -293,10 +328,16 @@ export class CesiumTimelineHelper {
     const { latitude: lat, longitude: lon } = groundStation.position;
 
     // Calculate sunrise/sunset for each day in the timeline range
+    // Process in chunks to avoid blocking the UI thread
     const currentDate = new Date(startDate);
     currentDate.setHours(0, 0, 0, 0); // Start at beginning of day
 
+    const chunkSize = 5; // Process 5 days at a time
+    let daysProcessed = 0;
+
     while (currentDate <= stopDate) {
+      // Process one day
+      daysProcessed++;
       try {
         const sunTimes = suncalc.getTimes(currentDate, lat, lon);
 
@@ -681,14 +722,15 @@ export class CesiumTimelineHelper {
 
       // Move to next day
       currentDate.setDate(currentDate.getDate() + 1);
+
+      // Yield to browser every chunkSize days to keep UI responsive
+      if (daysProcessed % chunkSize === 0 && currentDate <= stopDate) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
     }
 
-    viewer.timeline.updateFromClock();
-    // Force timeline to re-render by calling _makeTics directly
-
-    if (viewer.timeline._makeTics) {
-      viewer.timeline._makeTics();
-    }
+    // Use batched update instead of immediate update
+    this.scheduleTimelineUpdate(viewer);
   }
 
   static clearGroundStationDaytimeRanges(viewer) {
@@ -702,11 +744,7 @@ export class CesiumTimelineHelper {
 
     viewer.timeline._highlightRanges = highlightRanges.filter((range) => range._base !== -1);
 
-    viewer.timeline.updateFromClock();
-    // Force timeline to re-render by calling _makeTics directly
-
-    if (viewer.timeline._makeTics) {
-      viewer.timeline._makeTics();
-    }
+    // Use batched update instead of immediate update
+    this.scheduleTimelineUpdate(viewer);
   }
 }
