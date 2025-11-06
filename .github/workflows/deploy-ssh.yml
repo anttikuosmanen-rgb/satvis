@@ -62,15 +62,15 @@ jobs:
           scp -i ~/.ssh/deploy_key satvis-deploy.tar.gz ${SSH_USER}@${SSH_HOST}:${DEPLOY_PATH}/
 
           # Extract and deploy on server
-          ssh -i ~/.ssh/deploy_key ${SSH_USER}@${SSH_HOST} << 'ENDSSH'
+          ssh -i ~/.ssh/deploy_key ${SSH_USER}@${SSH_HOST} bash -s << ENDSSH
             set -e
             cd ${DEPLOY_PATH}
 
             # Backup current deployment
             if [ -d "current" ]; then
-              BACKUP_DIR="backup-$(date +%Y%m%d-%H%M%S)"
-              mv current "$BACKUP_DIR"
-              echo "✓ Backed up current deployment to $BACKUP_DIR"
+              BACKUP_DIR="backup-\$(date +%Y%m%d-%H%M%S)"
+              mv current "\$BACKUP_DIR"
+              echo "✓ Backed up current deployment to \$BACKUP_DIR"
 
               # Keep only last 5 backups
               ls -dt backup-* 2>/dev/null | tail -n +6 | xargs -r rm -rf
@@ -93,8 +93,15 @@ jobs:
           SSH_USER: ${{ secrets.SSH_DEPLOY_USER }}
           DEPLOY_PATH: ${{ secrets.SSH_DEPLOY_PATH }}
         run: |
-          ssh -i ~/.ssh/deploy_key ${SSH_USER}@${SSH_HOST} \
-            "test -f ${DEPLOY_PATH}/current/index.html && echo '✓ Verified: index.html exists'"
+          ssh -i ~/.ssh/deploy_key ${SSH_USER}@${SSH_HOST} bash -s << ENDVERIFY
+            if [ -f "${DEPLOY_PATH}/current/index.html" ]; then
+              echo "✓ Verified: index.html exists"
+              exit 0
+            else
+              echo "✗ Verification failed: index.html not found"
+              exit 1
+            fi
+          ENDVERIFY
 
       - name: Cleanup SSH key
         if: always()
