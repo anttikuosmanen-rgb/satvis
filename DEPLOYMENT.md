@@ -149,12 +149,59 @@ git push origin production
 
 ## Security
 
+### Secret Protection
+
 All sensitive deployment information (server hostnames, paths, SSH keys) is stored securely in GitHub Secrets and is never exposed in:
 - Workflow files (public)
 - Workflow logs
 - Repository code
 
-The workflow uses ephemeral SSH keys that exist only during the deployment process and are immediately cleaned up afterward.
+The workflow uses:
+- **Environment secrets** (`environment: production`) which are NEVER accessible to forked repositories
+- Ephemeral SSH keys that exist only during deployment and are immediately cleaned up
+
+### Self-Hosted Runner Security
+
+To prevent forks from running malicious code on your self-hosted runner:
+
+#### 1. Configure Actions Settings
+Go to **Settings** → **Actions** → **General** → Scroll to "Fork pull request workflows from outside collaborators"
+
+Configure these options:
+- **"Require approval for first-time contributors"** - Check this
+- **"Require approval for all outside collaborators"** - Check this (most secure)
+
+This ensures any workflow run from a fork requires your manual approval before executing.
+
+#### 2. Environment Protection Rules (Critical)
+Go to **Settings** → **Environments** → **production** → Configure:
+
+- **Deployment branches**: Select "Selected branches" → Add rule for `production` only
+- **Required reviewers**: Add yourself (optional but recommended for extra protection)
+
+This ensures:
+- Only the `production` branch can access environment secrets
+- Forks cannot access the `production` environment secrets (SSH keys, server details)
+- Even if a fork runs the workflow, it will fail without secrets
+
+#### 3. Self-Hosted Runner Access Control
+When configuring the runner, restrict repository access:
+- Use runner groups (Settings → Actions → Runner groups)
+- Ensure the runner is set to "Private" (not shared across repositories)
+
+#### Why This Works
+The combination of:
+1. Environment secrets (not accessible to forks)
+2. Approval requirements for fork workflows
+3. Deployment branch restrictions
+
+Means that even if a fork modifies the workflow file and tries to run it:
+- They can't access your `production` environment
+- They can't access your SSH keys or server details
+- They can't deploy to your server
+- You must manually approve their workflow run
+
+**Key takeaway**: The `environment: production` setting in the workflow is your primary defense - forks cannot access environment secrets.
 
 ## Development Workflow
 
