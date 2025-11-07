@@ -8,7 +8,9 @@ on:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    # Use self-hosted runner with 'satvis-deploy' label
+    # Self-hosted runner can access the deployment server without firewall issues
+    runs-on: self-hosted
     environment:
       name: production
     steps:
@@ -43,9 +45,29 @@ jobs:
           SSH_HOST: ${{ secrets.SSH_DEPLOY_HOST }}
         run: |
           mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
           echo "${{ secrets.SSH_DEPLOY_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H ${SSH_HOST} >> ~/.ssh/known_hosts
+
+          # Debug: Check if secrets are accessible
+          echo "Checking environment variables..."
+          echo "SSH_HOST is set: $([ -n "${SSH_HOST}" ] && echo 'YES' || echo 'NO')"
+          echo "SSH_HOST length: ${#SSH_HOST}"
+
+          # Verify SSH_HOST is set
+          if [ -z "${SSH_HOST}" ]; then
+            echo "Error: SSH_HOST is not set or empty"
+            exit 1
+          fi
+
+          # Add server to known_hosts
+          echo "Adding host to known_hosts..."
+          ssh-keyscan -H "${SSH_HOST}" 2>&1 | tee -a ~/.ssh/known_hosts || {
+            echo "Error: ssh-keyscan failed for host"
+            exit 1
+          }
+
+          echo "✓ SSH setup completed successfully"
 
       - name: Deploy to server
         env:
@@ -62,15 +84,15 @@ jobs:
           scp -i ~/.ssh/deploy_key satvis-deploy.tar.gz ${SSH_USER}@${SSH_HOST}:${DEPLOY_PATH}/
 
           # Extract and deploy on server
-          ssh -i ~/.ssh/deploy_key ${SSH_USER}@${SSH_HOST} << 'ENDSSH'
+          ssh -i ~/.ssh/deploy_key ${SSH_USER}@${SSH_HOST} bash -s << ENDSSH
             set -e
             cd ${DEPLOY_PATH}
 
             # Backup current deployment
             if [ -d "current" ]; then
-              BACKUP_DIR="backup-$(date +%Y%m%d-%H%M%S)"
-              mv current "$BACKUP_DIR"
-              echo "✓ Backed up current deployment to $BACKUP_DIR"
+              BACKUP_DIR="backup-\$(date +%Y%m%d-%H%M%S)"
+              mv current "\$BACKUP_DIR"
+              echo "✓ Backed up current deployment to \$BACKUP_DIR"
 
               # Keep only last 5 backups
               ls -dt backup-* 2>/dev/null | tail -n +6 | xargs -r rm -rf
@@ -93,8 +115,15 @@ jobs:
           SSH_USER: ${{ secrets.SSH_DEPLOY_USER }}
           DEPLOY_PATH: ${{ secrets.SSH_DEPLOY_PATH }}
         run: |
-          ssh -i ~/.ssh/deploy_key ${SSH_USER}@${SSH_HOST} \
-            "test -f ${DEPLOY_PATH}/current/index.html && echo '✓ Verified: index.html exists'"
+          ssh -i ~/.ssh/deploy_key ${SSH_USER}@${SSH_HOST} bash -s << ENDVERIFY
+            if [ -f "${DEPLOY_PATH}/current/index.html" ]; then
+              echo "✓ Verified: index.html exists"
+              exit 0
+            else
+              echo "✗ Verification failed: index.html not found"
+              exit 1
+            fi
+          ENDVERIFY
 
       - name: Cleanup SSH key
         if: always()
