@@ -164,14 +164,15 @@ The workflow uses:
 
 To prevent forks from running malicious code on your self-hosted runner:
 
-#### 1. Configure Actions Settings
-Go to **Settings** → **Actions** → **General** → Scroll to "Fork pull request workflows from outside collaborators"
+#### 1. Configure Fork Pull Request Workflow Approval
+Go to **Settings** → **Actions** → **General** → Scroll to "Fork pull request workflows"
 
-Configure these options:
-- **"Require approval for first-time contributors"** - Check this
-- **"Require approval for all outside collaborators"** - Check this (most secure)
+Under "Approval for running fork pull request workflows from contributors", select:
+- **"Require approval for all external contributors"** (MOST SECURE - recommended)
 
-This ensures any workflow run from a fork requires your manual approval before executing.
+This ensures ANY workflow run from a fork requires your manual approval before executing on your self-hosted runner.
+
+**WARNING**: GitHub strongly recommends against using self-hosted runners with public repositories because forks can submit pull requests with malicious code that could compromise your runner machine. The `environment: production` setting provides protection by preventing access to secrets, but the workflow code itself still executes on your machine.
 
 #### 2. Environment Protection Rules (Critical)
 Go to **Settings** → **Environments** → **production** → Configure:
@@ -184,10 +185,12 @@ This ensures:
 - Forks cannot access the `production` environment secrets (SSH keys, server details)
 - Even if a fork runs the workflow, it will fail without secrets
 
-#### 3. Self-Hosted Runner Access Control
-When configuring the runner, restrict repository access:
-- Use runner groups (Settings → Actions → Runner groups)
-- Ensure the runner is set to "Private" (not shared across repositories)
+#### 3. Self-Hosted Runner Configuration
+When setting up the runner:
+- Install the runner only for this specific repository (not organization-wide)
+- The runner automatically only accepts jobs from the repository it was registered to
+
+**Note**: Runner groups are only available for GitHub Enterprise/Organizations, not personal repositories.
 
 #### Why This Works
 The combination of:
@@ -201,7 +204,20 @@ Means that even if a fork modifies the workflow file and tries to run it:
 - They can't deploy to your server
 - You must manually approve their workflow run
 
-**Key takeaway**: The `environment: production` setting in the workflow is your primary defense - forks cannot access environment secrets.
+**Key takeaway**: The `environment: production` setting prevents forks from accessing secrets, but forks can still run code on your self-hosted runner if approved.
+
+#### Best Practices for Public Repos with Self-Hosted Runners
+
+1. **Always require approval** for all fork PRs before workflows run
+2. **Carefully review** any PR workflow changes before approving
+3. **Never approve** PRs that modify the workflow file (`.github/workflows/deploy-ssh.yml`) unless you fully understand the changes
+4. **Consider** running the self-hosted runner in an isolated/sandboxed environment (VM, container) to limit potential damage
+5. **Monitor** your runner machine for suspicious activity
+
+**Alternative (More Secure)**: If accepting contributions from external developers, consider:
+- Manual deployment triggered by you after merging trusted PRs
+- Using a dedicated CI/CD service that supports GitHub webhooks
+- Only running the self-hosted runner when you need to deploy (start/stop on demand)
 
 ## Development Workflow
 
