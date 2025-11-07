@@ -13,8 +13,59 @@ Automatically deploys to GitHub Pages on every push to `master` branch.
 Deploys to production server via SSH on push to `production` branch.
 - **Workflow:** `.github/workflows/deploy-ssh.yml`
 - **Trigger:** Push to `production` branch or manual workflow dispatch
+- **Runner:** Self-hosted runner (required for server access)
 
 ## Production Deployment
+
+### Prerequisites
+
+The SSH deployment workflow requires:
+1. A self-hosted GitHub Actions runner with network access to the deployment server
+2. GitHub Secrets configured for SSH authentication and deployment paths
+
+### Setting Up Self-Hosted Runner
+
+The deployment workflow uses a self-hosted runner instead of GitHub-hosted runners because:
+- GitHub-hosted runners use thousands of IP addresses that are impractical to whitelist
+- Self-hosted runners can be placed on infrastructure with direct access to deployment servers
+- No firewall configuration changes are needed
+- Free to use (doesn't consume GitHub Actions minutes)
+
+#### Installation Steps
+
+1. **Choose a host machine** that can access the deployment server via SSH on port 22
+   - This can be your local machine, a CI server, or any machine with network access
+   - Ensure the machine has Node.js 22+ and npm installed
+
+2. **Add a self-hosted runner to your repository:**
+   - Go to repository **Settings** → **Actions** → **Runners** → **New self-hosted runner**
+   - Select your operating system (Linux, macOS, or Windows)
+   - Follow the provided installation commands, for example:
+
+   ```bash
+   # Download
+   mkdir actions-runner && cd actions-runner
+   curl -o actions-runner-linux-x64-2.311.0.tar.gz -L \
+     https://github.com/actions/runner/releases/download/v2.311.0/actions-runner-linux-x64-2.311.0.tar.gz
+   tar xzf ./actions-runner-linux-x64-2.311.0.tar.gz
+
+   # Configure
+   ./config.sh --url https://github.com/YOUR_USERNAME/satvis --token YOUR_TOKEN
+
+   # Install and start as a service (recommended)
+   sudo ./svc.sh install
+   sudo ./svc.sh start
+   ```
+
+3. **Verify the runner is online:**
+   - Check repository **Settings** → **Actions** → **Runners**
+   - Status should show "Idle" (green dot)
+
+4. **Test SSH access from the runner machine:**
+   ```bash
+   # Verify the runner can reach the deployment server
+   ssh -i ~/.ssh/your_deploy_key user@deployment-server
+   ```
 
 ### Required GitHub Secrets
 
@@ -29,9 +80,37 @@ The SSH deployment workflow requires the following secrets to be configured in G
 
 ### Setting Up Secrets
 
+#### Generate SSH Key Pair
+
+Generate a dedicated SSH key pair for deployment:
+
+```bash
+ssh-keygen -t ed25519 -C "github-actions-satvis-deploy" -f ~/.ssh/satvis_deploy_key
+```
+
+This creates two files:
+- `~/.ssh/satvis_deploy_key` (private key - keep secret)
+- `~/.ssh/satvis_deploy_key.pub` (public key - add to server)
+
+#### Add Public Key to Deployment Server
+
+Copy the public key to the deployment server:
+
+```bash
+ssh-copy-id -i ~/.ssh/satvis_deploy_key.pub user@deployment-server
+```
+
+Or manually append the public key to `~/.ssh/authorized_keys` on the server.
+
+#### Configure GitHub Secrets
+
 1. Go to repository **Settings** → **Secrets and variables** → **Actions**
 2. Click **New repository secret**
-3. Add each required secret with its corresponding value
+3. Add each required secret:
+   - **SSH_DEPLOY_KEY**: Paste the **entire contents** of the private key file (`~/.ssh/satvis_deploy_key`)
+   - **SSH_DEPLOY_HOST**: Server hostname (e.g., `example.com`)
+   - **SSH_DEPLOY_USER**: SSH username for authentication
+   - **SSH_DEPLOY_PATH**: Absolute path to deployment directory on server
 
 ### Deployment Process
 
