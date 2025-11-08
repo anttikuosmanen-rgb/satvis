@@ -77,6 +77,7 @@ The SSH deployment workflow requires the following secrets to be configured in G
 | `SSH_DEPLOY_HOST` | Server hostname |
 | `SSH_DEPLOY_USER` | SSH username |
 | `SSH_DEPLOY_PATH` | Deployment directory path on server |
+| `SATVIS_BASE_PATH` | Base URL path for the application |
 
 ### Setting Up Secrets
 
@@ -108,9 +109,10 @@ Or manually append the public key to `~/.ssh/authorized_keys` on the server.
 2. Click **New repository secret**
 3. Add each required secret:
    - **SSH_DEPLOY_KEY**: Paste the **entire contents** of the private key file (`~/.ssh/satvis_deploy_key`)
-   - **SSH_DEPLOY_HOST**: Server hostname (e.g., `example.com`)
+   - **SSH_DEPLOY_HOST**: Server hostname
    - **SSH_DEPLOY_USER**: SSH username for authentication
    - **SSH_DEPLOY_PATH**: Absolute path to deployment directory on server
+   - **SATVIS_BASE_PATH**: Base URL path where the application is served
 
 ### Deployment Process
 

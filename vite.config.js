@@ -9,7 +9,11 @@ const cesiumWidgetsSource = "node_modules/@cesium/widgets";
 const cesiumBaseUrl = "cesium";
 
 export default defineConfig({
-  base: process.env.GITHUB_ACTIONS ? "/satvis/" : "",
+  // Set base path based on deployment target
+  // - GitHub Pages: /satvis/
+  // - Production server: from SATVIS_BASE_PATH env var
+  // - Development: /
+  base: process.env.SATVIS_BASE_PATH || (process.env.GITHUB_ACTIONS ? "/satvis/" : ""),
   build: {
     sourcemap: true,
     chunkSizeWarningLimit: 1000,
