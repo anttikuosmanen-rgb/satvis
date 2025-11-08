@@ -82,8 +82,9 @@ jobs:
           tar -czf ../satvis-deploy.tar.gz .
           cd ..
 
-          # Upload the archive
-          scp -i ~/.ssh/deploy_key satvis-deploy.tar.gz ${SSH_USER}@${SSH_HOST}:${DEPLOY_PATH}/
+          # Upload the archive to parent directory
+          PARENT_DIR=$(dirname ${DEPLOY_PATH})
+          scp -i ~/.ssh/deploy_key satvis-deploy.tar.gz ${SSH_USER}@${SSH_HOST}:${PARENT_DIR}/
 
           # Extract and deploy on server
           ssh -i ~/.ssh/deploy_key ${SSH_USER}@${SSH_HOST} bash -s << ENDSSH
@@ -104,8 +105,8 @@ jobs:
 
             # Create deployment directory and extract new deployment
             mkdir -p "\$DEPLOY_NAME"
-            tar -xzf "\$DEPLOY_NAME/satvis-deploy.tar.gz" -C "\$DEPLOY_NAME/"
-            rm "\$DEPLOY_NAME/satvis-deploy.tar.gz"
+            tar -xzf satvis-deploy.tar.gz -C "\$DEPLOY_NAME/"
+            rm satvis-deploy.tar.gz
 
             # Set correct permissions
             chmod -R 755 "\$DEPLOY_NAME/"
