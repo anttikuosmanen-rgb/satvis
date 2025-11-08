@@ -38,6 +38,8 @@ jobs:
           mv prelaunch.txt groups/
 
       - name: Build project
+        env:
+          SATVIS_BASE_PATH: ${{ secrets.SATVIS_BASE_PATH }}
         run: npm run build
 
       - name: Setup SSH
@@ -86,25 +88,27 @@ jobs:
           # Extract and deploy on server
           ssh -i ~/.ssh/deploy_key ${SSH_USER}@${SSH_HOST} bash -s << ENDSSH
             set -e
-            cd ${DEPLOY_PATH}
+            PARENT_DIR=\$(dirname ${DEPLOY_PATH})
+            DEPLOY_NAME=\$(basename ${DEPLOY_PATH})
+            cd "\$PARENT_DIR"
 
-            # Backup current deployment
-            if [ -d "current" ]; then
-              BACKUP_DIR="backup-\$(date +%Y%m%d-%H%M%S)"
-              mv current "\$BACKUP_DIR"
+            # Backup current deployment if it exists
+            if [ -d "\$DEPLOY_NAME" ]; then
+              BACKUP_DIR="\${DEPLOY_NAME}-backup-\$(date +%Y%m%d-%H%M%S)"
+              mv "\$DEPLOY_NAME" "\$BACKUP_DIR"
               echo "✓ Backed up current deployment to \$BACKUP_DIR"
 
               # Keep only last 5 backups
-              ls -dt backup-* 2>/dev/null | tail -n +6 | xargs -r rm -rf
+              ls -dt "\${DEPLOY_NAME}-backup-"* 2>/dev/null | tail -n +6 | xargs -r rm -rf
             fi
 
-            # Extract new deployment
-            mkdir -p current
-            tar -xzf satvis-deploy.tar.gz -C current/
-            rm satvis-deploy.tar.gz
+            # Create deployment directory and extract new deployment
+            mkdir -p "\$DEPLOY_NAME"
+            tar -xzf "\$DEPLOY_NAME/satvis-deploy.tar.gz" -C "\$DEPLOY_NAME/"
+            rm "\$DEPLOY_NAME/satvis-deploy.tar.gz"
 
             # Set correct permissions
-            chmod -R 755 current/
+            chmod -R 755 "\$DEPLOY_NAME/"
 
             echo "✓ Deployment completed successfully"
           ENDSSH
@@ -116,7 +120,7 @@ jobs:
           DEPLOY_PATH: ${{ secrets.SSH_DEPLOY_PATH }}
         run: |
           ssh -i ~/.ssh/deploy_key ${SSH_USER}@${SSH_HOST} bash -s << ENDVERIFY
-            if [ -f "${DEPLOY_PATH}/current/index.html" ]; then
+            if [ -f "${DEPLOY_PATH}/index.html" ]; then
               echo "✓ Verified: index.html exists"
               exit 0
             else
