@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { createPinia, setActivePinia, defineStore } from "pinia";
+import { describe, it, expect, beforeEach } from "vitest";
+import { createPinia, setActivePinia } from "pinia";
 
 describe("URL Sync Plugin - Serialization", () => {
   beforeEach(() => {
@@ -73,7 +73,11 @@ describe("URL Sync Plugin - Deserialization", () => {
   });
 
   it("should handle space restoration in strings", () => {
-    const deserialize = (v) => v.replaceAll("-", " ").split(",").filter((e) => e);
+    const deserialize = (v) =>
+      v
+        .replaceAll("-", " ")
+        .split(",")
+        .filter((e) => e);
 
     expect(deserialize("Space-Station,Active")).toEqual(["Space Station", "Active"]);
   });

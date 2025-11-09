@@ -1,13 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { setActivePinia, createPinia, defineStore } from "pinia";
-import { useSatStore } from "../stores/sat.js";
-import {
-  ISS_TLE_NO_NAME,
-  STARLINK_TLE,
-  ONEWEB_TLE,
-  TWO_SATS_CONCATENATED,
-  FIVE_SATS_CONCATENATED,
-} from "./fixtures/tle-data.js";
+import { setActivePinia, createPinia } from "pinia";
+import { useSatStore } from "../stores/sat";
+import { ISS_TLE_NO_NAME, STARLINK_TLE, ONEWEB_TLE, TWO_SATS_CONCATENATED, FIVE_SATS_CONCATENATED } from "./fixtures/tle-data";
 
 // Define the custom satellites URL sync config for testing
 // This mirrors the config from src/stores/sat.js but is defined as a plain object for testing
@@ -96,13 +90,6 @@ describe("Sat Store - Initialization", () => {
   });
 });
 
-// Helper to get urlsync config directly from store definition
-const getUrlSyncConfig = () => {
-  const store = useSatStore();
-  // Access the original options from the store definition
-  return store.$options?.urlsync?.config || store._customProperties?.get("urlsync")?.config;
-};
-
 describe("Sat Store - URL Sync Config", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
@@ -130,6 +117,7 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
   });
 
   it("should serialize single custom satellite TLE to URL", () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const store = useSatStore();
     const config = customSatellitesConfig;
 
@@ -141,6 +129,7 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
   });
 
   it("should deserialize 2-line TLE without name", () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const store = useSatStore();
     const config = customSatellitesConfig;
 
@@ -152,6 +141,7 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
   });
 
   it("should deserialize 3-line TLE with name", () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const store = useSatStore();
     const config = customSatellitesConfig;
 
@@ -164,6 +154,7 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
   });
 
   it("should deserialize multiple TLEs concatenated back-to-back", () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const store = useSatStore();
     const config = customSatellitesConfig;
 
@@ -175,6 +166,7 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
   });
 
   it("should parse TLE with spaces (browser newline conversion)", () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const store = useSatStore();
     const config = customSatellitesConfig;
 
@@ -189,6 +181,7 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
   });
 
   it("should detect TLE line 1 by '1 ' + 5 digits pattern", () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const store = useSatStore();
     const config = customSatellitesConfig;
 
@@ -200,6 +193,7 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
   });
 
   it("should detect TLE line 2 by '2 ' + 5 digits pattern", () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const store = useSatStore();
     const config = customSatellitesConfig;
 
@@ -211,6 +205,7 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
   });
 
   it("should extract 69 characters for each TLE line", () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const store = useSatStore();
     const config = customSatellitesConfig;
 
@@ -227,6 +222,7 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
   });
 
   it("should handle TLE with name before line 1", () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const store = useSatStore();
     const config = customSatellitesConfig;
 
@@ -237,6 +233,7 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
   });
 
   it("should handle TLE without name (2-line format)", () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const store = useSatStore();
     const config = customSatellitesConfig;
 
@@ -249,6 +246,7 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
   });
 
   it("should skip invalid TLE with missing line 2", () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const store = useSatStore();
     const config = customSatellitesConfig;
 
@@ -261,6 +259,7 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
   });
 
   it("should skip invalid TLE with malformed line 1", () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const store = useSatStore();
     const config = customSatellitesConfig;
 
@@ -273,6 +272,7 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
   });
 
   it("should return empty array for empty URL parameter", () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const store = useSatStore();
     const config = customSatellitesConfig;
 
@@ -282,6 +282,7 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
   });
 
   it("should parse 2 satellites back-to-back without separator", () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const store = useSatStore();
     const config = customSatellitesConfig;
 
@@ -291,6 +292,7 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
   });
 
   it("should parse 5 satellites back-to-back without separator", () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const store = useSatStore();
     const config = customSatellitesConfig;
 
@@ -305,6 +307,7 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
   });
 
   it("should handle whitespace between concatenated TLEs gracefully", () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const store = useSatStore();
     const config = customSatellitesConfig;
 

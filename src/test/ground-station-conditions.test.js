@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { GroundStationConditions } from "../modules/util/GroundStationConditions.js";
-import { MUNICH_GS, SF_GS } from "./fixtures/tle-data.js";
+import { GroundStationConditions } from "../modules/util/GroundStationConditions";
+import { MUNICH_GS, SF_GS } from "./fixtures/tle-data";
 
 describe("GroundStationConditions - Darkness Detection", () => {
   it("should detect ground station in darkness at night", () => {

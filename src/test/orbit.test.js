@@ -1,15 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import dayjs from "dayjs";
-import Orbit from "../modules/Orbit.js";
-import {
-  ISS_TLE,
-  ISS_TLE_NO_NAME,
-  STARLINK_TLE,
-  GEO_SATELLITE_TLE,
-  FUTURE_EPOCH_TLE,
-  MUNICH_GS,
-  TEST_DATES,
-} from "./fixtures/tle-data.js";
+import Orbit from "../modules/Orbit";
+import { ISS_TLE, ISS_TLE_NO_NAME, GEO_SATELLITE_TLE, MUNICH_GS, TEST_DATES } from "./fixtures/tle-data";
 
 describe("Orbit - Basic Construction", () => {
   it("should create orbit from valid 3-line TLE", () => {
@@ -167,13 +158,7 @@ describe("Orbit - Pass Prediction (Elevation Mode)", () => {
   });
 
   it("should find correct number of passes in date range", () => {
-    const passes = orbit.computePassesElevationSync(
-      MUNICH_GS,
-      TEST_DATES.PASS_START,
-      TEST_DATES.PASS_END,
-      1,
-      500,
-    );
+    const passes = orbit.computePassesElevationSync(MUNICH_GS, TEST_DATES.PASS_START, TEST_DATES.PASS_END, 1, 500);
 
     // ISS makes many passes in 14 days
     expect(passes.length).toBeGreaterThan(50);
@@ -181,13 +166,7 @@ describe("Orbit - Pass Prediction (Elevation Mode)", () => {
   });
 
   it("should calculate pass start and end times correctly", () => {
-    const passes = orbit.computePassesElevationSync(
-      MUNICH_GS,
-      TEST_DATES.PASS_START,
-      TEST_DATES.PASS_END,
-      10,
-      10,
-    );
+    const passes = orbit.computePassesElevationSync(MUNICH_GS, TEST_DATES.PASS_START, TEST_DATES.PASS_END, 10, 10);
 
     expect(passes.length).toBeGreaterThan(0);
 
@@ -199,13 +178,7 @@ describe("Orbit - Pass Prediction (Elevation Mode)", () => {
   });
 
   it("should identify maximum elevation during pass", () => {
-    const passes = orbit.computePassesElevationSync(
-      MUNICH_GS,
-      TEST_DATES.PASS_START,
-      TEST_DATES.PASS_END,
-      10,
-      10,
-    );
+    const passes = orbit.computePassesElevationSync(MUNICH_GS, TEST_DATES.PASS_START, TEST_DATES.PASS_END, 10, 10);
 
     expect(passes.length).toBeGreaterThan(0);
 
@@ -217,13 +190,7 @@ describe("Orbit - Pass Prediction (Elevation Mode)", () => {
   });
 
   it("should calculate azimuth at pass start, apex, and end", () => {
-    const passes = orbit.computePassesElevationSync(
-      MUNICH_GS,
-      TEST_DATES.PASS_START,
-      TEST_DATES.PASS_END,
-      10,
-      10,
-    );
+    const passes = orbit.computePassesElevationSync(MUNICH_GS, TEST_DATES.PASS_START, TEST_DATES.PASS_END, 10, 10);
 
     expect(passes.length).toBeGreaterThan(0);
 
@@ -245,13 +212,7 @@ describe("Orbit - Pass Prediction (Elevation Mode)", () => {
   it("should skip geostationary satellites (orbital period > 600 min)", () => {
     const geoOrbit = new Orbit("GOES-16", GEO_SATELLITE_TLE);
 
-    const passes = geoOrbit.computePassesElevationSync(
-      MUNICH_GS,
-      TEST_DATES.PASS_START,
-      TEST_DATES.PASS_END,
-      5,
-      100,
-    );
+    const passes = geoOrbit.computePassesElevationSync(MUNICH_GS, TEST_DATES.PASS_START, TEST_DATES.PASS_END, 5, 100);
 
     // Geostationary satellites should return no passes
     expect(passes).toHaveLength(0);
@@ -277,42 +238,18 @@ describe("Orbit - Pass Prediction (Elevation Mode)", () => {
   });
 
   it("should respect minimum elevation parameter", () => {
-    const passes15 = orbit.computePassesElevationSync(
-      MUNICH_GS,
-      TEST_DATES.PASS_START,
-      TEST_DATES.PASS_END,
-      15,
-      100,
-    );
+    const passes15 = orbit.computePassesElevationSync(MUNICH_GS, TEST_DATES.PASS_START, TEST_DATES.PASS_END, 15, 100);
 
-    const passes30 = orbit.computePassesElevationSync(
-      MUNICH_GS,
-      TEST_DATES.PASS_START,
-      TEST_DATES.PASS_END,
-      30,
-      100,
-    );
+    const passes30 = orbit.computePassesElevationSync(MUNICH_GS, TEST_DATES.PASS_START, TEST_DATES.PASS_END, 30, 100);
 
     // Higher minimum elevation should result in fewer passes
     expect(passes30.length).toBeLessThan(passes15.length);
   });
 
   it("should respect maximum pass count limit", () => {
-    const passes10 = orbit.computePassesElevationSync(
-      MUNICH_GS,
-      TEST_DATES.PASS_START,
-      TEST_DATES.PASS_END,
-      1,
-      10,
-    );
+    const passes10 = orbit.computePassesElevationSync(MUNICH_GS, TEST_DATES.PASS_START, TEST_DATES.PASS_END, 1, 10);
 
-    const passes20 = orbit.computePassesElevationSync(
-      MUNICH_GS,
-      TEST_DATES.PASS_START,
-      TEST_DATES.PASS_END,
-      1,
-      20,
-    );
+    const passes20 = orbit.computePassesElevationSync(MUNICH_GS, TEST_DATES.PASS_START, TEST_DATES.PASS_END, 1, 20);
 
     expect(passes10.length).toBeLessThanOrEqual(11); // maxPasses + 1
     expect(passes20.length).toBeLessThanOrEqual(21);
@@ -320,13 +257,7 @@ describe("Orbit - Pass Prediction (Elevation Mode)", () => {
   });
 
   it("should calculate pass duration correctly", () => {
-    const passes = orbit.computePassesElevationSync(
-      MUNICH_GS,
-      TEST_DATES.PASS_START,
-      TEST_DATES.PASS_END,
-      10,
-      10,
-    );
+    const passes = orbit.computePassesElevationSync(MUNICH_GS, TEST_DATES.PASS_START, TEST_DATES.PASS_END, 10, 10);
 
     expect(passes.length).toBeGreaterThan(0);
 
@@ -451,13 +382,7 @@ describe("Orbit - Eclipse Transitions", () => {
 
   it("should detect transition from sunlight to shadow", () => {
     // Find a pass that has eclipse transitions
-    const passes = orbit.computePassesElevationSync(
-      MUNICH_GS,
-      TEST_DATES.PASS_START,
-      TEST_DATES.PASS_END,
-      1,
-      50,
-    );
+    const passes = orbit.computePassesElevationSync(MUNICH_GS, TEST_DATES.PASS_START, TEST_DATES.PASS_END, 1, 50);
 
     // Look for passes with eclipse transitions
     const passesWithTransitions = passes.filter((p) => p.eclipseTransitions && p.eclipseTransitions.length > 0);
@@ -475,13 +400,7 @@ describe("Orbit - Eclipse Transitions", () => {
 
   it("should detect transition from shadow to sunlight", () => {
     // Find a pass that has eclipse transitions
-    const passes = orbit.computePassesElevationSync(
-      MUNICH_GS,
-      TEST_DATES.PASS_START,
-      TEST_DATES.PASS_END,
-      1,
-      50,
-    );
+    const passes = orbit.computePassesElevationSync(MUNICH_GS, TEST_DATES.PASS_START, TEST_DATES.PASS_END, 1, 50);
 
     // Look for passes with eclipse transitions
     const passesWithTransitions = passes.filter((p) => p.eclipseTransitions && p.eclipseTransitions.length > 0);

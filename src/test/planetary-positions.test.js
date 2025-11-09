@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { JulianDate } from "@cesium/engine";
-import { PlanetaryPositions } from "../modules/PlanetaryPositions.js";
-import { SF_GS } from "./fixtures/tle-data.js";
+import { PlanetaryPositions } from "../modules/PlanetaryPositions";
+import { SF_GS } from "./fixtures/tle-data";
 
 describe("PlanetaryPositions - Initialization", () => {
   let planetary;
@@ -72,11 +72,7 @@ describe("PlanetaryPositions - Position Calculations", () => {
       expect(planetData.position.z).toBeDefined();
 
       // Positions should be in reasonable range (millions of km)
-      const distance = Math.sqrt(
-        planetData.position.x ** 2 +
-        planetData.position.y ** 2 +
-        planetData.position.z ** 2,
-      );
+      const distance = Math.sqrt(planetData.position.x ** 2 + planetData.position.y ** 2 + planetData.position.z ** 2);
       expect(distance).toBeGreaterThan(1e10); // > 10 million km
       expect(distance).toBeLessThan(2e12); // < 2 billion km (Saturn is furthest)
     });
@@ -168,9 +164,7 @@ describe("PlanetaryPositions - Coordinate Conversion", () => {
     expect(position.z).toBeDefined();
 
     // Check that distance is preserved
-    const calculatedDistance = Math.sqrt(
-      position.x ** 2 + position.y ** 2 + position.z ** 2,
-    );
+    const calculatedDistance = Math.sqrt(position.x ** 2 + position.y ** 2 + position.z ** 2);
     expect(calculatedDistance).toBeCloseTo(distance, -8); // Within 100m
   });
 
@@ -209,12 +203,7 @@ describe("PlanetaryPositions - Altitude/Azimuth", () => {
   it("should calculate altitude and azimuth for a planet", () => {
     const date = new Date("2024-06-15T20:00:00Z");
 
-    const result = planetary.getPlanetAltitudeAzimuth(
-      "Venus",
-      date,
-      SF_GS.latitude,
-      SF_GS.longitude,
-    );
+    const result = planetary.getPlanetAltitudeAzimuth("Venus", date, SF_GS.latitude, SF_GS.longitude);
 
     expect(result).toBeDefined();
     expect(result.altitude).toBeDefined();
@@ -237,12 +226,7 @@ describe("PlanetaryPositions - Altitude/Azimuth", () => {
     const date = new Date("2024-06-15T20:00:00Z");
 
     expect(() => {
-      planetary.getPlanetAltitudeAzimuth(
-        "Pluto",
-        date,
-        SF_GS.latitude,
-        SF_GS.longitude,
-      );
+      planetary.getPlanetAltitudeAzimuth("Pluto", date, SF_GS.latitude, SF_GS.longitude);
     }).toThrow("Unknown planet: Pluto");
   });
 
@@ -250,12 +234,7 @@ describe("PlanetaryPositions - Altitude/Azimuth", () => {
     // Test at a time when Venus is likely visible from SF
     const date = new Date("2024-06-15T03:00:00Z"); // Early morning
 
-    const result = planetary.getPlanetAltitudeAzimuth(
-      "Venus",
-      date,
-      SF_GS.latitude,
-      SF_GS.longitude,
-    );
+    const result = planetary.getPlanetAltitudeAzimuth("Venus", date, SF_GS.latitude, SF_GS.longitude);
 
     if (result.altitude > 0) {
       expect(result.isVisible).toBe(true);
@@ -270,12 +249,7 @@ describe("PlanetaryPositions - Altitude/Azimuth", () => {
     let foundBelowHorizon = false;
 
     for (const planet of planets) {
-      const result = planetary.getPlanetAltitudeAzimuth(
-        planet,
-        date,
-        SF_GS.latitude,
-        SF_GS.longitude,
-      );
+      const result = planetary.getPlanetAltitudeAzimuth(planet, date, SF_GS.latitude, SF_GS.longitude);
 
       if (result.altitude < 0) {
         expect(result.isVisible).toBe(false);
@@ -300,11 +274,7 @@ describe("PlanetaryPositions - Visible Planets", () => {
   });
 
   it("should return only visible planets for a given location", () => {
-    const visiblePlanets = planetary.getVisiblePlanets(
-      testTime,
-      SF_GS.latitude,
-      SF_GS.longitude,
-    );
+    const visiblePlanets = planetary.getVisiblePlanets(testTime, SF_GS.latitude, SF_GS.longitude);
 
     expect(Array.isArray(visiblePlanets)).toBe(true);
     expect(visiblePlanets.length).toBeGreaterThanOrEqual(0);
@@ -320,11 +290,7 @@ describe("PlanetaryPositions - Visible Planets", () => {
   });
 
   it("should include all standard planet properties in visible planets", () => {
-    const visiblePlanets = planetary.getVisiblePlanets(
-      testTime,
-      SF_GS.latitude,
-      SF_GS.longitude,
-    );
+    const visiblePlanets = planetary.getVisiblePlanets(testTime, SF_GS.latitude, SF_GS.longitude);
 
     if (visiblePlanets.length > 0) {
       const planet = visiblePlanets[0];
@@ -345,22 +311,9 @@ describe("PlanetaryPositions - Visible Planets", () => {
     const morning = JulianDate.fromDate(new Date("2024-06-15T10:00:00Z"));
     const evening = JulianDate.fromDate(new Date("2024-06-15T03:00:00Z"));
 
-    const morningVisible = planetary.getVisiblePlanets(
-      morning,
-      SF_GS.latitude,
-      SF_GS.longitude,
-    );
+    const morningVisible = planetary.getVisiblePlanets(morning, SF_GS.latitude, SF_GS.longitude);
 
-    const eveningVisible = planetary.getVisiblePlanets(
-      evening,
-      SF_GS.latitude,
-      SF_GS.longitude,
-    );
-
-    // Morning and evening should have different visible planets
-    // (unless by chance they're the same)
-    const morningNames = morningVisible.map((p) => p.name).sort();
-    const eveningNames = eveningVisible.map((p) => p.name).sort();
+    const eveningVisible = planetary.getVisiblePlanets(evening, SF_GS.latitude, SF_GS.longitude);
 
     // At least one should have visible planets
     expect(morningVisible.length + eveningVisible.length).toBeGreaterThan(0);

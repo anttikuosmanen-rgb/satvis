@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { SatelliteManager } from "../modules/SatelliteManager.js";
-import { ISS_TLE, STARLINK_TLE } from "./fixtures/tle-data.js";
+import { SatelliteManager } from "../modules/SatelliteManager";
+import { ISS_TLE, STARLINK_TLE } from "./fixtures/tle-data";
 
 // Mock Cesium viewer
 const createMockViewer = () => ({
