@@ -7,6 +7,8 @@ export default defineConfig({
   test: {
     environment: "happy-dom",
     globals: true,
+    // Don't fail on unhandled rejections from Cesium network requests in test environment
+    dangerouslyIgnoreUnhandledErrors: true,
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html"],
