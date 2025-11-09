@@ -15,6 +15,7 @@ export const useSatStore = defineStore("sat", {
     useLocalTime: false,
     enableSwathPasses: false,
     debugConsoleLog: false,
+    customSatellite: null,
   }),
   urlsync: {
     enabled: true,
@@ -97,6 +98,67 @@ export const useSatStore = defineStore("sat", {
         serialize: (v) => (v ? "1" : "0"),
         deserialize: (v) => v === "1",
         default: false,
+      },
+      {
+        name: "customSatellites",
+        url: "sat",
+        serialize: (v) => {
+          if (!v || v.length === 0) return "";
+          // Array of TLE strings - concatenate directly (no separator needed)
+          return v.join("");
+        },
+        deserialize: (v) => {
+          if (!v) return [];
+
+          // Parse TLEs by detecting line boundaries
+          // TLE lines have fixed structure:
+          // - Line 1 starts with "1 " (69 chars)
+          // - Line 2 starts with "2 " (69 chars)
+          // - Name line (optional, variable length, doesn't start with "1 " or "2 ")
+
+          const tles = [];
+          let currentTle = "";
+          let buffer = v.trim();
+
+          while (buffer.length > 0) {
+            // Find next "1 " that starts a TLE line 1
+            const line1Index = buffer.search(/1 \d{5}/);
+
+            if (line1Index === -1) break; // No more TLEs found
+
+            // Everything before line 1 is the name (if any)
+            const namePart = buffer.substring(0, line1Index).trim();
+
+            // Extract line 1 (69 characters starting from line1Index)
+            const line1Start = line1Index;
+            const line1End = line1Start + 69;
+            const line1 = buffer.substring(line1Start, line1End);
+
+            // Find line 2 (should be right after line 1, starts with "2 ")
+            const line2Start = buffer.substring(line1End).search(/2 \d{5}/);
+
+            if (line2Start === -1) break; // Invalid TLE, missing line 2
+
+            const line2Pos = line1End + line2Start;
+            const line2End = line2Pos + 69;
+            const line2 = buffer.substring(line2Pos, line2End);
+
+            // Build complete TLE (with or without name)
+            if (namePart) {
+              currentTle = `${namePart}\n${line1}\n${line2}`;
+            } else {
+              currentTle = `${line1}\n${line2}`;
+            }
+
+            tles.push(currentTle);
+
+            // Move buffer forward past this TLE
+            buffer = buffer.substring(line2End).trim();
+          }
+
+          return tles;
+        },
+        default: [],
       },
     ],
   },
