@@ -328,6 +328,7 @@ export default {
       "enableSwathPasses",
       "trackedSatellite",
       "debugConsoleLog",
+      "customSatellites",
     ]),
     isIos() {
       return DeviceDetect.isIos();
@@ -549,6 +550,16 @@ export default {
         }
       }
     },
+    customSatellites(newTles) {
+      // Watcher is triggered when URL parameter changes
+      // The actual adding happens in satellitesLoaded event handler or after satellites are loaded
+      if (newTles && newTles.length > 0 && cc && cc.sats) {
+        // Add each custom satellite
+        newTles.forEach((tle) => {
+          this.addCustomSatellite(tle);
+        });
+      }
+    },
   },
   mounted() {
     if (this.$route.query.time) {
@@ -576,6 +587,17 @@ export default {
       this.zenithViewActive = event.detail.active;
     };
     window.addEventListener("zenithViewChanged", this.zenithViewChangeHandler);
+
+    // Listen for satellites loaded event to add custom satellites
+    this.satellitesLoadedHandler = () => {
+      // If customSatellites is set from URL, add them now
+      if (this.customSatellites && this.customSatellites.length > 0) {
+        this.customSatellites.forEach((tle) => {
+          this.addCustomSatellite(tle);
+        });
+      }
+    };
+    window.addEventListener("satellitesLoaded", this.satellitesLoadedHandler);
 
     // Monitor selected entity changes to hide countdown timer
     this.selectedEntityChangeHandler = () => {
@@ -626,6 +648,10 @@ export default {
     if (this.zenithViewChangeHandler) {
       window.removeEventListener("zenithViewChanged", this.zenithViewChangeHandler);
     }
+    // Clean up satellites loaded listener
+    if (this.satellitesLoadedHandler) {
+      window.removeEventListener("satellitesLoaded", this.satellitesLoadedHandler);
+    }
     // Clean up selected entity listener
     if (this.selectedEntityChangeHandler && cc.viewer) {
       cc.viewer.selectedEntityChanged.removeEventListener(this.selectedEntityChangeHandler);
@@ -640,6 +666,124 @@ export default {
     }
   },
   methods: {
+    addCustomSatellite(tle) {
+      if (!tle || !cc || !cc.sats) {
+        return;
+      }
+
+      try {
+        console.log("Adding custom satellite from URL parameter");
+
+        // Parse TLE - handle both newline-separated and space-separated formats
+        let line0 = "";
+        let line1 = "";
+        let line2 = "";
+
+        // First try splitting by newlines
+        let lines = tle.split(/\r?\n/).filter((line) => line.trim());
+
+        if (lines.length >= 2) {
+          // Check if first line is TLE line 1 (starts with "1 ")
+          if (lines[0].trim().startsWith("1 ")) {
+            // 2-line format (no name)
+            line1 = lines[0].trim();
+            line2 = lines[1].trim();
+          } else if (lines.length >= 3) {
+            // 3-line format (with name)
+            line0 = lines[0].trim();
+            line1 = lines[1].trim();
+            line2 = lines[2].trim();
+          }
+        }
+
+        // If we still don't have valid lines, try parsing space-separated format
+        // This handles the case where browser converts newlines to spaces when pasting in address bar
+        if (!line1 || !line2) {
+          const text = tle.trim();
+          // Find line 1 (starts with "1 " followed by satellite number)
+          const line1Match = text.match(/1 \d{5}[A-Z].*?(?=2 \d{5}|$)/);
+          // Find line 2 (starts with "2 " followed by satellite number)
+          const line2Match = text.match(/2 \d{5} .*$/);
+
+          if (line1Match && line2Match) {
+            const line1Start = text.indexOf(line1Match[0]);
+            line0 = text.substring(0, line1Start).trim();
+            line1 = line1Match[0].trim();
+            line2 = line2Match[0].trim();
+            console.log("Parsed space-separated TLE format");
+          }
+        }
+
+        // Validate we have at least the two TLE lines
+        if (!line1 || !line2) {
+          console.warn("Custom satellite TLE must have at least 2 lines (line1, line2) or 3 lines (name, line1, line2)");
+          console.warn("Received:", tle);
+          return;
+        }
+
+        // Validate TLE line format (must start with "1 " or "2 " and be correct length)
+        if (!line1.startsWith("1 ") || line1.length < 69) {
+          console.warn("Invalid TLE line 1 format. Line 1 should start with '1 ' and be 69 characters.");
+          console.warn("Line 1:", line1);
+          return;
+        }
+        if (!line2.startsWith("2 ") || line2.length < 69) {
+          console.warn("Invalid TLE line 2 format. Line 2 should start with '2 ' and be 69 characters.");
+          console.warn("Line 2:", line2);
+          return;
+        }
+
+        // Get satellite name (from line0, or extract from line1, or use default)
+        let originalName = line0;
+        if (!originalName) {
+          // Extract satellite number from line 1 and use as name
+          const satNumMatch = line1.match(/^1 (\d{5})/);
+          originalName = satNumMatch ? `NORAD ${satNumMatch[1]}` : "Custom Satellite";
+        }
+
+        // Check if custom satellite with this name already exists
+        const customName = `[Custom] ${originalName}`;
+        const satStore = useSatStore();
+        const satelliteExists = cc.sats.getSatellite(customName);
+
+        if (!satelliteExists) {
+          // Build TLE with [Custom] prefix to avoid name clashes
+          const modifiedTle = `${customName}\n${line1}\n${line2}`;
+
+          // Add custom satellite from modified TLE with "Custom" tag
+          // Pass updateStore=false to avoid triggering satellitesLoaded event again
+          cc.sats.addFromTle(modifiedTle, ["Custom"], false);
+
+          console.log(`Custom satellite added: ${customName}`);
+
+          // Manually update the store to refresh UI
+          satStore.availableTags = cc.sats.tags;
+          satStore.availableSatellitesByTag = cc.sats.taglist;
+        } else {
+          console.log(`Custom satellite ${customName} already exists, ensuring it's enabled`);
+        }
+
+        // Enable the custom satellite automatically after a short delay
+        // This allows Cesium's reference frame data to load first
+        // Do this whether satellite was just added or already existed
+        setTimeout(() => {
+          if (customName) {
+            // Add to enabled satellites if not already there
+            if (!satStore.enabledSatellites.includes(customName)) {
+              satStore.enabledSatellites = [...satStore.enabledSatellites, customName];
+              console.log(`Custom satellite enabled: ${customName}`);
+            } else {
+              // Satellite already in enabled list (from URL state)
+              // Trigger showEnabledSatellites to actually show it
+              console.log(`Custom satellite already enabled, showing: ${customName}`);
+              cc.sats.showEnabledSatellites();
+            }
+          }
+        }, 1000); // Wait 1 second for reference frame data to load
+      } catch (error) {
+        console.error("Failed to add custom satellite:", error);
+      }
+    },
     toggleMenu(name) {
       const oldState = this.menu[name];
       Object.keys(this.menu).forEach((k) => {

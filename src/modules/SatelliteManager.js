@@ -488,6 +488,9 @@ export class SatelliteManager {
     satStore.availableTags = this.tags;
     satStore.availableSatellitesByTag = this.taglist;
 
+    // Dispatch event that satellites have been loaded
+    window.dispatchEvent(new CustomEvent("satellitesLoaded"));
+
     // Refresh labels to pick up new dynamic elevation text behavior
     setTimeout(() => this.refreshLabels(), 1000);
 
