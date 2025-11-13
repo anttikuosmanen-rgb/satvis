@@ -25,9 +25,6 @@ jobs:
         with:
           submodules: true
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Build with Docker (builder stage)
         run: |
           # Build the builder stage which contains the compiled app in /app/dist
