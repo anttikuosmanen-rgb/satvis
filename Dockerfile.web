@@ -1,0 +1,150 @@
+# Multi-stage Dockerfile for Satvis Web Application
+# This Dockerfile serves as the SINGLE SOURCE OF TRUTH for building Satvis
+#
+# Usage:
+#   1. GitHub Pages (staging):     Extract /app/dist from builder stage
+#   2. Static Server (production): Extract /app/dist from builder stage
+#   3. Kubernetes:                 Use full nginx image from production stage
+#
+# Build:
+#   docker build --target builder -f Dockerfile.web -t satvis-builder .     # Just build artifacts
+#   docker build -f Dockerfile.web -t satvis-web .                          # Full nginx image
+
+# ==============================================================================
+# Stage 1: Builder - Compiles the application
+# ==============================================================================
+FROM node:22-alpine AS builder
+
+# Set working directory
+WORKDIR /app
+
+# Accept build arguments for environment-specific configuration
+ARG SATVIS_BASE_PATH=""
+ENV SATVIS_BASE_PATH=${SATVIS_BASE_PATH}
+
+# Copy package files for dependency installation
+# Copying these first allows Docker to cache npm install layer
+COPY package*.json ./
+
+# Install all dependencies (including devDependencies needed for build)
+RUN npm clean-install
+
+# Copy all source code and configuration
+COPY . .
+
+# Build the application with Vite
+# The output will be in /app/dist as static files
+# This is the ONLY place where the build happens - used by all environments
+RUN npm run build
+
+# At this point, /app/dist contains:
+# - index.html, embedded.html, test.html
+# - Compiled JS bundles (vue-vendor.js, cesium-vendor.js, etc.)
+# - CSS files
+# - Static assets (fonts, images, icons)
+# - Cesium assets (workers, widgets, assets)
+# - Data files (TLE data, custom satellite data)
+
+# ==============================================================================
+# Stage 2: Production - nginx web server (FOR KUBERNETES ONLY)
+# ==============================================================================
+FROM nginx:alpine AS production
+
+LABEL maintainer="Satvis Team"
+LABEL description="Satvis Satellite Visualization - Web Server"
+
+# Copy built static files from builder stage
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Create directory for TLE data (will be mounted from PVC in Kubernetes)
+RUN mkdir -p /usr/share/nginx/html/data/tle/groups
+
+# Create custom nginx configuration
+# This configuration supports:
+# - SPA routing (fallback to index.html)
+# - Aggressive caching for static assets
+# - Appropriate cache headers for TLE data (24h refresh)
+# - Health check endpoint for Kubernetes probes
+# - gzip compression
+RUN cat > /etc/nginx/conf.d/default.conf <<'EOF'
+server {
+    listen 80;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Enable gzip compression for better performance
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_types text/plain text/css text/xml text/javascript
+               application/javascript application/xml+rss application/json
+               application/xml image/svg+xml;
+
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+
+    # Cache static assets aggressively (1 year)
+    # These files have content hashes in filenames, so they're immutable
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        access_log off;
+    }
+
+    # TLE data refreshes daily (24 hours)
+    # Updated by Kubernetes CronJob once per day
+    location /data/tle/ {
+        expires 24h;
+        add_header Cache-Control "public, must-revalidate";
+    }
+
+    # Cesium assets cached for 30 days
+    # These are large files that don't change often
+    location /cesium/ {
+        expires 30d;
+        add_header Cache-Control "public";
+        access_log off;
+    }
+
+    # SPA fallback - serve index.html for all routes not matching files
+    # This allows Vue Router to handle client-side routing
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Health check endpoint for Kubernetes liveness/readiness probes
+    # Returns 200 OK with "healthy" text
+    location /health {
+        access_log off;
+        return 200 "healthy\n";
+        add_header Content-Type text/plain;
+    }
+
+    # Nginx stub_status for basic metrics (optional, for monitoring)
+    location /nginx_status {
+        stub_status on;
+        access_log off;
+        # Restrict access in production by IP if needed
+        # allow 127.0.0.1;
+        # deny all;
+    }
+}
+EOF
+
+# Expose HTTP port
+EXPOSE 80
+
+# Health check for Docker/Kubernetes
+# Checks every 30 seconds, timeout after 3 seconds
+# Gives 5 seconds for container to start before first check
+# Retries 3 times before marking unhealthy
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget --quiet --tries=1 --spider http://localhost/health || exit 1
+
+# Start nginx in foreground (required for Docker)
+CMD ["nginx", "-g", "daemon off;"]

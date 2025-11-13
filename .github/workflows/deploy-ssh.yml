@@ -19,14 +19,32 @@ jobs:
         with:
           submodules: true
 
-      - name: Setup Node.js
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build with Docker (builder stage)
+        env:
+          SATVIS_BASE_PATH: ${{ secrets.SATVIS_BASE_PATH }}
+        run: |
+          # Build the builder stage which contains the compiled app in /app/dist
+          docker build --target builder -f Dockerfile.web -t satvis-builder:${{ github.sha }} \
+            --build-arg SATVIS_BASE_PATH="${SATVIS_BASE_PATH}" .
+
+      - name: Extract build artifacts from Docker
+        run: |
+          # Create a container from the builder image
+          docker create --name satvis-extract satvis-builder:${{ github.sha }}
+
+          # Copy the /app/dist directory to ./dist
+          docker cp satvis-extract:/app/dist ./dist
+
+          # Clean up the container
+          docker rm satvis-extract
+
+      - name: Setup Node.js (for TLE updates only)
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: "npm"
-
-      - name: Install dependencies
-        run: npm ci
 
       - name: Update TLE data
         run: npm run update-tle
@@ -37,10 +55,10 @@ jobs:
           sh update-prelaunch-data.sh
           mv prelaunch.txt groups/
 
-      - name: Build project
-        env:
-          SATVIS_BASE_PATH: ${{ secrets.SATVIS_BASE_PATH }}
-        run: npm run build
+      - name: Copy TLE data to dist
+        run: |
+          # Copy freshly updated TLE data into the dist folder
+          cp -r data/tle/groups dist/data/tle/
 
       - name: Setup SSH
         env:
