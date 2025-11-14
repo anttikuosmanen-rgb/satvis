@@ -14,7 +14,6 @@
 node_modules
 npm-debug.log
 yarn-error.log
-package-lock.json
 
 # Build outputs (will be generated during Docker build)
 dist
