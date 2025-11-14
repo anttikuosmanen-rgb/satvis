@@ -1,0 +1,70 @@
+# .dockerignore - Excludes files from Docker build context
+# This speeds up Docker builds and reduces image size
+
+# Git
+.git
+.gitignore
+.gitattributes
+.gitmodules
+
+# GitHub
+.github
+
+# Node
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Build outputs (will be generated during Docker build)
+dist
+coverage
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Documentation
+*.md
+!README.md
+DEPLOYMENT.md
+DEPLOYMENT-SETUP.md
+CLAUDE.md
+LICENSE
+
+# CI/CD (already in image via workflows)
+.github/workflows
+
+# Test files
+cypress
+*.test.js
+*.spec.js
+
+# Development files
+.eslintrc*
+.prettierrc*
+tsconfig.json
+
+# Kubernetes manifests (not needed in image)
+k8s/
+
+# Docker files (not needed in image)
+Dockerfile*
+.dockerignore
+docker-compose.yml
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Logs
+logs/
+*.log
+
+# OS files
+Thumbs.db
+.DS_Store
