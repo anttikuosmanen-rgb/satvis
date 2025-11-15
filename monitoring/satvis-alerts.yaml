@@ -1,0 +1,100 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: satvis-alerts
+  namespace: satvis
+  labels:
+    app: satvis
+    prometheus: kube-prometheus
+spec:
+  groups:
+  - name: satvis.rules
+    interval: 30s
+    rules:
+    # Alert when no SatVis web pods are running
+    - alert: SatVisNoPodsRunning
+      expr: kube_deployment_status_replicas_available{namespace="satvis",deployment="satvis-web"} == 0
+      for: 2m
+      labels:
+        severity: critical
+        component: web
+      annotations:
+        summary: "No SatVis web pods are running"
+        description: "The SatVis web deployment has 0 available replicas for more than 2 minutes."
+
+    # Alert when web pods are crash-looping
+    - alert: SatVisPodCrashLooping
+      expr: rate(kube_pod_container_status_restarts_total{namespace="satvis",pod=~"satvis-web-.*"}[15m]) > 0
+      for: 5m
+      labels:
+        severity: warning
+        component: web
+      annotations:
+        summary: "SatVis pod is crash-looping"
+        description: "Pod {{ $labels.pod }} is restarting frequently."
+
+    # Alert when HPA is at maximum replicas (scaling limit reached)
+    - alert: SatVisHPAMaxedOut
+      expr: kube_horizontalpodautoscaler_status_current_replicas{namespace="satvis",horizontalpodautoscaler="satvis-web-hpa"} >= kube_horizontalpodautoscaler_spec_max_replicas{namespace="satvis",horizontalpodautoscaler="satvis-web-hpa"}
+      for: 15m
+      labels:
+        severity: warning
+        component: autoscaling
+      annotations:
+        summary: "SatVis HPA has reached maximum replicas"
+        description: "The HPA has been at maximum replicas ({{ $value }}) for 15 minutes. Consider increasing max replicas or investigating high load."
+
+    # Alert when web pods are using >80% of memory limits
+    - alert: SatVisHighMemoryUsage
+      expr: container_memory_usage_bytes{namespace="satvis",pod=~"satvis-web-.*"} / container_spec_memory_limit_bytes{namespace="satvis",pod=~"satvis-web-.*"} > 0.8
+      for: 10m
+      labels:
+        severity: warning
+        component: web
+      annotations:
+        summary: "SatVis pod high memory usage"
+        description: "Pod {{ $labels.pod }} is using {{ $value | humanizePercentage }} of its memory limit."
+
+    # Alert when TLE CronJob hasn't run successfully in over 25 hours
+    - alert: SatVisTLEUpdateNotRunning
+      expr: time() - kube_job_status_completion_time{namespace="satvis",job_name=~"satvis-tle-updater-.*"} > 90000
+      for: 1h
+      labels:
+        severity: warning
+        component: tle-updater
+      annotations:
+        summary: "SatVis TLE update job hasn't run successfully"
+        description: "The TLE update CronJob hasn't completed successfully in over 25 hours. Daily updates may be failing."
+
+    # Alert when TLE CronJob fails
+    - alert: SatVisTLEUpdateFailed
+      expr: kube_job_status_failed{namespace="satvis",job_name=~"satvis-tle-updater-.*"} > 0
+      for: 5m
+      labels:
+        severity: warning
+        component: tle-updater
+      annotations:
+        summary: "SatVis TLE update job failed"
+        description: "The TLE update job {{ $labels.job_name }} has failed."
+
+    # Alert when PVC is running out of space
+    - alert: SatVisPVCAlmostFull
+      expr: kubelet_volume_stats_available_bytes{namespace="satvis",persistentvolumeclaim="satvis-tle-data"} / kubelet_volume_stats_capacity_bytes{namespace="satvis",persistentvolumeclaim="satvis-tle-data"} < 0.1
+      for: 10m
+      labels:
+        severity: warning
+        component: storage
+      annotations:
+        summary: "SatVis TLE data PVC is almost full"
+        description: "The TLE data persistent volume claim has less than 10% free space remaining."
+
+    # Alert when deployment is not at desired replica count
+    - alert: SatVisDeploymentReplicasMismatch
+      expr: kube_deployment_spec_replicas{namespace="satvis",deployment="satvis-web"} != kube_deployment_status_replicas_available{namespace="satvis",deployment="satvis-web"}
+      for: 10m
+      labels:
+        severity: warning
+        component: web
+      annotations:
+        summary: "SatVis deployment replicas mismatch"
+        description: "Deployment {{ $labels.deployment }} has {{ $value }} available replicas but wants {{ printf \"kube_deployment_spec_replicas{namespace='satvis',deployment='satvis-web'}\" | query | first | value }}."

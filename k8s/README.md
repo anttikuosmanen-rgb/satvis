@@ -18,6 +18,61 @@ This directory contains Kubernetes manifests for deploying the SatVis satellite 
 4. **Metrics Server** installed for HPA to work
 5. **GitHub Container Registry** images built and available
 
+## Oracle Cloud Infrastructure (OCI) Deployment
+
+### Quick Start with OCI Free Tier
+
+This project includes complete setup for deploying to Oracle Cloud's Always Free tier (4 ARM cores, 24GB RAM - $0/month forever).
+
+**Step-by-step guide**: See [`docs/OCI-SETUP.md`](../docs/OCI-SETUP.md) for detailed instructions.
+
+**Quick deployment using helper scripts**:
+
+1. **Set up OCI account and create ARM instances** (follow `docs/OCI-SETUP.md` steps 1-3)
+
+2. **Install K3s on master node**:
+   ```bash
+   # SSH to master node, then:
+   curl -O https://raw.githubusercontent.com/anttikuosmanen-rgb/satvis/master/scripts/install-k3s-master.sh
+   chmod +x install-k3s-master.sh
+   ./install-k3s-master.sh
+   ```
+   Save the join token and private IP shown at the end.
+
+3. **Install K3s on worker node(s)** (optional):
+   ```bash
+   # SSH to worker node, then:
+   curl -O https://raw.githubusercontent.com/anttikuosmanen-rgb/satvis/master/scripts/install-k3s-worker.sh
+   chmod +x install-k3s-worker.sh
+   ./install-k3s-worker.sh
+   # Enter master private IP and join token when prompted
+   ```
+
+4. **Configure kubectl on your local machine**:
+   ```bash
+   # On your local machine:
+   ./scripts/configure-kubectl.sh
+   # Enter master public IP when prompted
+   ```
+
+5. **Deploy SatVis**:
+   ```bash
+   # On your local machine, from repo root:
+   ./scripts/deploy-satvis.sh
+   # Follow prompts to configure domain or use IP-based access
+   ```
+
+6. **Access your deployment**:
+   - Visit `http://<master-public-ip>` or your configured domain
+   - Grafana monitoring: See `docs/MONITORING.md` for setup
+
+### OCI-Specific Notes
+
+- **No LoadBalancer**: OCI free tier doesn't include load balancers. Ingress will use NodePort (works automatically)
+- **Storage**: Uses OCI block storage (included in free tier, up to 200GB)
+- **Networking**: Security lists are configured during OCI setup (ports 22, 80, 443, 6443)
+- **Monitoring**: See `docs/MONITORING.md` for installing kube-prometheus-stack
+
 ## Quick Start
 
 ### 1. Build and Push Docker Images

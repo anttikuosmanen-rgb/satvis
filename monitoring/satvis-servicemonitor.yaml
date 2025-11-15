@@ -1,0 +1,32 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: satvis-web
+  namespace: satvis
+  labels:
+    app: satvis
+    component: web
+spec:
+  selector:
+    matchLabels:
+      app: satvis
+      component: web
+  endpoints:
+  - port: http
+    interval: 30s
+    path: /metrics  # nginx doesn't expose /metrics by default - this is for future nginx-prometheus-exporter
+    scheme: http
+
+---
+# Note: nginx doesn't export Prometheus metrics by default.
+# To enable metrics, you would need to:
+# 1. Add nginx-prometheus-exporter as a sidecar to the web pods
+# 2. Or use a different approach like monitoring via ingress-nginx controller
+
+# For now, we'll monitor the pods via kube-state-metrics which provides:
+# - Pod status (running, pending, failed)
+# - Container restarts
+# - Resource usage (CPU, memory)
+# - HPA metrics
+
+# Future enhancement: Add nginx-prometheus-exporter sidecar for detailed nginx metrics
