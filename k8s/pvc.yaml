@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: satvis-tle-data
+  namespace: satvis
+  labels:
+    app: satvis
+    component: storage
+spec:
+  accessModes:
+    - ReadWriteMany  # Multiple pods need read access, CronJob needs write access
+  resources:
+    requests:
+      storage: 1Gi  # TLE data is small, 1GB is more than sufficient
+  # storageClassName: ""  # Use default storage class or specify your cluster's storage class

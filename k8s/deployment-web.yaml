@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: satvis-web
+  namespace: satvis
+  labels:
+    app: satvis
+    component: web
+spec:
+  replicas: 2  # Start with 2 replicas, HPA will scale between 2-10
+  selector:
+    matchLabels:
+      app: satvis
+      component: web
+  template:
+    metadata:
+      labels:
+        app: satvis
+        component: web
+    spec:
+      containers:
+      - name: nginx
+        image: ghcr.io/anttikuosmanen-rgb/satvis/web:latest
+        imagePullPolicy: Always  # Always pull latest for rolling updates
+        ports:
+        - containerPort: 80
+          name: http
+          protocol: TCP
+
+        # Health checks
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+        # Resource limits and requests for HPA
+        resources:
+          requests:
+            cpu: 100m      # 0.1 CPU cores
+            memory: 128Mi  # 128 MB RAM
+          limits:
+            cpu: 500m      # Max 0.5 CPU cores
+            memory: 256Mi  # Max 256 MB RAM
+
+        # Mount TLE data volume (read-only for web pods)
+        volumeMounts:
+        - name: tle-data
+          mountPath: /usr/share/nginx/html/data/tle/groups
+          readOnly: true
+
+        # Mount nginx configuration
+        - name: nginx-config
+          mountPath: /etc/nginx/conf.d/default.conf
+          subPath: nginx.conf
+          readOnly: true
+
+      volumes:
+      - name: tle-data
+        persistentVolumeClaim:
+          claimName: satvis-tle-data
+      - name: nginx-config
+        configMap:
+          name: satvis-config
+          items:
+          - key: nginx.conf
+            path: nginx.conf
+
+      # Deployment strategy for zero-downtime updates
+      strategy:
+        type: RollingUpdate
+        rollingUpdate:
+          maxSurge: 1        # Create 1 extra pod during update
+          maxUnavailable: 0  # Keep all pods available during update

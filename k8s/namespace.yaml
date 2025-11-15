@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: satvis
+  labels:
+    name: satvis
+    app: satellite-visualization
