@@ -1,0 +1,41 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: satvis-ingress
+  namespace: satvis
+  labels:
+    app: satvis
+  annotations:
+    # Nginx ingress annotations (adjust based on your ingress controller)
+    nginx.ingress.kubernetes.io/rewrite-target: /
+
+    # SSL/TLS configuration (uncomment when cert-manager is set up)
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    # nginx.ingress.kubernetes.io/ssl-redirect: "true"
+
+    # Enable gzip compression
+    nginx.ingress.kubernetes.io/enable-cors: "false"
+
+    # Rate limiting (adjust as needed)
+    # nginx.ingress.kubernetes.io/limit-rps: "100"
+
+spec:
+  ingressClassName: nginx  # Use nginx ingress controller
+
+  # TLS configuration (uncomment and configure when ready)
+  # tls:
+  # - hosts:
+  #   - satvis.example.com  # Replace with your actual domain
+  #   secretName: satvis-tls-cert  # Will be created by cert-manager
+
+  rules:
+  - host: satvis.example.com  # Replace with your actual domain or remove for IP-based access
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: satvis-web
+            port:
+              number: 80

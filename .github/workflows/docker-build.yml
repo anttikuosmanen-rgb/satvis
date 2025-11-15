@@ -1,0 +1,84 @@
+name: Build and Push Docker Images
+
+on:
+  push:
+    branches:
+      - master  # Only build on master branch
+  workflow_dispatch:  # Allow manual triggering
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME_WEB: ${{ github.repository }}/web
+  IMAGE_NAME_TLE: ${{ github.repository }}/tle-updater
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write  # Required for pushing to ghcr.io
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Log in to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Extract metadata for web image
+        id: meta-web
+        run: |
+          # Generate tags: latest and git sha
+          echo "tags=ghcr.io/${{ env.IMAGE_NAME_WEB }}:latest,ghcr.io/${{ env.IMAGE_NAME_WEB }}:${{ github.sha }}" >> $GITHUB_OUTPUT
+          echo "created=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
+
+      - name: Extract metadata for TLE updater image
+        id: meta-tle
+        run: |
+          # Generate tags: latest and git sha
+          echo "tags=ghcr.io/${{ env.IMAGE_NAME_TLE }}:latest,ghcr.io/${{ env.IMAGE_NAME_TLE }}:${{ github.sha }}" >> $GITHUB_OUTPUT
+          echo "created=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
+
+      - name: Build web image
+        run: |
+          docker build -f Dockerfile.web -t ghcr.io/${{ env.IMAGE_NAME_WEB }}:latest \
+            -t ghcr.io/${{ env.IMAGE_NAME_WEB }}:${{ github.sha }} \
+            --label "org.opencontainers.image.source=${{ github.repositoryUrl }}" \
+            --label "org.opencontainers.image.created=${{ steps.meta-web.outputs.created }}" \
+            --label "org.opencontainers.image.revision=${{ github.sha }}" \
+            .
+
+      - name: Build TLE updater image
+        run: |
+          docker build -f Dockerfile.tle-updater -t ghcr.io/${{ env.IMAGE_NAME_TLE }}:latest \
+            -t ghcr.io/${{ env.IMAGE_NAME_TLE }}:${{ github.sha }} \
+            --label "org.opencontainers.image.source=${{ github.repositoryUrl }}" \
+            --label "org.opencontainers.image.created=${{ steps.meta-tle.outputs.created }}" \
+            --label "org.opencontainers.image.revision=${{ github.sha }}" \
+            .
+
+      - name: Push web image
+        run: |
+          docker push ghcr.io/${{ env.IMAGE_NAME_WEB }}:latest
+          docker push ghcr.io/${{ env.IMAGE_NAME_WEB }}:${{ github.sha }}
+
+      - name: Push TLE updater image
+        run: |
+          docker push ghcr.io/${{ env.IMAGE_NAME_TLE }}:latest
+          docker push ghcr.io/${{ env.IMAGE_NAME_TLE }}:${{ github.sha }}
+
+      - name: Image summary
+        run: |
+          echo "## ✅ Docker Images Built and Pushed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Web Application:**" >> $GITHUB_STEP_SUMMARY
+          echo "- \`ghcr.io/${{ env.IMAGE_NAME_WEB }}:latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`ghcr.io/${{ env.IMAGE_NAME_WEB }}:${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**TLE Updater:**" >> $GITHUB_STEP_SUMMARY
+          echo "- \`ghcr.io/${{ env.IMAGE_NAME_TLE }}:latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`ghcr.io/${{ env.IMAGE_NAME_TLE }}:${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY

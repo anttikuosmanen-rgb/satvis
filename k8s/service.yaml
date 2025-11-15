@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: satvis-web
+  namespace: satvis
+  labels:
+    app: satvis
+    component: web
+spec:
+  type: ClusterIP  # Internal service, exposed via Ingress
+  selector:
+    app: satvis
+    component: web
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+    protocol: TCP
+  sessionAffinity: None  # No session affinity needed for static content
