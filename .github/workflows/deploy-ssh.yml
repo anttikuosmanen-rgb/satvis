@@ -12,6 +12,14 @@ jobs:
     environment:
       name: production
     steps:
+      - name: Show runner IP address
+        run: |
+          echo "GitHub Runner Public IP Address:"
+          curl -s https://api.ipify.org
+          echo ""
+          echo "Alternate check:"
+          curl -s https://checkip.amazonaws.com
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
