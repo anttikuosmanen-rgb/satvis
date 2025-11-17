@@ -8,9 +8,7 @@ on:
 
 jobs:
   deploy:
-    # Use self-hosted runner with 'satvis-deploy' label
-    # Self-hosted runner can access the deployment server without firewall issues
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     environment:
       name: production
     steps:
