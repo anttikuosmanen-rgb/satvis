@@ -1,0 +1,65 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: satvis-tle-updater
+  namespace: satvis
+  labels:
+    app: satvis
+    component: tle-updater
+spec:
+  # Run daily at 3:00 AM UTC
+  schedule: "0 3 * * *"
+
+  # Keep history of last 3 successful and 1 failed jobs
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+
+  # Don't allow concurrent runs - if previous job is still running, skip this run
+  concurrencyPolicy: Forbid
+
+  jobTemplate:
+    metadata:
+      labels:
+        app: satvis
+        component: tle-updater
+    spec:
+      # Clean up completed jobs after 1 hour
+      ttlSecondsAfterFinished: 3600
+
+      template:
+        metadata:
+          labels:
+            app: satvis
+            component: tle-updater
+        spec:
+          restartPolicy: OnFailure
+
+          containers:
+          - name: tle-updater
+            image: ghcr.io/anttikuosmanen-rgb/satvis/tle-updater:latest
+            imagePullPolicy: Always
+
+            # Resource limits for the updater job
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                cpu: 500m
+                memory: 256Mi
+
+            # Mount the shared TLE data volume (read-write)
+            volumeMounts:
+            - name: tle-data
+              mountPath: /data/tle/groups
+              readOnly: false
+
+            # Environment variables if needed
+            env:
+            - name: TLE_UPDATE_DATE
+              value: "$(date -u +%Y-%m-%d)"
+
+          volumes:
+          - name: tle-data
+            persistentVolumeClaim:
+              claimName: satvis-tle-data

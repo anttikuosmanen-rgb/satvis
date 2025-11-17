@@ -1,0 +1,181 @@
+# Helm values for kube-prometheus-stack on OCI Free Tier ARM instances
+# Optimized for limited resources (2-4 ARM nodes with 6-12GB RAM each)
+
+# Prometheus configuration
+prometheus:
+  prometheusSpec:
+    # Resource limits for ARM instances
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+
+    # Storage configuration
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 10Gi  # Adjust based on OCI free tier block storage availability
+
+    # Retention period (reduce for smaller storage)
+    retention: 7d
+    retentionSize: "8GB"
+
+    # Service monitors - enable monitoring of SatVis
+    serviceMonitorSelectorNilUsesHelmValues: false
+
+    # Enable pod monitoring
+    podMonitorSelectorNilUsesHelmValues: false
+
+# Grafana configuration
+grafana:
+  enabled: true
+
+  # Admin credentials
+  adminPassword: "changeme"  # CHANGE THIS IN PRODUCTION!
+
+  # Resource limits for ARM
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # Persistence for dashboards
+  persistence:
+    enabled: true
+    size: 5Gi
+
+  # Ingress configuration
+  ingress:
+    enabled: false  # Will create separate ingress in grafana-ingress.yaml
+
+  # Pre-configured data sources
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+      - name: Prometheus
+        type: prometheus
+        url: http://kube-prometheus-stack-prometheus:9090
+        access: proxy
+        isDefault: true
+
+  # Dashboard providers
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+      - name: 'default'
+        orgId: 1
+        folder: ''
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards/default
+
+  # Pre-load custom dashboards
+  dashboards:
+    default:
+      satvis:
+        file: dashboards/satvis-dashboard.json
+
+# AlertManager configuration
+alertmanager:
+  enabled: true
+
+  # Resource limits for ARM
+  alertmanagerSpec:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+    # Storage for alerts
+    storage:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 2Gi
+
+# Node exporter - monitor node metrics
+nodeExporter:
+  enabled: true
+
+  # Resource limits
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# Kube-state-metrics - monitor K8s objects
+kube-state-metrics:
+  enabled: true
+
+  # Resource limits
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# Prometheus operator
+prometheusOperator:
+  # Resource limits
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# Additional scrape configs for custom metrics
+additionalScrapeConfigs: []
+
+# Default rules for Kubernetes monitoring
+defaultRules:
+  create: true
+  rules:
+    alertmanager: true
+    etcd: false  # K3s doesn't expose etcd metrics by default
+    configReloaders: true
+    general: true
+    k8s: true
+    kubeApiserver: true
+    kubeApiserverAvailability: true
+    kubeApiserverSlos: true
+    kubelet: true
+    kubeProxy: true
+    kubePrometheusGeneral: true
+    kubePrometheusNodeRecording: true
+    kubernetesApps: true
+    kubernetesResources: true
+    kubernetesStorage: true
+    kubernetesSystem: true
+    kubeScheduler: true
+    kubeStateMetrics: true
+    network: true
+    node: true
+    nodeExporterAlerting: true
+    nodeExporterRecording: true
+    prometheus: true
+    prometheusOperator: true

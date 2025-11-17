@@ -1,0 +1,57 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: satvis-web-hpa
+  namespace: satvis
+  labels:
+    app: satvis
+    component: web
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: satvis-web
+
+  # Scale between 2 and 10 replicas
+  minReplicas: 2
+  maxReplicas: 10
+
+  # Metrics to scale on
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70  # Scale up when average CPU > 70%
+
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80  # Scale up when average memory > 80%
+
+  # Scaling behavior configuration
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300  # Wait 5 minutes before scaling down
+      policies:
+      - type: Percent
+        value: 50  # Scale down max 50% of current replicas
+        periodSeconds: 60
+      - type: Pods
+        value: 1  # Or scale down max 1 pod
+        periodSeconds: 60
+      selectPolicy: Min  # Use the policy that scales down the least
+
+    scaleUp:
+      stabilizationWindowSeconds: 60  # Wait 1 minute before scaling up
+      policies:
+      - type: Percent
+        value: 100  # Scale up max 100% of current replicas (double)
+        periodSeconds: 60
+      - type: Pods
+        value: 2  # Or scale up max 2 pods
+        periodSeconds: 60
+      selectPolicy: Max  # Use the policy that scales up the most
