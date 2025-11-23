@@ -93,8 +93,4 @@ export default {
 
 <style>
 @import "vue-multiselect/dist/vue-multiselect.css";
-
-.multiselect__single {
-  display: none;
-}
 </style>

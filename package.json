@@ -17,6 +17,9 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:debug": "playwright test --debug",
     "update-tle": "node data/tle/update-tle.js",
     "update-custom-data": "npm run update-tle && bash data/custom/update-custom-data.sh"
   },
@@ -48,8 +51,10 @@
   "devDependencies": {
     "@eslint/js": "^9.38.0",
     "@pinia/testing": "^1.0.3",
+    "@playwright/test": "^1.56.1",
     "@vite-pwa/assets-generator": "^1.0.2",
     "@vitejs/plugin-vue": "^6.0.1",
+    "@vitest/coverage-v8": "^4.0.9",
     "@vitest/ui": "^4.0.8",
     "@vue/test-utils": "^2.4.6",
     "eslint": "^9.38.0",
@@ -58,6 +63,7 @@
     "eslint-plugin-vue": "^10.5.1",
     "globals": "^16.4.0",
     "happy-dom": "^20.0.10",
+    "msw": "^2.12.2",
     "prettier": "^3.6.2",
     "rimraf": "^6.0.1",
     "typescript": "^5.9.3",
