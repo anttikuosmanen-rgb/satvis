@@ -41,6 +41,10 @@ export class SatelliteManager {
     this.satellitesByName = new Map(); // O(1) lookup by name
     this.availableComponents = ["Point", "Label", "Orbit", "Orbit track", "Visibility area", "Height stick", "3D model"];
 
+    // Track whether initial TLE loading is complete
+    // This prevents showing satellites before TLE data is loaded (race condition fix)
+    this._initialTleLoadComplete = false;
+
     // Initialize loading spinner
     this.loadingSpinner = new LoadingSpinner(viewer);
 
@@ -424,7 +428,21 @@ export class SatelliteManager {
   addFromTleUrls(urlTagList) {
     // Initiate async download of all TLE URLs and update store afterwards
     const promises = urlTagList.map(([url, tags]) => this.addFromTleUrl(url, tags, false));
-    Promise.all(promises).then(() => this.updateStore());
+    return Promise.all(promises).then(() => {
+      this.updateStore();
+
+      // Mark initial TLE loading as complete and show satellites
+      // This ensures satellites from URL parameters are shown after TLE data loads
+      if (!this._initialTleLoadComplete) {
+        this._initialTleLoadComplete = true;
+        // Now show the satellites that were enabled via URL parameters
+        if (this.#enabledSatellites.size > 0 || this.#enabledTags.size > 0) {
+          this.showEnabledSatellites();
+          this.invalidateGroundStationCaches();
+          this.updatePassHighlightsForEnabledSatellites();
+        }
+      }
+    });
   }
 
   addFromTleUrl(url, tags, updateStore = true) {
@@ -574,13 +592,18 @@ export class SatelliteManager {
 
   set enabledSatellites(newSats) {
     this.#enabledSatellites = new Set(newSats);
-    this.showEnabledSatellites();
 
-    // Invalidate pass cache since visible satellites changed
-    this.invalidateGroundStationCaches();
+    // Only show satellites if initial TLE loading is complete
+    // This prevents race condition where URL parameters are applied before TLE data loads
+    if (this._initialTleLoadComplete) {
+      this.showEnabledSatellites();
 
-    // Calculate and display pass highlights if ground station exists
-    this.updatePassHighlightsForEnabledSatellites();
+      // Invalidate pass cache since visible satellites changed
+      this.invalidateGroundStationCaches();
+
+      // Calculate and display pass highlights if ground station exists
+      this.updatePassHighlightsForEnabledSatellites();
+    }
 
     const satStore = useSatStore();
     satStore.enabledSatellites = newSats;
