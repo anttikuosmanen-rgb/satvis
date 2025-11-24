@@ -1,0 +1,15 @@
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+
+echo "🧪 Running E2E tests before push..."
+
+# Run E2E tests with extended timeout and line reporter (no HTML report server)
+npm run test:e2e -- --timeout=120000 --reporter=line
+
+if [ $? -eq 0 ]; then
+  echo "✅ All E2E tests passed!"
+else
+  echo "❌ E2E tests failed. Push aborted."
+  echo "💡 Fix the failing tests or use --no-verify to skip this check."
+  exit 1
+fi
