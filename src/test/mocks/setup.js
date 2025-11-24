@@ -1,6 +1,6 @@
 import { beforeAll, afterEach, afterAll } from "vitest";
 import { setupServer } from "msw/node";
-import { handlers } from "./handlers.js";
+import { handlers } from "./handlers";
 
 /**
  * MSW server setup for integration tests

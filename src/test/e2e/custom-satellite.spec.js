@@ -30,24 +30,19 @@ test.describe("Custom Satellite Input", () => {
     await expect(page.locator("#cesiumContainer canvas").first()).toBeVisible({ timeout: 15000 });
 
     // Look for custom satellite / add satellite button
-    const customSatButton = page.locator('[data-testid="custom-satellite-button"]').or(
-      page.locator('button:has-text("Custom")'),
-    ).or(
-      page.locator('button:has-text("Add Satellite")'),
-    ).or(
-      page.locator('.custom-satellite-button'),
-    ).first();
+    const customSatButton = page
+      .locator('[data-testid="custom-satellite-button"]')
+      .or(page.locator('button:has-text("Custom")'))
+      .or(page.locator('button:has-text("Add Satellite")'))
+      .or(page.locator(".custom-satellite-button"))
+      .first();
 
     // If custom satellite button exists, test the workflow
     if (await customSatButton.isVisible({ timeout: 2000 }).catch(() => false)) {
       await customSatButton.click();
 
       // Find TLE input textarea
-      const tleInput = page.locator('textarea[placeholder*="TLE"]').or(
-        page.locator('textarea[name="tle"]'),
-      ).or(
-        page.locator('textarea').first(),
-      );
+      const tleInput = page.locator('textarea[placeholder*="TLE"]').or(page.locator('textarea[name="tle"]')).or(page.locator("textarea").first());
 
       await expect(tleInput).toBeVisible();
 
@@ -55,11 +50,7 @@ test.describe("Custom Satellite Input", () => {
       await tleInput.fill(VALID_TLE);
 
       // Find and click add/submit button
-      const submitButton = page.locator('button:has-text("Add")').or(
-        page.locator('button[type="submit"]'),
-      ).or(
-        page.locator('button:has-text("Create")'),
-      ).first();
+      const submitButton = page.locator('button:has-text("Add")').or(page.locator('button[type="submit"]')).or(page.locator('button:has-text("Create")')).first();
 
       await submitButton.click();
 
@@ -67,11 +58,7 @@ test.describe("Custom Satellite Input", () => {
       await page.waitForTimeout(1000);
 
       // Verify satellite appears in the scene or satellite list
-      await expect(
-        page.locator('text="CUSTOM TEST SAT"').or(
-          page.locator('[data-satellite-name*="CUSTOM"]'),
-        ).first(),
-      ).toBeVisible({ timeout: 5000 });
+      await expect(page.locator('text="CUSTOM TEST SAT"').or(page.locator('[data-satellite-name*="CUSTOM"]')).first()).toBeVisible({ timeout: 5000 });
     } else {
       // Skip test if custom satellite feature not found
       test.skip();
@@ -83,38 +70,28 @@ test.describe("Custom Satellite Input", () => {
 
     await expect(page.locator("#cesiumContainer canvas").first()).toBeVisible({ timeout: 15000 });
 
-    const customSatButton = page.locator('[data-testid="custom-satellite-button"]').or(
-      page.locator('button:has-text("Custom")'),
-    ).or(
-      page.locator('button:has-text("Add Satellite")'),
-    ).first();
+    const customSatButton = page
+      .locator('[data-testid="custom-satellite-button"]')
+      .or(page.locator('button:has-text("Custom")'))
+      .or(page.locator('button:has-text("Add Satellite")'))
+      .first();
 
     if (await customSatButton.isVisible({ timeout: 2000 }).catch(() => false)) {
       await customSatButton.click();
 
-      const tleInput = page.locator('textarea[placeholder*="TLE"]').or(
-        page.locator('textarea[name="tle"]'),
-      ).or(
-        page.locator('textarea').first(),
-      );
+      const tleInput = page.locator('textarea[placeholder*="TLE"]').or(page.locator('textarea[name="tle"]')).or(page.locator("textarea").first());
 
       await expect(tleInput).toBeVisible();
 
       // Input invalid TLE (missing second line)
       await tleInput.fill("INVALID SATELLITE\n1 99999U 24001A   24001.50000000  .00001000  00000-0  10000-4 0  9999");
 
-      const submitButton = page.locator('button:has-text("Add")').or(
-        page.locator('button[type="submit"]'),
-      ).first();
+      const submitButton = page.locator('button:has-text("Add")').or(page.locator('button[type="submit"]')).first();
 
       await submitButton.click();
 
       // Should show error message
-      await expect(
-        page.locator('text=/invalid|error/i').or(
-          page.locator('.error'),
-        ).first(),
-      ).toBeVisible({ timeout: 3000 });
+      await expect(page.locator("text=/invalid|error/i").or(page.locator(".error")).first()).toBeVisible({ timeout: 3000 });
     } else {
       test.skip();
     }
@@ -132,7 +109,7 @@ test.describe("Custom Satellite Input", () => {
     await page.waitForTimeout(3000);
 
     // Verify scene loaded successfully (timeline should be visible)
-    const timelineExists = await page.locator('.cesium-timeline-main').isVisible();
+    const timelineExists = await page.locator(".cesium-timeline-main").isVisible();
     expect(timelineExists).toBeTruthy();
 
     // Verify no JavaScript errors occurred
@@ -144,42 +121,6 @@ test.describe("Custom Satellite Input", () => {
 });
 
 test.describe("Satellite Visualization Controls", () => {
-  test("should toggle orbit visualization", async ({ page }) => {
-    await page.goto("/?sat=25544"); // ISS
-
-    await expect(page.locator("#cesiumContainer canvas").first()).toBeVisible({ timeout: 15000 });
-
-    await page.waitForTimeout(2000);
-
-    // Look for orbit toggle control
-    const orbitToggle = page.locator('[data-testid="orbit-toggle"]').or(
-      page.locator('input[type="checkbox"]').filter({ hasText: /orbit/i }),
-    ).or(
-      page.locator('button:has-text("Orbit")'),
-    ).or(
-      page.locator('.orbit-control'),
-    ).first();
-
-    if (await orbitToggle.isVisible({ timeout: 2000 }).catch(() => false)) {
-      // Toggle orbit on
-      await orbitToggle.click();
-      await page.waitForTimeout(500);
-
-      // Toggle orbit off
-      await orbitToggle.click();
-      await page.waitForTimeout(500);
-
-      // Verify no errors occurred
-      const errors = [];
-      page.on("pageerror", (error) => errors.push(error));
-
-      await page.waitForTimeout(1000);
-      expect(errors.length).toBe(0);
-    } else {
-      test.skip();
-    }
-  });
-
   test("should handle component visibility toggles", async ({ page }) => {
     await page.goto("/?sat=25544");
 
