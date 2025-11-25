@@ -191,8 +191,20 @@ test.describe("Ground Station", () => {
 
     await page.waitForTimeout(2000); // Additional buffer for satellite/GS setup
 
-    // Trigger timeline change to force pass calculation
-    // (ground station may be set before satellites are fully active)
+    // Set simulation time to December 8, 2018 (ISS TLE epoch)
+    // This ensures ISS has fresh TLE data and passes can be calculated
+    await page.evaluate(() => {
+      if (window.cc?.viewer?.clock && typeof window.Cesium !== "undefined") {
+        const testDate = new Date("2018-12-08T12:00:00Z");
+        const julianDate = window.Cesium.JulianDate.fromDate(testDate);
+        window.cc.viewer.clock.currentTime = julianDate;
+        window.cc.viewer.clock.shouldAnimate = false; // Pause at this time
+      }
+    });
+
+    await page.waitForTimeout(1000);
+
+    // Trigger timeline change to force pass calculation with new time
     await page.evaluate(() => {
       if (window.cc?.viewer?.timeline) {
         window.cc.viewer.timeline.updateFromClock();
@@ -285,16 +297,14 @@ test.describe("Ground Station", () => {
 
       console.log(`Pass data (from state): ${JSON.stringify(passData, null, 2)}`);
 
-      // Pass calculation depends on TLE epoch freshness, current time, and orbital mechanics
-      // Verify ground station is available (which enables pass calculation)
+      // Verify ground station is available and passes are calculated
       expect(passData.gsAvailable).toBe(true);
       expect(passData.gsCount).toBe(1);
 
-      // Passes may or may not be found depending on orbital timing
-      // Log for debugging but don't fail test if no passes in current window
-      if (passData.count === 0) {
-        console.log("Note: No passes found in current time window (this is OK - depends on orbital mechanics)");
-      }
+      // With simulation time set to TLE epoch (Dec 2018), passes MUST be found
+      // If this fails, there's an issue with pass calculation
+      expect(passData.found).toBe(true);
+      expect(passData.count).toBeGreaterThan(0);
     }
   });
 
@@ -377,6 +387,18 @@ test.describe("Ground Station", () => {
 
     await page.waitForTimeout(2000); // Additional buffer
 
+    // Set simulation time to December 8, 2018 (ISS TLE epoch) to ensure passes exist
+    await page.evaluate(() => {
+      if (window.cc?.viewer?.clock && typeof window.Cesium !== "undefined") {
+        const testDate = new Date("2018-12-08T12:00:00Z");
+        const julianDate = window.Cesium.JulianDate.fromDate(testDate);
+        window.cc.viewer.clock.currentTime = julianDate;
+        window.cc.viewer.clock.shouldAnimate = false;
+      }
+    });
+
+    await page.waitForTimeout(1000);
+
     // Trigger timeline change to force pass calculation
     await page.evaluate(() => {
       if (window.cc?.viewer?.timeline) {
@@ -411,11 +433,8 @@ test.describe("Ground Station", () => {
       };
     });
 
-    if (!firstPassTime) {
-      console.log("No passes found, skipping time change test");
-      test.skip();
-      return;
-    }
+    // With simulation time set to TLE epoch, passes MUST exist
+    expect(firstPassTime).not.toBeNull();
 
     console.log(`First pass: ${JSON.stringify(firstPassTime)}`);
 
@@ -495,6 +514,18 @@ test.describe("Ground Station", () => {
 
     await page.waitForTimeout(2000);
 
+    // Set simulation time to December 8, 2018 (ISS TLE epoch) to ensure passes exist
+    await page.evaluate(() => {
+      if (window.cc?.viewer?.clock && typeof window.Cesium !== "undefined") {
+        const testDate = new Date("2018-12-08T12:00:00Z");
+        const julianDate = window.Cesium.JulianDate.fromDate(testDate);
+        window.cc.viewer.clock.currentTime = julianDate;
+        window.cc.viewer.clock.shouldAnimate = false;
+      }
+    });
+
+    await page.waitForTimeout(1000);
+
     // Trigger timeline change to force pass calculation
     await page.evaluate(() => {
       if (window.cc?.viewer?.timeline) {
@@ -552,11 +583,9 @@ test.describe("Ground Station", () => {
 
     console.log(`Pass and highlight data: ${JSON.stringify(passAndHighlightData, null, 2)}`);
 
-    if (!passAndHighlightData.found || !passAndHighlightData.firstPass) {
-      console.log("No passes or highlights found, skipping timeline skip test");
-      test.skip();
-      return;
-    }
+    // With simulation time set to TLE epoch, passes and highlights MUST exist
+    expect(passAndHighlightData.found).toBe(true);
+    expect(passAndHighlightData.firstPass).not.toBeNull();
 
     // Get initial clock time
     const initialTime = await page.evaluate(() => {
