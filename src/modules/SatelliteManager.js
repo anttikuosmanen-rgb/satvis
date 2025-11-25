@@ -194,9 +194,13 @@ export class SatelliteManager {
   }
 
   setupPassHighlightUpdateListener() {
-    if (!this.viewer.clock) {
+    if (!this.viewer.clock?.currentTime?.clone) {
       return;
     }
+
+    // Track last clock time to detect significant jumps (not just normal animation)
+    let lastClockTime = this.viewer.clock.currentTime.clone();
+    let lastCheckTime = Date.now();
 
     // Debounced update function
     const schedulePassHighlightUpdate = () => {
@@ -213,6 +217,31 @@ export class SatelliteManager {
         this.updatePassHighlightsAfterTimelineChange();
       }, 3000);
     };
+
+    // Listen for clock tick to detect programmatic time changes (not just animation)
+    // Check every second to avoid performance impact
+    this.viewer.clock.onTick.addEventListener(() => {
+      const now = Date.now();
+      // Only check once per second
+      if (now - lastCheckTime < 1000) {
+        return;
+      }
+      lastCheckTime = now;
+
+      const currentTime = this.viewer.clock.currentTime;
+      const timeDiffSeconds = JulianDate.secondsDifference(currentTime, lastClockTime);
+
+      // If time jumped by more than 10 minutes (not normal animation), recalculate passes
+      // This detects programmatic time changes, realtime button clicks, etc.
+      if (Math.abs(timeDiffSeconds) > 600) {
+        this.#debugLog(`[setupPassHighlightUpdateListener] Large time jump detected: ${timeDiffSeconds}s, scheduling update`);
+        lastClockTime = currentTime.clone();
+        schedulePassHighlightUpdate();
+      } else if (Math.abs(timeDiffSeconds) > 1) {
+        // Update tracking time for normal animation
+        lastClockTime = currentTime.clone();
+      }
+    });
 
     // Listen to timeline widget events for interactions
     if (this.viewer.timeline && this.viewer.timeline.container) {
