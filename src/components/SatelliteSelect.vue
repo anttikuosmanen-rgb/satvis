@@ -17,7 +17,7 @@
         :close-on-select="false"
         :limit="0"
         :limit-text="(count) => `${count} satellite${count > 1 ? 's' : ''} selected`"
-        :options-limit="100000"
+        :options-limit="100"
       >
         <template #noResult> No matching satellites </template>
       </vue-multiselect>
