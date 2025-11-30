@@ -142,9 +142,13 @@ test.describe("Ground Station", () => {
     console.log("Pick mode enabled, clicking on globe...");
 
     // Get Cesium canvas for picking a location on the map
-    const cesiumCanvas = page.locator("#cesiumContainer canvas").first();
-    // Use timeout because Cesium canvas is continuously animating and never "stable"
-    const canvasBox = await cesiumCanvas.boundingBox({ timeout: 5000 });
+    // Use evaluate() to bypass Playwright's stability checks on animating canvas
+    const canvasBox = await page.evaluate(() => {
+      const canvas = document.querySelector("#cesiumContainer canvas");
+      if (!canvas) return null;
+      const rect = canvas.getBoundingClientRect();
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    });
 
     expect(canvasBox).not.toBeNull();
 
@@ -551,7 +555,12 @@ test.describe("Ground Station", () => {
     // This tests timeline interaction
     const timeline = page.locator(".cesium-timeline-main");
     if (await timeline.isVisible()) {
-      const box = await timeline.boundingBox({ timeout: 5000 });
+      const box = await page.evaluate(() => {
+        const el = document.querySelector(".cesium-timeline-main");
+        if (!el) return null;
+        const rect = el.getBoundingClientRect();
+        return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+      });
       if (box) {
         // Click near the start of timeline (where first pass might be)
         await page.mouse.click(box.x + 100, box.y + box.height / 2);
@@ -789,8 +798,12 @@ test.describe("Ground Station", () => {
     expect(stateAndHighlight.highlightClick.success).toBe(true);
 
     // Click on the timeline at the highlight location
-    const timeline = page.locator(".cesium-timeline-main");
-    const timelineBox = await timeline.boundingBox({ timeout: 5000 });
+    const timelineBox = await page.evaluate(() => {
+      const el = document.querySelector(".cesium-timeline-main");
+      if (!el) return null;
+      const rect = el.getBoundingClientRect();
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    });
 
     if (timelineBox) {
       // Calculate pixel position based on highlight ratio
@@ -1158,7 +1171,12 @@ test.describe("Ground Station", () => {
     const timelineContainer = page.locator(".cesium-viewer-timelineContainer");
     await expect(timelineContainer).toBeVisible();
 
-    const timelineBoundingBox = await timelineContainer.boundingBox({ timeout: 5000 });
+    const timelineBoundingBox = await page.evaluate(() => {
+      const el = document.querySelector(".cesium-viewer-timelineContainer");
+      if (!el) return null;
+      const rect = el.getBoundingClientRect();
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    });
     expect(timelineBoundingBox).not.toBeNull();
 
     const clickX = timelineBoundingBox.x + timelineBoundingBox.width * futureClickData.futureRatio;

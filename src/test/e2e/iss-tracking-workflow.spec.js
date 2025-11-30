@@ -200,7 +200,12 @@ test.describe("ISS Tracking Workflow", () => {
     // Try to interact with timeline (scrubbing)
     const timelineBar = timeline.locator(".cesium-timeline-bar");
     if (await timelineBar.isVisible()) {
-      const box = await timelineBar.boundingBox({ timeout: 5000 });
+      const box = await page.evaluate(() => {
+        const el = document.querySelector(".cesium-timeline-bar");
+        if (!el) return null;
+        const rect = el.getBoundingClientRect();
+        return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+      });
       if (box) {
         // Click middle of timeline
         await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
@@ -223,8 +228,12 @@ test.describe("ISS Tracking Workflow", () => {
     await expect(page.locator("#cesiumContainer canvas").first()).toBeVisible({ timeout: 15000 });
 
     // Verify canvas is responsive
-    const canvas = page.locator("#cesiumContainer canvas").first();
-    const box = await canvas.boundingBox({ timeout: 5000 });
+    const box = await page.evaluate(() => {
+      const canvas = document.querySelector("#cesiumContainer canvas");
+      if (!canvas) return null;
+      const rect = canvas.getBoundingClientRect();
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    });
 
     expect(box).not.toBeNull();
     if (box) {
