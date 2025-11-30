@@ -143,7 +143,8 @@ test.describe("Ground Station", () => {
 
     // Get Cesium canvas for picking a location on the map
     const cesiumCanvas = page.locator("#cesiumContainer canvas").first();
-    const canvasBox = await cesiumCanvas.boundingBox();
+    // Use timeout because Cesium canvas is continuously animating and never "stable"
+    const canvasBox = await cesiumCanvas.boundingBox({ timeout: 5000 });
 
     expect(canvasBox).not.toBeNull();
 
@@ -550,7 +551,7 @@ test.describe("Ground Station", () => {
     // This tests timeline interaction
     const timeline = page.locator(".cesium-timeline-main");
     if (await timeline.isVisible()) {
-      const box = await timeline.boundingBox();
+      const box = await timeline.boundingBox({ timeout: 5000 });
       if (box) {
         // Click near the start of timeline (where first pass might be)
         await page.mouse.click(box.x + 100, box.y + box.height / 2);
@@ -789,7 +790,7 @@ test.describe("Ground Station", () => {
 
     // Click on the timeline at the highlight location
     const timeline = page.locator(".cesium-timeline-main");
-    const timelineBox = await timeline.boundingBox();
+    const timelineBox = await timeline.boundingBox({ timeout: 5000 });
 
     if (timelineBox) {
       // Calculate pixel position based on highlight ratio
@@ -1157,7 +1158,7 @@ test.describe("Ground Station", () => {
     const timelineContainer = page.locator(".cesium-viewer-timelineContainer");
     await expect(timelineContainer).toBeVisible();
 
-    const timelineBoundingBox = await timelineContainer.boundingBox();
+    const timelineBoundingBox = await timelineContainer.boundingBox({ timeout: 5000 });
     expect(timelineBoundingBox).not.toBeNull();
 
     const clickX = timelineBoundingBox.x + timelineBoundingBox.width * futureClickData.futureRatio;
