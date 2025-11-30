@@ -247,10 +247,17 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       }
     });
 
-    // Add clock listener for Smart Path updates on significant time changes
-    this.eventListeners.clockTick = this.viewer.clock.onTick.addEventListener(() => {
-      this.checkSmartPathUpdate();
-    });
+    // Listen for ClockMonitor time jump events to update Smart Path
+    this.handleClockTimeJump = (event) => {
+      const { jumpSeconds } = event.detail;
+      // Only regenerate if Smart Path is active and jump is significant (>80 minutes)
+      if (this.individualOrbitMode === "Smart Path" && Math.abs(jumpSeconds) > 4800) {
+        this.regenerateSmartPath();
+      }
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("cesium:clockTimeJumped", this.handleClockTimeJump);
+    }
   }
 
   async handleGroundStationHighlights(entity) {
@@ -301,6 +308,11 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     this.eventListeners.sampledPosition();
     this.eventListeners.selectedEntity();
     this.eventListeners.trackedEntity();
+
+    // Remove ClockMonitor listener
+    if (typeof window !== "undefined" && this.handleClockTimeJump) {
+      window.removeEventListener("cesium:clockTimeJumped", this.handleClockTimeJump);
+    }
 
     // Reset individual orbit mode when satellite is fully hidden
     this.individualOrbitMode = null;
@@ -1046,43 +1058,6 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     // Request render to update the view
     if (this.viewer && this.viewer.scene) {
       this.viewer.scene.requestRender();
-    }
-  }
-
-  /**
-   * Check if smart path needs to be updated due to significant time change
-   * Regenerates the smart path if:
-   * - Time has changed by more than 80 minutes (4800 seconds)
-   * - Path was created but time metadata is missing
-   * Uses throttling to avoid excessive checks (max once per second)
-   */
-  checkSmartPathUpdate() {
-    // Only update if Smart Path mode is currently active
-    if (this.individualOrbitMode !== "Smart Path") {
-      return;
-    }
-
-    // Check if smart path cache exists
-    if (!this._smartPathCache || !this._smartPathCache.time) {
-      return;
-    }
-
-    // Throttle updates - only check once per second
-    const currentTime = this.viewer.clock.currentTime;
-    const now = Date.now();
-
-    if (this._lastUpdateCheck && now - this._lastUpdateCheck < 1000) {
-      return;
-    }
-    this._lastUpdateCheck = now;
-
-    // Calculate time difference in seconds
-    const timeDiffSeconds = Math.abs(JulianDate.secondsDifference(currentTime, this._smartPathCache.time));
-
-    // Regenerate if time difference is greater than 80 minutes (4800 seconds)
-    if (timeDiffSeconds > 4800) {
-      // Regenerate Smart Path without changing toggle state
-      this.regenerateSmartPath();
     }
   }
 

@@ -12,9 +12,10 @@ spec:
     kind: Deployment
     name: satvis-web
 
-  # Scale between 2 and 10 replicas
+  # Scale between 2 and 4 replicas (limited by 2x1 OCPU nodes)
+  # With 1 OCPU per node, max ~4 replicas @ 100m CPU each
   minReplicas: 2
-  maxReplicas: 10
+  maxReplicas: 4
 
   # Metrics to scale on
   metrics:

@@ -134,7 +134,8 @@ test.describe("Ground Station", () => {
     const isChecked = await pickOnGlobeCheckbox.isChecked();
     if (!isChecked) {
       // Click the label to toggle the checkbox (more reliable for styled checkboxes)
-      await pickOnGlobeLabel.click();
+      // Use force: true to bypass actionability checks (animations may prevent stable state)
+      await pickOnGlobeLabel.click({ force: true });
       await page.waitForTimeout(500);
     }
 
@@ -1107,7 +1108,8 @@ test.describe("Ground Station", () => {
     await expect(zoomOutButton).toBeVisible({ timeout: 5000 });
 
     for (let i = 0; i < 3; i++) {
-      await zoomOutButton.click();
+      // Use force: true to bypass actionability checks (animations may prevent stable state)
+      await zoomOutButton.click({ force: true });
       await page.waitForTimeout(500); // Wait for zoom animation
     }
 

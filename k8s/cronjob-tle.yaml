@@ -54,10 +54,10 @@ spec:
               mountPath: /data/tle/groups
               readOnly: false
 
-            # Environment variables if needed
+            # Environment variables
             env:
-            - name: TLE_UPDATE_DATE
-              value: "$(date -u +%Y-%m-%d)"
+            - name: TZ
+              value: "UTC"  # Ensure UTC timezone for consistency
 
           volumes:
           - name: tle-data

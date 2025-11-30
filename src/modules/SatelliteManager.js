@@ -13,7 +13,6 @@ import {
   ScreenSpaceEventType,
   VerticalOrigin,
 } from "@cesium/engine";
-import dayjs from "dayjs";
 import { useSatStore } from "../stores/sat";
 import { SatelliteComponentCollection } from "./SatelliteComponentCollection";
 import { GroundStationEntity } from "./GroundStationEntity";
@@ -194,14 +193,6 @@ export class SatelliteManager {
   }
 
   setupPassHighlightUpdateListener() {
-    if (!this.viewer.clock?.currentTime?.clone) {
-      return;
-    }
-
-    // Track last clock time to detect significant jumps (not just normal animation)
-    let lastClockTime = this.viewer.clock.currentTime.clone();
-    let lastCheckTime = Date.now();
-
     // Debounced update function
     const schedulePassHighlightUpdate = () => {
       // Clear existing debounce timer
@@ -218,30 +209,15 @@ export class SatelliteManager {
       }, 3000);
     };
 
-    // Listen for clock tick to detect programmatic time changes (not just animation)
-    // Check every second to avoid performance impact
-    this.viewer.clock.onTick.addEventListener(() => {
-      const now = Date.now();
-      // Only check once per second
-      if (now - lastCheckTime < 1000) {
-        return;
-      }
-      lastCheckTime = now;
-
-      const currentTime = this.viewer.clock.currentTime;
-      const timeDiffSeconds = JulianDate.secondsDifference(currentTime, lastClockTime);
-
-      // If time jumped by more than 10 minutes (not normal animation), recalculate passes
-      // This detects programmatic time changes, realtime button clicks, etc.
-      if (Math.abs(timeDiffSeconds) > 600) {
-        this.#debugLog(`[setupPassHighlightUpdateListener] Large time jump detected: ${timeDiffSeconds}s, scheduling update`);
-        lastClockTime = currentTime.clone();
+    // Listen for ClockMonitor time jump events
+    if (typeof window !== "undefined") {
+      window.addEventListener("cesium:clockTimeJumped", (event) => {
+        const { jumpSeconds } = event.detail;
+        console.log(`[SatelliteManager] Received ClockMonitor event: ${jumpSeconds.toFixed(0)}s jump, scheduling update`);
+        this.#debugLog(`[ClockMonitor] Time jump detected: ${jumpSeconds.toFixed(0)}s, scheduling update`);
         schedulePassHighlightUpdate();
-      } else if (Math.abs(timeDiffSeconds) > 1) {
-        // Update tracking time for normal animation
-        lastClockTime = currentTime.clone();
-      }
-    });
+      });
+    }
 
     // Listen to timeline widget events for interactions
     if (this.viewer.timeline && this.viewer.timeline.container) {
@@ -372,13 +348,41 @@ export class SatelliteManager {
             showOnlyLitPasses: satStore.showOnlyLitPasses,
           };
 
+          // Get timeline window bounds for filtering passes
+          const timelineStart = JulianDate.toDate(this.viewer.clock.startTime);
+          const timelineStop = JulianDate.toDate(this.viewer.clock.stopTime);
+          const timelineStartMs = timelineStart.getTime();
+          const timelineStopMs = timelineStop.getTime();
+          const currentTimeMs = currentJsDate.getTime();
+
           // Filter all passes in a batched operation
           let totalPassesAdded = 0;
+          const maxTotalHighlights = 100; // Maximum highlights across all satellites
+
           satellitesWithPasses.forEach(({ name, passes }) => {
+            // Stop if we've already added 100 highlights total
+            if (totalPassesAdded >= maxTotalHighlights) {
+              this.#debugLog(`[updatePassHighlightsAfterTimelineChange] Reached maximum ${maxTotalHighlights} highlights, skipping ${name}`);
+              return;
+            }
+
             this.#debugLog(`[updatePassHighlightsAfterTimelineChange] ${name}: ${passes.length} total passes`);
 
-            // Manual filtering to avoid repeated store access in filterAndSortPasses
-            let filtered = passes.filter((pass) => dayjs(pass.start).diff(currentJsDate, "hours") < 48);
+            // Filter passes to those visible in the timeline window
+            let filtered = passes.filter((pass) => {
+              const passStartMs = new Date(pass.start).getTime();
+              const passEndMs = new Date(pass.end).getTime();
+              return passEndMs >= timelineStartMs && passStartMs <= timelineStopMs;
+            });
+
+            // Sort by distance from current time (nearest first)
+            filtered = filtered.sort((a, b) => {
+              const aMidMs = (new Date(a.start).getTime() + new Date(a.end).getTime()) / 2;
+              const bMidMs = (new Date(b.start).getTime() + new Date(b.end).getTime()) / 2;
+              const aDistance = Math.abs(aMidMs - currentTimeMs);
+              const bDistance = Math.abs(bMidMs - currentTimeMs);
+              return aDistance - bDistance;
+            });
 
             // Filter epoch passes
             filtered = filtered.filter((pass) => {
@@ -404,9 +408,6 @@ export class SatelliteManager {
                 return litAtStart || litAtEnd || hasTransitions;
               });
             }
-
-            // Sort by time
-            filtered = filtered.sort((a, b) => a.start - b.start);
 
             this.#debugLog(`[updatePassHighlightsAfterTimelineChange] ${name}: ${filtered.length} passes after filtering`);
 
@@ -455,20 +456,26 @@ export class SatelliteManager {
   }
 
   addFromTleUrls(urlTagList) {
+    console.log("[addFromTleUrls] Starting TLE download, URLs:", urlTagList.length);
     // Initiate async download of all TLE URLs and update store afterwards
     const promises = urlTagList.map(([url, tags]) => this.addFromTleUrl(url, tags, false));
     return Promise.all(promises).then(() => {
+      console.log("[addFromTleUrls] All TLEs downloaded, updating store");
       this.updateStore();
 
       // Mark initial TLE loading as complete and show satellites
       // This ensures satellites from URL parameters are shown after TLE data loads
       if (!this._initialTleLoadComplete) {
+        console.log("[addFromTleUrls] Marking initial TLE load complete");
         this._initialTleLoadComplete = true;
+        console.log("[addFromTleUrls] Enabled satellites:", this.#enabledSatellites.size, "Enabled tags:", this.#enabledTags.size);
         // Now show the satellites that were enabled via URL parameters
         if (this.#enabledSatellites.size > 0 || this.#enabledTags.size > 0) {
-          this.showEnabledSatellites();
+          console.log("[addFromTleUrls] Showing enabled satellites (passes will be calculated when showing completes)");
           this.invalidateGroundStationCaches();
-          this.updatePassHighlightsForEnabledSatellites();
+          this.showEnabledSatellites();
+          // Note: updatePassHighlightsForEnabledSatellites() is called automatically
+          // when showEnabledSatellites() completes (after batch processing)
         }
       }
     });
@@ -655,6 +662,12 @@ export class SatelliteManager {
   satIsActive(sat) {
     const enabledByTag = sat.props.tags.some((tag) => this.#enabledTags.has(tag));
     const enabledByName = this.#enabledSatellites.has(sat.props.name);
+
+    // Debug logging for first few satellites
+    if (this.satellites.indexOf(sat) < 3) {
+      console.log(`[satIsActive] Satellite: ${sat.props.name}, tags: [${sat.props.tags.join(", ")}], enabledByTag: ${enabledByTag}, enabledByName: ${enabledByName}`);
+    }
+
     return enabledByTag || enabledByName;
   }
 
@@ -663,6 +676,10 @@ export class SatelliteManager {
   }
 
   showEnabledSatellites() {
+    console.log("[showEnabledSatellites] Called, total satellites:", this.satellites.length);
+    console.log("[showEnabledSatellites] Enabled tags:", Array.from(this.#enabledTags));
+    console.log("[showEnabledSatellites] Enabled satellite names:", Array.from(this.#enabledSatellites));
+
     // Set flag to prevent pass updates during satellite operations
     this._isUpdatingSatellites = true;
 
@@ -673,10 +690,14 @@ export class SatelliteManager {
     this.satellites.forEach((sat) => {
       if (this.satIsActive(sat)) {
         toShow.push(sat);
-      } else {
+      } else if (sat.created) {
+        // Only hide satellites that have components (were previously shown)
+        // Satellites that were never shown don't need to be hidden
         toHide.push(sat);
       }
     });
+
+    console.log("[showEnabledSatellites] Satellites to show:", toShow.length, "to hide:", toHide.length);
 
     // Auto-disable components based on active satellite count BEFORE showing
     // This ensures components are correctly disabled before satellites are shown
@@ -734,18 +755,28 @@ export class SatelliteManager {
     const processBatch = (list, operation, index = 0) => {
       if (index >= list.length) {
         // Done with this operation
+        console.log(`[showEnabledSatellites] Batch ${operation} complete, index: ${index}, list length: ${list.length}`);
         if (operation === "show" && toHide.length > 0) {
           // Start hiding after showing is complete
+          console.log(`[showEnabledSatellites] Starting hide operation for ${toHide.length} satellites`);
           processBatch(toHide, "hide");
         } else if (operation === "hide" && this.visibleSatellites.length === 0) {
           CesiumCleanupHelper.cleanup(this.viewer);
         }
 
         // Hide loading spinner when all operations are complete
+        console.log(`[showEnabledSatellites] Checking completion: operation=${operation}, toHide.length=${toHide.length}`);
         if (operation === "hide" || (operation === "show" && toHide.length === 0)) {
           this.loadingSpinner.hide();
           // Clear flag when completely done
           this._isUpdatingSatellites = false;
+
+          // Now that satellites are shown, calculate passes if ground station exists
+          // This ensures passes are calculated after initial satellite loading
+          console.log("[showEnabledSatellites] Batch processing complete, triggering pass calculation");
+          if (this.#groundStations.length > 0) {
+            this.updatePassHighlightsForEnabledSatellites();
+          }
         }
 
         // Request render after batch completion
@@ -872,13 +903,17 @@ export class SatelliteManager {
   }
 
   updatePassHighlightsForEnabledSatellites() {
+    console.log("[updatePassHighlightsForEnabledSatellites] Called");
+
     // Skip if satellite database is being updated
     if (this._isUpdatingSatellites) {
+      console.log("[updatePassHighlightsForEnabledSatellites] Skipped - satellites being updated");
       return;
     }
 
     // Only calculate if ground station exists
     if (this.#groundStations.length === 0) {
+      console.log("[updatePassHighlightsForEnabledSatellites] Skipped - no ground station");
       return;
     }
 
@@ -886,8 +921,13 @@ export class SatelliteManager {
     // Use activeSatellites to get all satellites enabled by tags OR by name
     const activeSatellites = this.activeSatellites;
 
+    console.log("[updatePassHighlightsForEnabledSatellites] Active satellites:", activeSatellites.length);
+    console.log("[updatePassHighlightsForEnabledSatellites] Ground stations:", this.#groundStations.length);
+    console.log("[updatePassHighlightsForEnabledSatellites] Current time:", JulianDate.toDate(currentTime).toISOString());
+
     // Skip if no satellites enabled
     if (activeSatellites.length === 0) {
+      console.log("[updatePassHighlightsForEnabledSatellites] Skipped - no active satellites");
       return;
     }
 
@@ -897,11 +937,14 @@ export class SatelliteManager {
     // Update passes for all active satellites asynchronously
     const passPromises = activeSatellites.map((satellite) => {
       if (satellite && satellite.props) {
+        console.log(`[updatePassHighlightsForEnabledSatellites] Calling updatePasses for ${satellite.props.name}, hasGS: ${satellite.props.groundStationAvailable}`);
         return satellite.props
           .updatePasses(currentTime)
           .then(() => {
+            console.log(`[updatePassHighlightsForEnabledSatellites] updatePasses completed for ${satellite.props.name}, passes: ${satellite.props.passes?.length || 0}`);
             // Filter passes based on time and user preferences (sunlight/eclipse filters)
             const filteredPasses = filterAndSortPasses(satellite.props.passes, JulianDate.toDate(currentTime));
+            console.log(`[updatePassHighlightsForEnabledSatellites] Filtered passes for ${satellite.props.name}: ${filteredPasses?.length || 0}`);
             if (filteredPasses && filteredPasses.length > 0) {
               CesiumTimelineHelper.addHighlightRanges(this.viewer, filteredPasses, satellite.props.name);
             }
@@ -914,6 +957,7 @@ export class SatelliteManager {
     });
 
     Promise.all(passPromises).then(() => {
+      console.log("[updatePassHighlightsForEnabledSatellites] All pass promises completed");
       // Force an immediate timeline update after all passes are loaded
       if (this.viewer.timeline) {
         this.viewer.timeline.updateFromClock();
@@ -1344,6 +1388,11 @@ export class SatelliteManager {
   }
 
   set groundStations(newGroundStations) {
+    console.log("[set groundStations] Setting ground stations, count:", newGroundStations.length);
+    console.log("[set groundStations] Total satellites:", this.satellites.length);
+    console.log("[set groundStations] Active satellites:", this.activeSatellites.length);
+    console.log("[set groundStations] _initialTleLoadComplete:", this._initialTleLoadComplete);
+
     // Invalidate pass cache on all existing ground stations
     this.#groundStations.forEach((gs) => {
       if (gs.invalidatePassCache) {
@@ -1357,6 +1406,7 @@ export class SatelliteManager {
     this.satellites.forEach((sat) => {
       sat.groundStations = this.#groundStations;
     });
+    console.log("[set groundStations] Set GS reference for", this.satellites.length, "satellites");
 
     // Update daytime ranges for first ground station
     CesiumTimelineHelper.clearGroundStationDaytimeRanges(this.viewer);
@@ -1366,6 +1416,7 @@ export class SatelliteManager {
 
     // Calculate and display pass highlights for enabled satellites
     // (clearHighlightRanges is called inside updatePassHighlightsForEnabledSatellites)
+    console.log("[set groundStations] Calling updatePassHighlightsForEnabledSatellites");
     this.updatePassHighlightsForEnabledSatellites();
 
     // Update store for url state

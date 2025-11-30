@@ -64,10 +64,22 @@ export class PlanetManager {
       );
     } else if (mode === "point") {
       await this.createPointPrimitives();
-      // For point primitives, check periodically if position update is needed
+      // For point primitives, update on smooth scrubbing (every 0.5 seconds real time)
       this.preRenderListener = this.viewer.scene.preUpdate.addEventListener(() => {
-        this.updatePointPrimitivesThrottled();
+        this.updatePointPrimitivesForScrubbing();
       });
+    }
+
+    // Listen for ClockMonitor time jump events to update planet positions
+    this.handleClockTimeJump = (event) => {
+      const { jumpSeconds } = event.detail;
+      // Update positions on time jumps >1 hour
+      if (Math.abs(jumpSeconds) > 3600) {
+        this.updatePositions();
+      }
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("cesium:clockTimeJumped", this.handleClockTimeJump);
     }
 
     // Initial position update
@@ -134,6 +146,11 @@ export class PlanetManager {
     if (this.zenithViewChangeHandler) {
       window.removeEventListener("zenithViewChanged", this.zenithViewChangeHandler);
       this.zenithViewChangeHandler = null;
+    }
+
+    // Remove ClockMonitor listener
+    if (typeof window !== "undefined" && this.handleClockTimeJump) {
+      window.removeEventListener("cesium:clockTimeJumped", this.handleClockTimeJump);
     }
 
     // Clear all orbits
@@ -310,39 +327,26 @@ export class PlanetManager {
   }
 
   /**
-   * Throttled update for point primitives
-   * Only updates if simulation time changed by 1 hour OR 0.5 seconds of real time passed
+   * Update point primitives during smooth scrubbing
+   * Only updates if 0.5 seconds of real time passed (for continuous animation/scrubbing)
+   * Time jumps are handled by ClockMonitor event listener
    */
-  updatePointPrimitivesThrottled() {
+  updatePointPrimitivesForScrubbing() {
     if (!this.enabled || this.renderMode !== "point") {
       return;
     }
 
-    const currentTime = this.viewer.clock.currentTime;
     const now = Date.now();
 
-    // Check if we should update
-    let shouldUpdate = false;
-
     // Update if this is first time
-    if (!this.lastUpdateTime || !this.lastRealUpdate) {
-      shouldUpdate = true;
-    } else {
-      // Update if simulation time changed by more than 1 hour
-      const timeDiffSeconds = Math.abs(JulianDate.secondsDifference(currentTime, this.lastUpdateTime));
-      if (timeDiffSeconds > 3600) {
-        // 1 hour
-        shouldUpdate = true;
-      }
-
-      // Or if 0.5 seconds of real time passed (for smooth scrubbing)
-      if (now - this.lastRealUpdate > 500) {
-        shouldUpdate = true;
-      }
+    if (!this.lastRealUpdate) {
+      this.lastRealUpdate = now;
+      this.updatePositions();
+      return;
     }
 
-    if (shouldUpdate) {
-      this.lastUpdateTime = JulianDate.clone(currentTime);
+    // Update if 0.5 seconds of real time passed (for smooth scrubbing)
+    if (now - this.lastRealUpdate > 500) {
       this.lastRealUpdate = now;
       this.updatePositions();
     }
