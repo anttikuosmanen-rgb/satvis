@@ -108,7 +108,6 @@ test.describe("Ground Station", () => {
     );
 
     console.log("ISS satellite loaded and ready");
-    await page.waitForTimeout(2000);
 
     // Open ground station menu - button has svg-groundstation icon class
     const groundStationButton = page
@@ -120,7 +119,6 @@ test.describe("Ground Station", () => {
 
     await expect(groundStationButton).toBeVisible({ timeout: 5000 });
     await groundStationButton.click();
-    await page.waitForTimeout(1000);
 
     // Enable "Pick on globe" checkbox
     // The checkbox is inside a label with text "Pick on globe"
@@ -136,7 +134,8 @@ test.describe("Ground Station", () => {
       // Click the label to toggle the checkbox (more reliable for styled checkboxes)
       // Use force: true to bypass actionability checks (animations may prevent stable state)
       await pickOnGlobeLabel.click({ force: true });
-      await page.waitForTimeout(500);
+      // Verify checkbox is now checked
+      await expect(pickOnGlobeCheckbox).toBeChecked({ timeout: 3000 });
     }
 
     console.log("Pick mode enabled, clicking on globe...");
@@ -160,7 +159,17 @@ test.describe("Ground Station", () => {
 
       console.log(`Clicking on globe at (${clickX}, ${clickY})`);
       await page.mouse.click(clickX, clickY);
-      await page.waitForTimeout(2000);
+
+      // Wait for ground station entity to be created
+      await page.waitForFunction(
+        () => {
+          const viewer = window.cc?.viewer;
+          if (!viewer) return false;
+          const gsEntities = viewer.entities.values.filter((e) => e.name && e.name.toLowerCase().includes("ground"));
+          return gsEntities.length > 0;
+        },
+        { timeout: 10000 },
+      );
 
       // Verify ground station entity was created in Cesium
       const groundStationEntity = await page.evaluate(() => {
@@ -434,7 +443,7 @@ test.describe("Ground Station", () => {
       { timeout: 20000 },
     );
 
-    await page.waitForTimeout(2000); // Additional buffer
+    // Removed unnecessary waitForTimeout
 
     // Trigger timeline change to force pass calculation
     await page.evaluate(() => {
@@ -497,7 +506,7 @@ test.describe("Ground Station", () => {
       { timeout: 20000 },
     );
 
-    await page.waitForTimeout(2000); // Additional buffer
+    // Removed unnecessary waitForTimeout
 
     // Set simulation time to current date (matches TLE epoch ~Nov 2025) to ensure passes exist
     await page.evaluate(() => {
@@ -1124,7 +1133,7 @@ test.describe("Ground Station", () => {
     for (let i = 0; i < 3; i++) {
       // Use force: true to bypass actionability checks (animations may prevent stable state)
       await zoomOutButton.click({ force: true });
-      await page.waitForTimeout(500); // Wait for zoom animation
+      // Removed unnecessary waitForTimeout
     }
 
     console.log("Clicked zoom-out button 3 times");
