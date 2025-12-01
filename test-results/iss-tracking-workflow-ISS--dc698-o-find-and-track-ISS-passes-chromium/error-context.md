@@ -1,0 +1,75 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - generic [ref=e3]:
+    - generic [ref=e8]:
+      - link "Cesium ion" [ref=e11] [cursor=pointer]:
+        - /url: https://cesium.com/
+        - img "Cesium ion" [ref=e12]
+      - text: Data attribution
+    - generic [ref=e17]:
+      - generic [ref=e24]:
+        - generic [ref=e27]: Dec 1 2025
+        - generic [ref=e28]: 16:26:21 UTC
+        - generic [ref=e29]: 1x
+      - generic [ref=e31]:
+        - generic "Today (real-time)" [ref=e32] [cursor=pointer]
+        - generic "Play Reverse" [ref=e35] [cursor=pointer]
+        - generic "Play Forward" [ref=e38] [cursor=pointer]
+        - generic "Pause" [ref=e42] [cursor=pointer]
+    - generic [ref=e47] [cursor=pointer]:
+      - generic [ref=e207]: Dec 1 2025 16:00:00 UTC
+      - generic [ref=e209]: Dec 1 2025 20:00:00 UTC
+      - generic [ref=e211]: Dec 2 2025 00:00:00 UTC
+      - generic [ref=e213]: Dec 2 2025 04:00:00 UTC
+      - generic [ref=e215]: Dec 2 2025 08:00:00 UTC
+      - generic [ref=e217]: Dec 2 2025 12:00:00 UTC
+      - generic [ref=e219]: Dec 2 2025 16:00:00 UTC
+      - generic [ref=e221]: Dec 2 2025 20:00:00 UTC
+    - button "Full screen" [ref=e227] [cursor=pointer]
+    - button "Enter VR mode" [ref=e231] [cursor=pointer]
+  - generic:
+    - generic:
+      - generic:
+        - generic [ref=e234]:
+          - generic [ref=e235]:
+            - button [ref=e236] [cursor=pointer]
+            - button [ref=e238] [cursor=pointer]:
+              - img [ref=e239]
+            - button [ref=e241] [cursor=pointer]
+            - button [ref=e243] [cursor=pointer]:
+              - img [ref=e244]
+            - button [ref=e246] [cursor=pointer]:
+              - img [ref=e247]
+          - generic [ref=e250]:
+            - generic [ref=e251]: Enabled satellite groups
+            - combobox [ref=e253]:
+              - generic [ref=e256]: 0 satellite groups selected
+              - listbox [ref=e257]:
+                - listitem [ref=e258]:
+                  - generic [ref=e259] [cursor=pointer]: Cubesat
+                - option "SWISSCUBE Press enter to select" [ref=e260]:
+                  - generic [ref=e261] [cursor=pointer]: SWISSCUBE Press enter to select
+                - listitem [ref=e262]:
+                  - generic [ref=e263] [cursor=pointer]: Stations
+                - option "ISS (NAUKA)" [ref=e264]:
+                  - generic [ref=e265] [cursor=pointer]: ISS (NAUKA)
+                - option "ISS (ZARYA)" [ref=e266]:
+                  - generic [ref=e267] [cursor=pointer]: ISS (ZARYA)
+                - generic [ref=e268]: Scroll for more...
+            - generic [ref=e269]: Enabled satellites
+            - combobox [expanded] [ref=e271]:
+              - textbox "-searchbox" [active] [ref=e274]:
+                - /placeholder: Type to search
+                - text: ISS
+        - generic [ref=e276]:
+          - link [ref=e277] [cursor=pointer]:
+            - /url: https://github.com/anttikuosmanen-rgb/satvis
+            - img [ref=e278]
+          - button [ref=e280] [cursor=pointer]:
+            - img [ref=e281]
+        - generic [ref=e283]:
+          - button "+" [ref=e284] [cursor=pointer]
+          - button "-" [ref=e285] [cursor=pointer]
+```

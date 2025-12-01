@@ -69,7 +69,7 @@ test.describe("ISS Tracking Workflow", () => {
       .first();
 
     await expect(issOption).toBeVisible({ timeout: 5000 });
-    await issOption.click();
+    await issOption.click({ force: true }); // Force click to bypass stability checks on animating dropdown
 
     // Wait for satellite to be fully enabled and rendered
     await page.waitForTimeout(3000);
