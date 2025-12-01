@@ -54,9 +54,9 @@ test.describe("ISS Tracking Workflow", () => {
     await multiselectComponent.click();
     await page.waitForTimeout(500);
 
-    // Type directly into the input field (use pressSequentially to avoid visibility check)
+    // Type directly into the input field (use fill with force to bypass actionability checks)
     const searchInput = page.locator('.satellite-select input[placeholder="Type to search"]').first();
-    await searchInput.pressSequentially("ISS", { delay: 100 });
+    await searchInput.fill("ISS", { force: true });
     await page.waitForTimeout(1500); // Wait for search results to filter
 
     // Step 4: Select ISS from dropdown results

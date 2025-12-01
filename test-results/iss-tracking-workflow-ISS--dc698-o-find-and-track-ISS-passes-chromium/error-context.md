@@ -11,7 +11,7 @@
     - generic [ref=e17]:
       - generic [ref=e24]:
         - generic [ref=e27]: Dec 1 2025
-        - generic [ref=e28]: 16:26:21 UTC
+        - generic [ref=e28]: 16:31:38 UTC
         - generic [ref=e29]: 1x
       - generic [ref=e31]:
         - generic "Today (real-time)" [ref=e32] [cursor=pointer]
@@ -46,30 +46,250 @@
             - generic [ref=e251]: Enabled satellite groups
             - combobox [ref=e253]:
               - generic [ref=e256]: 0 satellite groups selected
-              - listbox [ref=e257]:
-                - listitem [ref=e258]:
-                  - generic [ref=e259] [cursor=pointer]: Cubesat
-                - option "SWISSCUBE Press enter to select" [ref=e260]:
-                  - generic [ref=e261] [cursor=pointer]: SWISSCUBE Press enter to select
-                - listitem [ref=e262]:
-                  - generic [ref=e263] [cursor=pointer]: Stations
-                - option "ISS (NAUKA)" [ref=e264]:
-                  - generic [ref=e265] [cursor=pointer]: ISS (NAUKA)
-                - option "ISS (ZARYA)" [ref=e266]:
-                  - generic [ref=e267] [cursor=pointer]: ISS (ZARYA)
-                - generic [ref=e268]: Scroll for more...
-            - generic [ref=e269]: Enabled satellites
-            - combobox [expanded] [ref=e271]:
-              - textbox "-searchbox" [active] [ref=e274]:
+              - listbox [ref=e258]:
+                - option "Cubesat Press enter to select" [ref=e259]:
+                  - generic [ref=e260] [cursor=pointer]: Cubesat Press enter to select
+                - option "Science" [ref=e261]:
+                  - generic [ref=e262] [cursor=pointer]: Science
+                - option "Globalstar" [ref=e263]:
+                  - generic [ref=e264] [cursor=pointer]: Globalstar
+                - option "GNSS" [ref=e265]:
+                  - generic [ref=e266] [cursor=pointer]: GNSS
+                - option "IridiumNEXT" [ref=e267]:
+                  - generic [ref=e268] [cursor=pointer]: IridiumNEXT
+                - option "New" [ref=e269]:
+                  - generic [ref=e270] [cursor=pointer]: New
+                - option "Starlink" [ref=e271]:
+                  - generic [ref=e272] [cursor=pointer]: Starlink
+                - option "Stations" [ref=e273]:
+                  - generic [ref=e274] [cursor=pointer]: Stations
+                - option "OneWeb" [ref=e275]:
+                  - generic [ref=e276] [cursor=pointer]: OneWeb
+                - option "Planet" [ref=e277]:
+                  - generic [ref=e278] [cursor=pointer]: Planet
+                - option "Resource" [ref=e279]:
+                  - generic [ref=e280] [cursor=pointer]: Resource
+                - option "Prelaunch" [ref=e281]:
+                  - generic [ref=e282] [cursor=pointer]: Prelaunch
+                - option "Spire" [ref=e283]:
+                  - generic [ref=e284] [cursor=pointer]: Spire
+                - option "Weather" [ref=e285]:
+                  - generic [ref=e286] [cursor=pointer]: Weather
+                - option "Eutelsat" [ref=e287]:
+                  - generic [ref=e288] [cursor=pointer]: Eutelsat
+            - generic [ref=e289]: Enabled satellites
+            - combobox [expanded] [ref=e291]:
+              - textbox "-searchbox" [active] [ref=e294]:
                 - /placeholder: Type to search
-                - text: ISS
-        - generic [ref=e276]:
-          - link [ref=e277] [cursor=pointer]:
+              - listbox [ref=e296]:
+                - listitem [ref=e297]:
+                  - generic [ref=e298] [cursor=pointer]: Cubesat
+                - option "AEROCUBE 4.5A Press enter to select" [ref=e299]:
+                  - generic [ref=e300] [cursor=pointer]: AEROCUBE 4.5A Press enter to select
+                - option "AEROCUBE 5C" [ref=e301]:
+                  - generic [ref=e302] [cursor=pointer]: AEROCUBE 5C
+                - option "AEROCUBE 6A" [ref=e303]:
+                  - generic [ref=e304] [cursor=pointer]: AEROCUBE 6A
+                - option "AEROCUBE 6B" [ref=e305]:
+                  - generic [ref=e306] [cursor=pointer]: AEROCUBE 6B
+                - option "AEROCUBE 7" [ref=e307]:
+                  - generic [ref=e308] [cursor=pointer]: AEROCUBE 7
+                - option "AEROCUBE 8C" [ref=e309]:
+                  - generic [ref=e310] [cursor=pointer]: AEROCUBE 8C
+                - option "AEROCUBE 8D" [ref=e311]:
+                  - generic [ref=e312] [cursor=pointer]: AEROCUBE 8D
+                - option "BEESAT-1" [ref=e313]:
+                  - generic [ref=e314] [cursor=pointer]: BEESAT-1
+                - option "BISONSAT" [ref=e315]:
+                  - generic [ref=e316] [cursor=pointer]: BISONSAT
+                - option "BRITE-AUSTRIA" [ref=e317]:
+                  - generic [ref=e318] [cursor=pointer]: BRITE-AUSTRIA
+                - option "BRITE-CA1 (TORONTO)" [ref=e319]:
+                  - generic [ref=e320] [cursor=pointer]: BRITE-CA1 (TORONTO)
+                - option "BRITE-PL2 (HEWELIUSZ)" [ref=e321]:
+                  - generic [ref=e322] [cursor=pointer]: BRITE-PL2 (HEWELIUSZ)
+                - option "CANX-2" [ref=e323]:
+                  - generic [ref=e324] [cursor=pointer]: CANX-2
+                - option "CANX-4" [ref=e325]:
+                  - generic [ref=e326] [cursor=pointer]: CANX-4
+                - option "CANX-5" [ref=e327]:
+                  - generic [ref=e328] [cursor=pointer]: CANX-5
+                - option "CELTEE 1" [ref=e329]:
+                  - generic [ref=e330] [cursor=pointer]: CELTEE 1
+                - option "CORVUS BC1" [ref=e331]:
+                  - generic [ref=e332] [cursor=pointer]: CORVUS BC1
+                - option "CORVUS BC2" [ref=e333]:
+                  - generic [ref=e334] [cursor=pointer]: CORVUS BC2
+                - option "CORVUS BC4" [ref=e335]:
+                  - generic [ref=e336] [cursor=pointer]: CORVUS BC4
+                - option "CROCUBE" [ref=e337]:
+                  - generic [ref=e338] [cursor=pointer]: CROCUBE
+                - option "CUBEBUG-2 (LO-74)" [ref=e339]:
+                  - generic [ref=e340] [cursor=pointer]: CUBEBUG-2 (LO-74)
+                - option "CUBESAT XI-IV (CO-57)" [ref=e341]:
+                  - generic [ref=e342] [cursor=pointer]: CUBESAT XI-IV (CO-57)
+                - option "CUBESAT XI-V" [ref=e343]:
+                  - generic [ref=e344] [cursor=pointer]: CUBESAT XI-V
+                - option "CUTE-1 (CO-55)" [ref=e345]:
+                  - generic [ref=e346] [cursor=pointer]: CUTE-1 (CO-55)
+                - option "CUTE-1.7+APD II (CO-65)" [ref=e347]:
+                  - generic [ref=e348] [cursor=pointer]: CUTE-1.7+APD II (CO-65)
+                - option "DUCHIFAT-1" [ref=e349]:
+                  - generic [ref=e350] [cursor=pointer]: DUCHIFAT-1
+                - option "DUCHIFAT-3" [ref=e351]:
+                  - generic [ref=e352] [cursor=pointer]: DUCHIFAT-3
+                - option "FOX-1A (AO-85)" [ref=e353]:
+                  - generic [ref=e354] [cursor=pointer]: FOX-1A (AO-85)
+                - option "FUNCUBE-1 (AO-73)" [ref=e355]:
+                  - generic [ref=e356] [cursor=pointer]: FUNCUBE-1 (AO-73)
+                - option "GOMX-1" [ref=e357]:
+                  - generic [ref=e358] [cursor=pointer]: GOMX-1
+                - option "GRBBETA" [ref=e359]:
+                  - generic [ref=e360] [cursor=pointer]: GRBBETA
+                - option "GREENCUBE (IO-117)" [ref=e361]:
+                  - generic [ref=e362] [cursor=pointer]: GREENCUBE (IO-117)
+                - option "HORYU-4" [ref=e363]:
+                  - generic [ref=e364] [cursor=pointer]: HORYU-4
+                - option "ITUPSAT1" [ref=e365]:
+                  - generic [ref=e366] [cursor=pointer]: ITUPSAT1
+                - option "LASARSAT" [ref=e367]:
+                  - generic [ref=e368] [cursor=pointer]: LASARSAT
+                - option "LMRST-SAT" [ref=e369]:
+                  - generic [ref=e370] [cursor=pointer]: LMRST-SAT
+                - option "M2 PATHFINDER" [ref=e371]:
+                  - generic [ref=e372] [cursor=pointer]: M2 PATHFINDER
+                - option "MAKERSAT 0" [ref=e373]:
+                  - generic [ref=e374] [cursor=pointer]: MAKERSAT 0
+                - option "NANOSATC-BR1" [ref=e375]:
+                  - generic [ref=e376] [cursor=pointer]: NANOSATC-BR1
+                - option "NEE-01 PEGASO" [ref=e377]:
+                  - generic [ref=e378] [cursor=pointer]: NEE-01 PEGASO
+                - option "NEE-02 KRYSAOR" [ref=e379]:
+                  - generic [ref=e380] [cursor=pointer]: NEE-02 KRYSAOR
+                - option "NETSAT-1" [ref=e381]:
+                  - generic [ref=e382] [cursor=pointer]: NETSAT-1
+                - option "NETSAT-2" [ref=e383]:
+                  - generic [ref=e384] [cursor=pointer]: NETSAT-2
+                - option "NETSAT-3" [ref=e385]:
+                  - generic [ref=e386] [cursor=pointer]: NETSAT-3
+                - option "NETSAT-4" [ref=e387]:
+                  - generic [ref=e388] [cursor=pointer]: NETSAT-4
+                - option "OOV-CUBE (TUBSAT-30)" [ref=e389]:
+                  - generic [ref=e390] [cursor=pointer]: OOV-CUBE (TUBSAT-30)
+                - option "OPTICUBE 04" [ref=e391]:
+                  - generic [ref=e392] [cursor=pointer]: OPTICUBE 04
+                - option "PERSEUS-M1" [ref=e393]:
+                  - generic [ref=e394] [cursor=pointer]: PERSEUS-M1
+                - option "PERSEUS-M2" [ref=e395]:
+                  - generic [ref=e396] [cursor=pointer]: PERSEUS-M2
+                - option "POLYITAN-1" [ref=e397]:
+                  - generic [ref=e398] [cursor=pointer]: POLYITAN-1
+                - option "POPACS 1" [ref=e399]:
+                  - generic [ref=e400] [cursor=pointer]: POPACS 1
+                - option "POPACS 2" [ref=e401]:
+                  - generic [ref=e402] [cursor=pointer]: POPACS 2
+                - option "POPACS 3" [ref=e403]:
+                  - generic [ref=e404] [cursor=pointer]: POPACS 3
+                - option "PROMETHEUS 2-1" [ref=e405]:
+                  - generic [ref=e406] [cursor=pointer]: PROMETHEUS 2-1
+                - option "PROMETHEUS 2-3" [ref=e407]:
+                  - generic [ref=e408] [cursor=pointer]: PROMETHEUS 2-3
+                - option "PROPCUBE 1 (FLORA)" [ref=e409]:
+                  - generic [ref=e410] [cursor=pointer]: PROPCUBE 1 (FLORA)
+                - option "PROPCUBE 3" [ref=e411]:
+                  - generic [ref=e412] [cursor=pointer]: PROPCUBE 3
+                - option "QB50P1" [ref=e413]:
+                  - generic [ref=e414] [cursor=pointer]: QB50P1
+                - option "QB50P2" [ref=e415]:
+                  - generic [ref=e416] [cursor=pointer]: QB50P2
+                - option "RAVAN" [ref=e417]:
+                  - generic [ref=e418] [cursor=pointer]: RAVAN
+                - option "ROBUSTA-3A (MEDITERRAN*)" [ref=e419]:
+                  - generic [ref=e420] [cursor=pointer]: ROBUSTA-3A (MEDITERRAN*)
+                - option "SEEDS II (CO-66)" [ref=e421]:
+                  - generic [ref=e422] [cursor=pointer]: SEEDS II (CO-66)
+                - option "SHIELDS 1" [ref=e423]:
+                  - generic [ref=e424] [cursor=pointer]: SHIELDS 1
+                - option "SINOD-D 1" [ref=e425]:
+                  - generic [ref=e426] [cursor=pointer]: SINOD-D 1
+                - option "SINOD-D 3" [ref=e427]:
+                  - generic [ref=e428] [cursor=pointer]: SINOD-D 3
+                - option "SIRION PATHFINDER-2" [ref=e429]:
+                  - generic [ref=e430] [cursor=pointer]: SIRION PATHFINDER-2
+                - option "SITRO-AIS 10 (BURDAEV)" [ref=e431]:
+                  - generic [ref=e432] [cursor=pointer]: SITRO-AIS 10 (BURDAEV)
+                - option "SITRO-AIS 11 (SHEFFER)" [ref=e433]:
+                  - generic [ref=e434] [cursor=pointer]: SITRO-AIS 11 (SHEFFER)
+                - option "SITRO-AIS 12 (SMIRENNIY)" [ref=e435]:
+                  - generic [ref=e436] [cursor=pointer]: SITRO-AIS 12 (SMIRENNIY)
+                - option "SITRO-AIS 25" [ref=e437]:
+                  - generic [ref=e438] [cursor=pointer]: SITRO-AIS 25
+                - option "SITRO-AIS 26" [ref=e439]:
+                  - generic [ref=e440] [cursor=pointer]: SITRO-AIS 26
+                - option "SITRO-AIS 27" [ref=e441]:
+                  - generic [ref=e442] [cursor=pointer]: SITRO-AIS 27
+                - option "SITRO-AIS 28" [ref=e443]:
+                  - generic [ref=e444] [cursor=pointer]: SITRO-AIS 28
+                - option "SITRO-AIS 5 (KATYS)" [ref=e445]:
+                  - generic [ref=e446] [cursor=pointer]: SITRO-AIS 5 (KATYS)
+                - option "SITRO-AIS 6 (CHIRKIN)" [ref=e447]:
+                  - generic [ref=e448] [cursor=pointer]: SITRO-AIS 6 (CHIRKIN)
+                - option "SITRO-AIS 7 (FARTUSHNIY)" [ref=e449]:
+                  - generic [ref=e450] [cursor=pointer]: SITRO-AIS 7 (FARTUSHNIY)
+                - option "SITRO-AIS 8 (ANOKHIN)" [ref=e451]:
+                  - generic [ref=e452] [cursor=pointer]: SITRO-AIS 8 (ANOKHIN)
+                - option "SITRO-AIS 9 (SHCHUKIN)" [ref=e453]:
+                  - generic [ref=e454] [cursor=pointer]: SITRO-AIS 9 (SHCHUKIN)
+                - option "SNAP-3 ALICE" [ref=e455]:
+                  - generic [ref=e456] [cursor=pointer]: SNAP-3 ALICE
+                - option "SNAP-3 EDDIE" [ref=e457]:
+                  - generic [ref=e458] [cursor=pointer]: SNAP-3 EDDIE
+                - option "SNAP-3 JIMI" [ref=e459]:
+                  - generic [ref=e460] [cursor=pointer]: SNAP-3 JIMI
+                - option "SPACEBEE-7" [ref=e461]:
+                  - generic [ref=e462] [cursor=pointer]: SPACEBEE-7
+                - option "STRAND-1" [ref=e463]:
+                  - generic [ref=e464] [cursor=pointer]: STRAND-1
+                - option "SWISSCUBE" [ref=e465]:
+                  - generic [ref=e466] [cursor=pointer]: SWISSCUBE
+                - option "TIGRISAT" [ref=e467]:
+                  - generic [ref=e468] [cursor=pointer]: TIGRISAT
+                - option "TISAT 1" [ref=e469]:
+                  - generic [ref=e470] [cursor=pointer]: TISAT 1
+                - option "TRITON-1" [ref=e471]:
+                  - generic [ref=e472] [cursor=pointer]: TRITON-1
+                - option "UKUBE-1" [ref=e473]:
+                  - generic [ref=e474] [cursor=pointer]: UKUBE-1
+                - option "UWE-3" [ref=e475]:
+                  - generic [ref=e476] [cursor=pointer]: UWE-3
+                - option "WILDTRACKCUBE-SIMBA" [ref=e477]:
+                  - generic [ref=e478] [cursor=pointer]: WILDTRACKCUBE-SIMBA
+                - option "WNISAT-1" [ref=e479]:
+                  - generic [ref=e480] [cursor=pointer]: WNISAT-1
+                - option "ZACUBE-1 (TSHEPISOSAT)" [ref=e481]:
+                  - generic [ref=e482] [cursor=pointer]: ZACUBE-1 (TSHEPISOSAT)
+                - listitem [ref=e483]:
+                  - generic [ref=e484] [cursor=pointer]: Science
+                - option "ASTROSAT" [ref=e485]:
+                  - generic [ref=e486] [cursor=pointer]: ASTROSAT
+                - option "BRITE-AUSTRIA" [ref=e487]:
+                  - generic [ref=e488] [cursor=pointer]: BRITE-AUSTRIA
+                - option "BRITE-CA1 (TORONTO)" [ref=e489]:
+                  - generic [ref=e490] [cursor=pointer]: BRITE-CA1 (TORONTO)
+                - option "BRITE-PL2 (HEWELIUSZ)" [ref=e491]:
+                  - generic [ref=e492] [cursor=pointer]: BRITE-PL2 (HEWELIUSZ)
+                - option "CASSIOPE" [ref=e493]:
+                  - generic [ref=e494] [cursor=pointer]: CASSIOPE
+                - option "CLUSTER II-FM7 (SAMBA)" [ref=e495]:
+                  - generic [ref=e496] [cursor=pointer]: CLUSTER II-FM7 (SAMBA)
+                - generic [ref=e497]: Scroll for more...
+        - generic [ref=e498]:
+          - link [ref=e499] [cursor=pointer]:
             - /url: https://github.com/anttikuosmanen-rgb/satvis
-            - img [ref=e278]
-          - button [ref=e280] [cursor=pointer]:
-            - img [ref=e281]
-        - generic [ref=e283]:
-          - button "+" [ref=e284] [cursor=pointer]
-          - button "-" [ref=e285] [cursor=pointer]
+            - img [ref=e500]
+          - button [ref=e502] [cursor=pointer]:
+            - img [ref=e503]
+        - generic [ref=e505]:
+          - button "+" [ref=e506] [cursor=pointer]
+          - button "-" [ref=e507] [cursor=pointer]
 ```
