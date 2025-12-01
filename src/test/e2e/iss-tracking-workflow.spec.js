@@ -53,9 +53,12 @@ test.describe("ISS Tracking Workflow", () => {
     const multiselectComponent = page.locator(".satellite-select .multiselect").first();
     await multiselectComponent.click();
 
+    // Wait for the dropdown list to actually open (vue-multiselect adds multiselect--active class)
+    const activeMultiselect = page.locator(".satellite-select .multiselect--active").first();
+    await expect(activeMultiselect).toBeVisible({ timeout: 5000 });
+
     // Type directly into the input field (use fill with force to bypass actionability checks)
     const searchInput = page.locator('.satellite-select input[placeholder="Type to search"]').first();
-    await expect(searchInput).toBeVisible({ timeout: 5000 });
     await searchInput.fill("ISS", { force: true });
 
     // Step 4: Select ISS from dropdown results

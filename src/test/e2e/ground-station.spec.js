@@ -136,6 +136,16 @@ test.describe("Ground Station", () => {
       await pickOnGlobeLabel.click({ force: true });
       // Verify checkbox is now checked
       await expect(pickOnGlobeCheckbox).toBeChecked({ timeout: 3000 });
+
+      // Wait for pickMode state to be updated in the store (Vue reactivity)
+      await page.waitForFunction(
+        () => {
+          // Check if pickMode is set in the Pinia store
+          const cesiumStore = window.cc?.$pinia?.state?.value?.cesium;
+          return cesiumStore?.pickMode === true;
+        },
+        { timeout: 5000 },
+      );
     }
 
     console.log("Pick mode enabled, clicking on globe...");
@@ -319,7 +329,7 @@ test.describe("Ground Station", () => {
       }
     });
 
-    await page.waitForTimeout(1000);
+    // Removed unnecessary waitForTimeout
 
     // Trigger timeline change to force pass calculation with new time
     await page.evaluate(() => {
@@ -518,7 +528,7 @@ test.describe("Ground Station", () => {
       }
     });
 
-    await page.waitForTimeout(1000);
+    // Removed unnecessary waitForTimeout
 
     // Trigger timeline change to force pass calculation
     await page.evaluate(() => {
@@ -573,7 +583,7 @@ test.describe("Ground Station", () => {
       if (box) {
         // Click near the start of timeline (where first pass might be)
         await page.mouse.click(box.x + 100, box.y + box.height / 2);
-        await page.waitForTimeout(1000);
+        // Removed unnecessary waitForTimeout
 
         const newTime = await page.evaluate(() => {
           return window.cc?.viewer?.clock?.currentTime?.toString();
@@ -665,7 +675,7 @@ test.describe("Ground Station", () => {
       }
     });
 
-    await page.waitForTimeout(1000);
+    // Removed unnecessary waitForTimeout
 
     // Trigger timeline update
     await page.evaluate(() => {
@@ -1058,8 +1068,6 @@ test.describe("Ground Station", () => {
       { timeout: 20000 },
     );
 
-    await page.waitForTimeout(2000);
-
     // Set simulation time and widen timeline window to ensure passes are visible
     await page.evaluate(() => {
       if (window.cc?.viewer?.clock && typeof window.Cesium !== "undefined") {
@@ -1083,7 +1091,7 @@ test.describe("Ground Station", () => {
       }
     });
 
-    await page.waitForTimeout(1000);
+    // Removed unnecessary waitForTimeout
 
     // Trigger timeline update
     await page.evaluate(() => {
@@ -1092,8 +1100,8 @@ test.describe("Ground Station", () => {
       }
     });
 
-    // Wait for pass calculation and timeline highlights to be ready
-    await waitForPassCalculation(page);
+    // Wait for pass calculation and timeline highlights to be ready (longer timeout for wide timeline)
+    await waitForPassCalculation(page, { timeout: 30000 });
 
     // Get initial state
     const initialState = await page.evaluate(() => {
@@ -1196,8 +1204,8 @@ test.describe("Ground Station", () => {
     // Click on the timeline
     await page.mouse.click(clickX, clickY);
 
-    // Wait for time to update, passes to be recalculated, and highlights to update
-    await waitForPassCalculation(page);
+    // Wait for time to update, passes to be recalculated, and highlights to update (longer timeout after timeline zoom)
+    await waitForPassCalculation(page, { timeout: 30000 });
 
     // Verify time changed, passes recalculated, and highlights are present
     const newState = await page.evaluate(() => {
