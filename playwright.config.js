@@ -26,6 +26,12 @@ export default defineConfig({
     ["list"],
   ],
 
+  // Test timeout - SatVis needs longer timeouts for:
+  // - Cesium 3D globe initialization and rendering
+  // - Pass calculation for ground stations (can take 30+ seconds)
+  // - Satellite orbital calculations and TLE processing
+  timeout: 120000, // 120 seconds
+
   // Shared settings for all the projects below
   use: {
     // Base URL to use in actions like `await page.goto('/')`
