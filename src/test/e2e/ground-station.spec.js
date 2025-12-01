@@ -131,9 +131,9 @@ test.describe("Ground Station", () => {
     // Check if already checked (force:true because checkbox is hidden by CSS)
     const isChecked = await pickOnGlobeCheckbox.isChecked();
     if (!isChecked) {
-      // Click the label to toggle the checkbox (more reliable for styled checkboxes)
-      // Use force: true to bypass actionability checks (animations may prevent stable state)
-      await pickOnGlobeLabel.click({ force: true });
+      // Click the checkbox directly (even though hidden) to trigger v-model
+      // Using force: true to bypass visibility checks
+      await pickOnGlobeCheckbox.click({ force: true });
       // Verify checkbox is now checked
       await expect(pickOnGlobeCheckbox).toBeChecked({ timeout: 3000 });
 
