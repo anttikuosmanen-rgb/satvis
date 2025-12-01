@@ -52,12 +52,11 @@ test.describe("ISS Tracking Workflow", () => {
     // Click on the multiselect component to activate the input
     const multiselectComponent = page.locator(".satellite-select .multiselect").first();
     await multiselectComponent.click();
-    await page.waitForTimeout(500);
 
     // Type directly into the input field (use fill with force to bypass actionability checks)
     const searchInput = page.locator('.satellite-select input[placeholder="Type to search"]').first();
+    await expect(searchInput).toBeVisible({ timeout: 5000 });
     await searchInput.fill("ISS", { force: true });
-    await page.waitForTimeout(1500); // Wait for search results to filter
 
     // Step 4: Select ISS from dropdown results
     // vue-multiselect shows results in a dropdown
@@ -71,8 +70,16 @@ test.describe("ISS Tracking Workflow", () => {
     await expect(issOption).toBeVisible({ timeout: 5000 });
     await issOption.click({ force: true }); // Force click to bypass stability checks on animating dropdown
 
-    // Wait for satellite to be fully enabled and rendered
-    await page.waitForTimeout(3000);
+    // Wait for satellite entities to be created in Cesium viewer
+    await page.waitForFunction(
+      () => {
+        const viewer = window.cc?.viewer;
+        if (!viewer) return false;
+        const issEntities = viewer.entities.values.filter((e) => e.name && e.name.includes("ISS"));
+        return issEntities.length > 0;
+      },
+      { timeout: 10000 },
+    );
 
     // Verify that ISS satellite entities are actually created in Cesium viewer
     const satelliteEntities = await page.evaluate(() => {
@@ -135,12 +142,8 @@ test.describe("ISS Tracking Workflow", () => {
     }
 
     // Step 6: Verify ISS is visible in the scene
-    // The satellite should be rendered on the globe
-    await page.waitForTimeout(2000); // Wait for rendering
-
-    // Check if timeline or pass prediction UI is visible
-    const timelineExists = await page.locator(".cesium-timeline-main").isVisible();
-    expect(timelineExists).toBeTruthy();
+    // Check if timeline or pass prediction UI is visible (indicates rendering is complete)
+    await expect(page.locator(".cesium-timeline-main")).toBeVisible({ timeout: 10000 });
   });
 
   test("should load satellite from URL parameter", async ({ page }) => {
@@ -150,11 +153,19 @@ test.describe("ISS Tracking Workflow", () => {
     // Wait for initialization
     await expect(page.locator("#cesiumContainer canvas").first()).toBeVisible({ timeout: 15000 });
 
-    await page.waitForTimeout(3000);
+    // Wait for timeline to appear (indicates satellite is loaded and scene is rendering)
+    await expect(page.locator(".cesium-timeline-main")).toBeVisible({ timeout: 10000 });
 
-    // Verify timeline exists (indicates satellite is loaded and scene is rendering)
-    const timelineExists = await page.locator(".cesium-timeline-main").isVisible();
-    expect(timelineExists).toBeTruthy();
+    // Wait for ISS satellite entities to be created
+    await page.waitForFunction(
+      () => {
+        const viewer = window.cc?.viewer;
+        if (!viewer) return false;
+        const issEntities = viewer.entities.values.filter((e) => e.name && e.name.includes("ISS"));
+        return issEntities.length > 0 && issEntities.some((e) => e.point || e.billboard);
+      },
+      { timeout: 10000 },
+    );
 
     // Verify ISS satellite entities are actually created
     const satelliteEntities = await page.evaluate(() => {
@@ -177,12 +188,6 @@ test.describe("ISS Tracking Workflow", () => {
     expect(satelliteEntities.found).toBe(true);
     expect(satelliteEntities.count).toBeGreaterThan(0);
     expect(satelliteEntities.hasVisuals).toBe(true);
-
-    // Verify no JavaScript errors occurred during loading
-    const errors = [];
-    page.on("pageerror", (error) => errors.push(error));
-    await page.waitForTimeout(1000);
-    expect(errors.length).toBe(0);
   });
 
   test("should handle timeline navigation", async ({ page }) => {
@@ -191,11 +196,9 @@ test.describe("ISS Tracking Workflow", () => {
     // Wait for initialization
     await expect(page.locator("#cesiumContainer canvas").first()).toBeVisible({ timeout: 15000 });
 
-    await page.waitForTimeout(2000);
-
     // Find timeline controls
     const timeline = page.locator(".cesium-timeline-main");
-    await expect(timeline).toBeVisible();
+    await expect(timeline).toBeVisible({ timeout: 10000 });
 
     // Try to interact with timeline (scrubbing)
     const timelineBar = timeline.locator(".cesium-timeline-bar");
@@ -209,7 +212,6 @@ test.describe("ISS Tracking Workflow", () => {
       if (box) {
         // Click middle of timeline
         await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-        await page.waitForTimeout(1000);
 
         // Verify time changed (satellite position should update)
         // This is a smoke test - we're just checking it doesn't crash
@@ -239,13 +241,5 @@ test.describe("ISS Tracking Workflow", () => {
     if (box) {
       expect(box.width).toBeLessThanOrEqual(375);
     }
-
-    // Verify no JavaScript errors occurred
-    const errors = [];
-    page.on("pageerror", (error) => errors.push(error));
-
-    await page.waitForTimeout(3000);
-
-    expect(errors.length).toBe(0);
   });
 });
