@@ -37,8 +37,6 @@ test.describe("Ground Station Pass Debug", () => {
       { timeout: 20000 },
     );
 
-    await page.waitForTimeout(2000);
-
     // Trigger timeline change to force pass calculation
     await page.evaluate(() => {
       if (window.cc?.viewer?.timeline) {
@@ -55,7 +53,16 @@ test.describe("Ground Station Pass Debug", () => {
       { timeout: 15000 },
     );
 
-    await page.waitForTimeout(3000); // Additional wait for pass calculation
+    // Wait for passes to be calculated
+    await page.waitForFunction(
+      () => {
+        const sats = window.cc?.sats?.satellites;
+        if (!sats || sats.length === 0) return false;
+        const issSat = sats.find((s) => s.props?.name === "ISS (ZARYA)");
+        return issSat && issSat.props?.passes && issSat.props.passes.length > 0;
+      },
+      { timeout: 15000 },
+    );
 
     // Get detailed debug info
     const debugInfo = await page.evaluate(() => {

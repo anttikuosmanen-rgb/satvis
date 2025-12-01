@@ -602,7 +602,7 @@ test.describe("Ground Station", () => {
     await page.goto("/?sats=ISS~(ZARYA)&gs=48.1351,11.5820,Munich");
 
     await expect(page.locator("#cesiumContainer canvas").first()).toBeVisible({ timeout: 15000 });
-    await page.waitForTimeout(3000);
+    // Removed unnecessary waitForTimeout
 
     // Check if ground station link entity exists
     const linkEntity = await page.evaluate(() => {
@@ -650,7 +650,7 @@ test.describe("Ground Station", () => {
       { timeout: 20000 },
     );
 
-    await page.waitForTimeout(2000);
+    // Removed unnecessary waitForTimeout
 
     // Set simulation time and widen timeline window to ensure passes are visible
     await page.evaluate(() => {
@@ -893,7 +893,7 @@ test.describe("Ground Station", () => {
       });
 
       // Wait for highlights to be recalculated after timeline change
-      await page.waitForTimeout(3000);
+      // Removed unnecessary waitForTimeout
 
       // Check highlights again
       const updatedState = await page.evaluate(() => {
@@ -1265,7 +1265,7 @@ test.describe("Ground Station", () => {
       });
 
       // Wait for highlights to be recalculated after timeline change
-      await page.waitForTimeout(3000);
+      // Removed unnecessary waitForTimeout
 
       // Check highlights again
       const updatedState = await page.evaluate(() => {

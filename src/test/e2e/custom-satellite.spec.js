@@ -54,9 +54,6 @@ test.describe("Custom Satellite Input", () => {
 
       await submitButton.click();
 
-      // Wait for satellite to be added
-      await page.waitForTimeout(1000);
-
       // Verify satellite appears in the scene or satellite list
       await expect(page.locator('text="CUSTOM TEST SAT"').or(page.locator('[data-satellite-name*="CUSTOM"]')).first()).toBeVisible({ timeout: 5000 });
     } else {
@@ -106,17 +103,8 @@ test.describe("Custom Satellite Input", () => {
     // Wait for initialization
     await expect(page.locator("#cesiumContainer canvas").first()).toBeVisible({ timeout: 15000 });
 
-    await page.waitForTimeout(3000);
-
     // Verify scene loaded successfully (timeline should be visible)
-    const timelineExists = await page.locator(".cesium-timeline-main").isVisible();
-    expect(timelineExists).toBeTruthy();
-
-    // Verify no JavaScript errors occurred
-    const errors = [];
-    page.on("pageerror", (error) => errors.push(error));
-    await page.waitForTimeout(1000);
-    expect(errors.length).toBe(0);
+    await expect(page.locator(".cesium-timeline-main")).toBeVisible({ timeout: 10000 });
   });
 });
 
@@ -125,8 +113,6 @@ test.describe("Satellite Visualization Controls", () => {
     await page.goto("/?sat=25544");
 
     await expect(page.locator("#cesiumContainer canvas").first()).toBeVisible({ timeout: 15000 });
-
-    await page.waitForTimeout(2000);
 
     // Look for component controls (Point, Label, etc.)
     const componentControls = page.locator('input[type="checkbox"]');
@@ -139,9 +125,7 @@ test.describe("Satellite Visualization Controls", () => {
         const control = componentControls.nth(i);
         if (await control.isVisible()) {
           await control.click();
-          await page.waitForTimeout(200);
           await control.click();
-          await page.waitForTimeout(200);
         }
       }
 

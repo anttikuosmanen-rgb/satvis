@@ -16,7 +16,7 @@ test.describe("Orbit Visualization", () => {
     await page.goto("/?sats=ISS~(ZARYA)");
 
     await expect(page.locator("#cesiumContainer canvas").first()).toBeVisible({ timeout: 15000 });
-    await page.waitForTimeout(3000); // Wait for satellite to fully load
+    // Removed unnecessary waitForTimeout
 
     // Open satellite elements menu
     const satelliteElementsButton = page
@@ -30,7 +30,7 @@ test.describe("Orbit Visualization", () => {
 
     await expect(satelliteElementsButton).toBeVisible({ timeout: 5000 });
     await satelliteElementsButton.click();
-    await page.waitForTimeout(1000);
+    // Removed unnecessary waitForTimeout
 
     await expect(page.locator('.toolbarSwitches:has-text("Satellite elements")')).toBeVisible({ timeout: 5000 });
 
@@ -55,7 +55,7 @@ test.describe("Orbit Visualization", () => {
     expect(await orbitCheckbox.isChecked()).toBe(!orbitInitialState);
 
     // Wait for orbit to be created (can take 3+ seconds)
-    await page.waitForTimeout(4000);
+    // Removed unnecessary waitForTimeout
 
     // Verify orbit was created (should be a Primitive for untracked satellite)
     const orbitEnabledState = await page.evaluate(() => {
@@ -81,7 +81,7 @@ test.describe("Orbit Visualization", () => {
 
     // Toggle orbit back OFF
     await orbitCheckbox.evaluate((node) => node.click());
-    await page.waitForTimeout(2000);
+    // Removed unnecessary waitForTimeout
     expect(await orbitCheckbox.isChecked()).toBe(orbitInitialState);
 
     // Verify orbit removed
@@ -100,7 +100,7 @@ test.describe("Orbit Visualization", () => {
     await page.goto("/?sats=ISS~(ZARYA)");
 
     await expect(page.locator("#cesiumContainer canvas").first()).toBeVisible({ timeout: 15000 });
-    await page.waitForTimeout(3000);
+    // Removed unnecessary waitForTimeout
 
     // Open satellite elements menu
     const satelliteElementsButton = page
@@ -114,7 +114,7 @@ test.describe("Orbit Visualization", () => {
 
     await expect(satelliteElementsButton).toBeVisible({ timeout: 5000 });
     await satelliteElementsButton.click();
-    await page.waitForTimeout(1000);
+    // Removed unnecessary waitForTimeout
 
     await expect(page.locator('.toolbarSwitches:has-text("Satellite elements")')).toBeVisible({ timeout: 5000 });
 
@@ -139,7 +139,7 @@ test.describe("Orbit Visualization", () => {
     expect(await orbitTrackCheckbox.isChecked()).toBe(!trackInitialState);
 
     // Wait for orbit track to be created
-    await page.waitForTimeout(4000);
+    // Removed unnecessary waitForTimeout
 
     // Verify orbit track was created
     const trackEnabledState = await page.evaluate(() => {
@@ -155,7 +155,7 @@ test.describe("Orbit Visualization", () => {
 
     // Toggle back
     await orbitTrackCheckbox.evaluate((node) => node.click());
-    await page.waitForTimeout(2000);
+    // Removed unnecessary waitForTimeout
     expect(await orbitTrackCheckbox.isChecked()).toBe(trackInitialState);
 
     const trackDisabledState = await page.evaluate(() => {
