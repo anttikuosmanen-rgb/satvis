@@ -104,8 +104,6 @@ test.describe("ISS Tracking Workflow", () => {
       };
     });
 
-    console.log(`ISS entities created: ${JSON.stringify(satelliteEntities, null, 2)}`);
-
     // Verify ISS satellite entities were actually rendered
     expect(satelliteEntities.found).toBe(true);
     expect(satelliteEntities.count).toBeGreaterThan(0);
@@ -185,8 +183,6 @@ test.describe("ISS Tracking Workflow", () => {
         hasVisuals,
       };
     });
-
-    console.log(`URL parameter test - ISS entities: ${JSON.stringify(satelliteEntities)}`);
 
     expect(satelliteEntities.found).toBe(true);
     expect(satelliteEntities.count).toBeGreaterThan(0);

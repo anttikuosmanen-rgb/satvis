@@ -161,13 +161,6 @@ test.describe("Ground Station Pass Debug", () => {
       };
     });
 
-    console.log("=== DEBUG INFO ===");
-    console.log(JSON.stringify(debugInfo, null, 2));
-    console.log("==================");
-    console.log("=== CONSOLE LOGS ===");
-    console.log(consoleLogs);
-    console.log("====================");
-
     // Assertions to understand the state
     expect(debugInfo.satelliteName).toBeDefined();
     expect(debugInfo.tleData).toBeDefined();

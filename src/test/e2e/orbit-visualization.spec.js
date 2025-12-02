@@ -39,7 +39,6 @@ test.describe("Orbit Visualization", () => {
     await expect(orbitCheckbox).toBeAttached({ timeout: 5000 });
 
     const orbitInitialState = await orbitCheckbox.isChecked();
-    console.log(`Orbit checkbox initial state: ${orbitInitialState ? "checked" : "unchecked"}`);
 
     // Verify initial state (no orbit)
     const initialState = await page.evaluate(() => {
@@ -47,8 +46,6 @@ test.describe("Orbit Visualization", () => {
       const hasPathEntity = window.cc?.viewer?.entities?.values?.some((e) => !!e.path) || false;
       return { hasOrbitPrimitive, hasPathEntity, hasOrbit: hasOrbitPrimitive || hasPathEntity };
     });
-
-    console.log(`Initial orbit state: ${JSON.stringify(initialState)}`);
 
     // Toggle orbit ON
     await orbitCheckbox.evaluate((node) => node.click());
@@ -64,8 +61,6 @@ test.describe("Orbit Visualization", () => {
       const isTracked = !!window.cc?.sats?.trackedSatellite;
       return { hasOrbitPrimitive, hasPathEntity, hasOrbit: hasOrbitPrimitive || hasPathEntity, isTracked };
     });
-
-    console.log(`After enabling orbit: ${JSON.stringify(orbitEnabledState)}`);
 
     // For untracked satellite, should use Primitive
     if (!orbitEnabledState.isTracked) {
@@ -91,7 +86,6 @@ test.describe("Orbit Visualization", () => {
       return { hasOrbitPrimitive, hasPathEntity, hasOrbit: hasOrbitPrimitive || hasPathEntity };
     });
 
-    console.log(`After disabling orbit: ${JSON.stringify(orbitDisabledState)}`);
     expect(orbitDisabledState.hasOrbit).toBe(initialState.hasOrbit);
   });
 
@@ -123,7 +117,6 @@ test.describe("Orbit Visualization", () => {
     await expect(orbitTrackCheckbox).toBeAttached({ timeout: 5000 });
 
     const trackInitialState = await orbitTrackCheckbox.isChecked();
-    console.log(`Orbit track checkbox initial state: ${trackInitialState ? "checked" : "unchecked"}`);
 
     // Get initial state
     const initialState = await page.evaluate(() => {
@@ -131,8 +124,6 @@ test.describe("Orbit Visualization", () => {
       const hasPath = viewer?.entities?.values?.some((e) => !!e.path) || false;
       return { hasPath };
     });
-
-    console.log(`Initial orbit track state: ${JSON.stringify(initialState)}`);
 
     // Toggle orbit track ON
     await orbitTrackCheckbox.evaluate((node) => node.click());
@@ -148,8 +139,6 @@ test.describe("Orbit Visualization", () => {
       return { hasPath };
     });
 
-    console.log(`After enabling orbit track: ${JSON.stringify(trackEnabledState)}`);
-
     // Verify path state changed
     expect(trackEnabledState.hasPath).not.toBe(initialState.hasPath);
 
@@ -164,7 +153,6 @@ test.describe("Orbit Visualization", () => {
       return { hasPath };
     });
 
-    console.log(`After disabling orbit track: ${JSON.stringify(trackDisabledState)}`);
     expect(trackDisabledState.hasPath).toBe(initialState.hasPath);
   });
 });

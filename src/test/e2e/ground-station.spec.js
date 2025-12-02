@@ -40,34 +40,25 @@ test.describe("Ground Station", () => {
 
         // Debug logging
         if (satCount === 0) {
-          console.log("Waiting for satellites to load... sats array empty or undefined");
           return false;
         }
 
         // Check if ISS is in the database
         const issSat = sats.find((s) => s.props?.name?.includes("ISS"));
         if (!issSat) {
-          console.log(
-            `Satellites loaded (${satCount}), but ISS not found. Sample names:`,
-            sats.slice(0, 5).map((s) => s.props?.name),
-          );
           return false;
         }
 
         // Check if ISS has valid TLE data
         const hasValidTLE = issSat.props?.orbit?.satrec !== null && issSat.props?.orbit?.satrec !== undefined;
         if (!hasValidTLE) {
-          console.log("ISS found but satrec not initialized");
           return false;
         }
 
-        console.log("ISS satellite ready with valid TLE data");
         return true;
       },
       { timeout: 60000 }, // Increased timeout to 60s
     );
-
-    console.log("ISS satellite loaded and ready");
 
     // Pause animation before interacting with UI elements
     // This makes elements stable for Playwright's actionability checks
@@ -104,8 +95,6 @@ test.describe("Ground Station", () => {
       await expect(pickOnGlobeCheckbox).toBeChecked({ timeout: 3000 });
     }
 
-    console.log("Pick mode enabled, clicking on globe...");
-
     // Get Cesium canvas for picking a location on the map
     // Use evaluate() to bypass Playwright's stability checks on animating canvas
     const canvasBox = await page.evaluate(() => {
@@ -123,7 +112,6 @@ test.describe("Ground Station", () => {
       const clickX = canvasBox.x + canvasBox.width * 0.5;
       const clickY = canvasBox.y + canvasBox.height * 0.5;
 
-      console.log(`Clicking on globe at (${clickX}, ${clickY})`);
       await page.mouse.click(clickX, clickY);
 
       // Wait for ground station entity to be created
@@ -157,8 +145,6 @@ test.describe("Ground Station", () => {
         };
       });
 
-      console.log(`Ground station entities: ${JSON.stringify(groundStationEntity, null, 2)}`);
-
       // Verify ground station entity exists and has visual representation
       expect(groundStationEntity.found).toBe(true);
       expect(groundStationEntity.count).toBeGreaterThan(0);
@@ -188,33 +174,12 @@ test.describe("Ground Station", () => {
         };
       });
 
-      console.log(`Ground station state: ${JSON.stringify(gsState, null, 2)}`);
       expect(gsState.found).toBe(true);
       expect(gsState.count).toBe(1);
     }
   });
 
   test("should calculate and display pass predictions", async ({ page }) => {
-    // Capture browser console logs
-    page.on("console", (msg) => {
-      const text = msg.text();
-      // Only log messages from our modules (filter out noise)
-      if (
-        text.includes("[addFromTleUrls]") ||
-        text.includes("[set groundStations]") ||
-        text.includes("[updatePassHighlightsForEnabledSatellites]") ||
-        text.includes("[showEnabledSatellites]") ||
-        text.includes("[satIsActive]") ||
-        text.includes("[SatelliteManager]") ||
-        text.includes("[ClockMonitor]") ||
-        text.includes("[updatePassHighlightsAfterTimelineChange]") ||
-        text.includes("[schedulePassHighlightUpdate]") ||
-        text.includes("[Test]")
-      ) {
-        console.log(`[Browser Console] ${text}`);
-      }
-    });
-
     // Start with multiple satellites (ISS + sample of Starlink) and ground station
     // Disable pass filters (hideLight=0, onlyLit=0) to test unfiltered passes
     // Using 25 satellites that exist in TLE data for representative testing
@@ -271,7 +236,6 @@ test.describe("Ground Station", () => {
         config: window.cc?.clockMonitor?.getConfig?.(),
       };
     });
-    console.log("ClockMonitor status:", JSON.stringify(clockMonitorStatus, null, 2));
 
     // Set simulation time to current date (matches TLE epoch ~Nov 2025)
     // This ensures satellites have fresh TLE data and passes can be calculated
@@ -279,7 +243,6 @@ test.describe("Ground Station", () => {
       if (window.cc?.viewer?.clock && typeof window.Cesium !== "undefined") {
         const testDate = new Date(); // Use current date
         const julianDate = window.Cesium.JulianDate.fromDate(testDate);
-        console.log(`[Test] Setting clock time to current date: ${testDate.toISOString()}`);
         window.cc.viewer.clock.currentTime = julianDate;
         window.cc.viewer.clock.shouldAnimate = false; // Pause at this time
       }
@@ -304,8 +267,6 @@ test.describe("Ground Station", () => {
     const hasPassList = await passList.isVisible({ timeout: 3000 }).catch(() => false);
 
     if (hasPassList) {
-      console.log("Pass list found, verifying pass data...");
-
       // Verify passes exist in the application state
       const passData = await page.evaluate(() => {
         const sats = window.cc?.sats?.satellites;
@@ -344,8 +305,6 @@ test.describe("Ground Station", () => {
         };
       });
 
-      console.log(`Pass data: ${JSON.stringify(passData, null, 2)}`);
-
       expect(passData.found).toBe(true);
       expect(passData.count).toBeGreaterThan(0);
 
@@ -357,8 +316,6 @@ test.describe("Ground Station", () => {
         expect(firstPass.maxElevation).toBeDefined();
       }
     } else {
-      console.log("Pass list not found in UI, checking application state...");
-
       // Even if UI doesn't show passes, verify they're calculated
       const passData = await page.evaluate(() => {
         const sats = window.cc?.sats?.satellites;
@@ -379,8 +336,6 @@ test.describe("Ground Station", () => {
           gsCount,
         };
       });
-
-      console.log(`Pass data (from state): ${JSON.stringify(passData, null, 2)}`);
 
       // Verify ground station is available and passes are calculated
       expect(passData.gsAvailable).toBe(true);
@@ -444,15 +399,12 @@ test.describe("Ground Station", () => {
       };
     });
 
-    console.log(`Timeline highlights: ${JSON.stringify(timelineHighlights, null, 2)}`);
-
     // Timeline should exist and have highlights (day/night cycles are always present)
     expect(timelineHighlights.found).toBe(true);
     expect(timelineHighlights.count).toBeGreaterThan(0);
 
     // Note: Pass-specific highlights depend on pass calculation which depends on
     // TLE freshness and orbital timing. We verify timeline infrastructure works.
-    console.log(`Timeline has ${timelineHighlights.count} highlight ranges (includes day/night cycles)`);
   });
 
   test("should change time when selecting a pass from timeline", async ({ page }) => {
@@ -501,8 +453,6 @@ test.describe("Ground Station", () => {
       return window.cc?.viewer?.clock?.currentTime?.toString();
     });
 
-    console.log(`Initial clock time: ${initialTime}`);
-
     // Get first pass start time
     const firstPassTime = await page.evaluate(() => {
       const sats = window.cc?.sats?.satellites;
@@ -524,8 +474,6 @@ test.describe("Ground Station", () => {
     // With simulation time set to current date (matching TLE epoch), passes MUST exist
     expect(firstPassTime).not.toBeNull();
 
-    console.log(`First pass: ${JSON.stringify(firstPassTime)}`);
-
     // Try to click on timeline to jump to pass
     // This tests timeline interaction
     const timeline = page.locator(".cesium-timeline-main");
@@ -544,8 +492,6 @@ test.describe("Ground Station", () => {
         const newTime = await page.evaluate(() => {
           return window.cc?.viewer?.clock?.currentTime?.toString();
         });
-
-        console.log(`Time after timeline click: ${newTime}`);
 
         // Verify time changed (might not exactly match pass time, but should be different)
         expect(newTime).not.toBe(initialTime);
@@ -581,8 +527,6 @@ test.describe("Ground Station", () => {
         })),
       };
     });
-
-    console.log(`Ground station link check: ${JSON.stringify(linkEntity, null, 2)}`);
 
     // Note: Ground station link visibility depends on whether satellite is currently in view
     // So we just verify the test setup works, not necessarily that link is visible
@@ -688,8 +632,6 @@ test.describe("Ground Station", () => {
       };
     });
 
-    console.log(`Pass and highlight data: ${JSON.stringify(passAndHighlightData, null, 2)}`);
-
     // With simulation time set to current date (matching TLE epoch), passes and highlights MUST exist
     expect(passAndHighlightData.found).toBe(true);
     expect(passAndHighlightData.firstPass).not.toBeNull();
@@ -768,8 +710,6 @@ test.describe("Ground Station", () => {
       };
     });
 
-    console.log(`Initial time: ${stateAndHighlight.initialState.time}, passes: ${stateAndHighlight.initialState.passCount}`);
-    console.log(`Highlight click result: ${JSON.stringify(stateAndHighlight.highlightClick, null, 2)}`);
     expect(stateAndHighlight.highlightClick.success).toBe(true);
 
     // Click on the timeline at the highlight location
@@ -784,8 +724,6 @@ test.describe("Ground Station", () => {
       // Calculate pixel position based on highlight ratio
       const clickX = timelineBox.x + timelineBox.width * stateAndHighlight.highlightClick.highlightRatio;
       const clickY = timelineBox.y + timelineBox.height / 2;
-
-      console.log(`Clicking timeline at x=${clickX.toFixed(0)}, y=${clickY.toFixed(0)} (ratio=${stateAndHighlight.highlightClick.highlightRatio.toFixed(3)})`);
 
       await page.mouse.click(clickX, clickY);
     } else {
@@ -817,8 +755,6 @@ test.describe("Ground Station", () => {
       };
     });
 
-    console.log(`After time jump - time: ${newState.time}, passes: ${newState.passCount}, highlights: ${newState.highlightCount}`);
-
     // Verify time is different from initial time (verifies the time jump occurred)
     expect(newState.time).not.toBe(stateAndHighlight.initialState.time);
 
@@ -828,8 +764,6 @@ test.describe("Ground Station", () => {
 
     // If no highlights are visible after the jump, widen the timeline window to show passes
     if (newState.highlightCount === 0) {
-      console.log("No highlights visible after time jump - widening timeline window");
-
       await page.evaluate(() => {
         const viewer = window.cc?.viewer;
         const Cesium = window.Cesium;
@@ -860,7 +794,6 @@ test.describe("Ground Station", () => {
         };
       });
 
-      console.log(`After widening timeline - highlights: ${updatedState.highlightCount}`);
       expect(updatedState.highlightCount).toBeGreaterThan(0);
     } else {
       // Highlights were already visible
@@ -995,14 +928,6 @@ test.describe("Ground Station", () => {
       };
     });
 
-    console.log(`Pass/Highlight match: ${JSON.stringify(passAndHighlightMatch, null, 2)}`);
-    if (passAndHighlightMatch.debug) {
-      console.log(`Timeline Window: ${JSON.stringify(passAndHighlightMatch.debug.timelineWindow, null, 2)}`);
-      console.log(`Current Time: ${JSON.stringify(passAndHighlightMatch.debug.currentTime, null, 2)}`);
-      console.log(`First 5 Passes: ${JSON.stringify(passAndHighlightMatch.debug.firstFivePasses, null, 2)}`);
-      console.log(`Visible Passes: ${JSON.stringify(passAndHighlightMatch.debug.visiblePasses, null, 2)}`);
-      console.log(`Highlights: ${JSON.stringify(passAndHighlightMatch.debug.highlights, null, 2)}`);
-    }
     expect(passAndHighlightMatch.success).toBe(true);
     expect(passAndHighlightMatch.allHighlightsMatchPasses).toBe(true);
   });
@@ -1085,7 +1010,6 @@ test.describe("Ground Station", () => {
       };
     });
 
-    console.log(`Initial state: time: ${initialState.time}, passes: ${initialState.passCount}, highlights: ${initialState.highlightCount}`);
     expect(initialState.found).toBe(true);
     expect(initialState.passCount).toBeGreaterThan(0);
     expect(initialState.highlightCount).toBeGreaterThan(0);
@@ -1099,8 +1023,6 @@ test.describe("Ground Station", () => {
       await zoomOutButton.click({ force: true });
       // Removed unnecessary waitForTimeout
     }
-
-    console.log("Clicked zoom-out button 3 times");
 
     // Calculate timeline position 24 hours in the future
     const futureClickData = await page.evaluate(() => {
@@ -1138,7 +1060,6 @@ test.describe("Ground Station", () => {
     });
 
     expect(futureClickData.success).toBe(true);
-    console.log(`Calculated future time ratio: ${futureClickData.futureRatio.toFixed(4)}`);
 
     // Get timeline bounding box and click at the calculated position
     const timelineContainer = page.locator(".cesium-viewer-timelineContainer");
@@ -1154,8 +1075,6 @@ test.describe("Ground Station", () => {
 
     const clickX = timelineBoundingBox.x + timelineBoundingBox.width * futureClickData.futureRatio;
     const clickY = timelineBoundingBox.y + timelineBoundingBox.height / 2;
-
-    console.log(`Clicking timeline at x=${Math.round(clickX)}, y=${Math.round(clickY)} (ratio=${futureClickData.futureRatio.toFixed(4)})`);
 
     // Click on the timeline
     await page.mouse.click(clickX, clickY);
@@ -1178,8 +1097,6 @@ test.describe("Ground Station", () => {
       };
     });
 
-    console.log(`After time jump - time: ${newState.time}, passes: ${newState.passCount}, highlights: ${newState.highlightCount}`);
-
     // Verify time is different from initial time
     expect(newState.time).not.toBe(initialState.time);
 
@@ -1190,8 +1107,6 @@ test.describe("Ground Station", () => {
     const diffMs = newDate.getTime() - initialDate.getTime();
     const diffHours = diffMs / (1000 * 60 * 60);
 
-    console.log(`Time difference: ${diffHours.toFixed(2)} hours`);
-
     // Verify time jumped approximately 24 hours (within 1 hour tolerance)
     expect(Math.abs(diffHours - 24)).toBeLessThan(1);
 
@@ -1200,8 +1115,6 @@ test.describe("Ground Station", () => {
 
     // If no highlights are visible after the jump, widen the timeline window to show passes
     if (newState.highlightCount === 0) {
-      console.log("No highlights visible after time jump - widening timeline window");
-
       await page.evaluate(() => {
         const viewer = window.cc?.viewer;
         const Cesium = window.Cesium;
@@ -1232,7 +1145,6 @@ test.describe("Ground Station", () => {
         };
       });
 
-      console.log(`After widening timeline - highlights: ${updatedState.highlightCount}`);
       expect(updatedState.highlightCount).toBeGreaterThan(0);
     } else {
       // Highlights were already visible
@@ -1367,14 +1279,6 @@ test.describe("Ground Station", () => {
       };
     });
 
-    console.log(`Pass/Highlight match: ${JSON.stringify(passAndHighlightMatch, null, 2)}`);
-    if (passAndHighlightMatch.debug) {
-      console.log(`Timeline Window: ${JSON.stringify(passAndHighlightMatch.debug.timelineWindow, null, 2)}`);
-      console.log(`Current Time: ${JSON.stringify(passAndHighlightMatch.debug.currentTime, null, 2)}`);
-      console.log(`First 5 Passes: ${JSON.stringify(passAndHighlightMatch.debug.firstFivePasses, null, 2)}`);
-      console.log(`Visible Passes: ${JSON.stringify(passAndHighlightMatch.debug.visiblePasses, null, 2)}`);
-      console.log(`Highlights: ${JSON.stringify(passAndHighlightMatch.debug.highlights, null, 2)}`);
-    }
     expect(passAndHighlightMatch.success).toBe(true);
     expect(passAndHighlightMatch.allHighlightsMatchPasses).toBe(true);
   });
