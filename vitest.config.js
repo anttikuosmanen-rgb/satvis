@@ -7,6 +7,7 @@ export default defineConfig({
   test: {
     environment: "happy-dom",
     globals: true,
+    setupFiles: ["./src/test/setup.js"],
     // Don't fail on unhandled rejections from Cesium network requests in test environment
     dangerouslyIgnoreUnhandledErrors: true,
     // Exclude Playwright E2E tests - they should be run separately with Playwright's runner
