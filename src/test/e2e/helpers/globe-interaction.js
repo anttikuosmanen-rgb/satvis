@@ -154,3 +154,16 @@ export async function withPausedGlobe(page, action, options = {}) {
     }
   }
 }
+
+/**
+ * Flip camera to opposite side of Earth (180°)
+ * Uses the 'z' keyboard shortcut to trigger camera flip
+ * Useful when satellite billboard is on far side and not visible
+ *
+ * @param {import('@playwright/test').Page} page - Playwright page object
+ */
+export async function flipCameraToOppositeSide(page) {
+  await page.keyboard.press("z");
+  // Give camera a moment to reposition
+  await page.waitForTimeout(100);
+}

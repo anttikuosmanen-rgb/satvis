@@ -421,6 +421,38 @@ export class CesiumController {
     }
   }
 
+  /**
+   * Flip camera 180° to the opposite side of Earth
+   * Maintains the same altitude and orientation (heading, pitch, roll)
+   * Useful when satellite billboard is on the far side and not visible
+   */
+  flipCameraToOppositeSide() {
+    const camera = this.viewer.camera;
+
+    // Get current camera position in cartographic coordinates
+    const currentPosition = camera.positionCartographic;
+    const currentHeight = currentPosition.height;
+
+    // Get current camera orientation
+    const currentHeading = camera.heading;
+    const currentPitch = camera.pitch;
+    const currentRoll = camera.roll;
+
+    // Calculate opposite position: flip longitude by 180°, negate latitude
+    const oppositeLongitude = currentPosition.longitude + Math.PI;
+    const oppositeLatitude = -currentPosition.latitude;
+
+    // Set camera to opposite side with same altitude and orientation
+    camera.setView({
+      destination: Cartesian3.fromRadians(oppositeLongitude, oppositeLatitude, currentHeight),
+      orientation: {
+        heading: currentHeading,
+        pitch: currentPitch,
+        roll: currentRoll,
+      },
+    });
+  }
+
   setTime(current, start = dayjs.utc(current).subtract(12, "hour").toISOString(), stop = dayjs.utc(current).add(7, "day").toISOString()) {
     // Skip time changes on iOS
     if (DeviceDetect.isIos()) {
@@ -1036,6 +1068,13 @@ export class CesiumController {
     // Add keyboard shortcut for debug info during scrubbing
     // Press 'D' key to dump visibility debug info while dragging
     document.addEventListener("keydown", (event) => {
+      // Z key: Flip camera 180° to opposite side of Earth
+      if (event.key === "z" || event.key === "Z") {
+        this.flipCameraToOppositeSide();
+        return;
+      }
+
+      // D key: Debug scrubbing info
       if (event.key === "d" || event.key === "D") {
         if (isDraggingSatellite && draggedSatellite && orbitPositions.length > 0) {
           console.log("=== SCRUBBING DEBUG INFO (D key pressed) ===");
