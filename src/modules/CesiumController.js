@@ -45,6 +45,7 @@ import { TimeFormatHelper } from "./util/TimeFormatHelper";
 import { PlanetManager } from "./PlanetManager";
 import { EarthManager } from "./EarthManager";
 import { filterAndSortPasses } from "./util/PassFilter";
+import { ClockMonitor } from "./util/ClockMonitor";
 
 dayjs.extend(utc);
 
@@ -97,6 +98,26 @@ export class CesiumController {
 
     // Export CesiumController for debugger
     window.cc = this;
+
+    // Store sat store reference for use in timeline/animation formatters
+    // This avoids calling useSatStore() from non-Vue contexts
+    // Wrap in try-catch in case Pinia isn't initialized yet (e.g., in test environments)
+    try {
+      this.satStore = useSatStore();
+    } catch (error) {
+      console.warn("[CesiumController] Could not access sat store, local time formatting may not work:", error.message);
+      this.satStore = null;
+    }
+
+    // Initialize ClockMonitor for centralized time change detection
+    // This must be created before other managers so they can listen to events
+    this.clockMonitor = new ClockMonitor(this.viewer, {
+      checkInterval: 1000, // Check every 1 second
+      threshold: 60, // Emit event for jumps >1 minute
+    });
+
+    // Listen for time jumps to update timeline window
+    this.setupClockTimeJumpListener();
 
     // CesiumController config
     this.sceneModes = ["3D", "2D", "Columbus"];
@@ -400,6 +421,38 @@ export class CesiumController {
     }
   }
 
+  /**
+   * Flip camera 180° to the opposite side of Earth
+   * Maintains the same altitude and orientation (heading, pitch, roll)
+   * Useful when satellite billboard is on the far side and not visible
+   */
+  flipCameraToOppositeSide() {
+    const camera = this.viewer.camera;
+
+    // Get current camera position in cartographic coordinates
+    const currentPosition = camera.positionCartographic;
+    const currentHeight = currentPosition.height;
+
+    // Get current camera orientation
+    const currentHeading = camera.heading;
+    const currentPitch = camera.pitch;
+    const currentRoll = camera.roll;
+
+    // Calculate opposite position: flip longitude by 180°, negate latitude
+    const oppositeLongitude = currentPosition.longitude + Math.PI;
+    const oppositeLatitude = -currentPosition.latitude;
+
+    // Set camera to opposite side with same altitude and orientation
+    camera.setView({
+      destination: Cartesian3.fromRadians(oppositeLongitude, oppositeLatitude, currentHeight),
+      orientation: {
+        heading: currentHeading,
+        pitch: currentPitch,
+        roll: currentRoll,
+      },
+    });
+  }
+
   setTime(current, start = dayjs.utc(current).subtract(12, "hour").toISOString(), stop = dayjs.utc(current).add(7, "day").toISOString()) {
     // Skip time changes on iOS
     if (DeviceDetect.isIos()) {
@@ -442,6 +495,15 @@ export class CesiumController {
       }
 
       this.viewer.timeline.updateFromClock();
+
+      // After updating timeline window, refresh pass highlights for the new visible range
+      // This ensures highlights are shown for passes in the updated window
+      if (this.sats && this.sats.updatePassHighlightsAfterTimelineChange) {
+        // Use setTimeout to avoid blocking and ensure timeline update completes first
+        setTimeout(() => {
+          this.sats.updatePassHighlightsAfterTimelineChange();
+        }, 100);
+      }
     }
   }
 
@@ -1006,6 +1068,13 @@ export class CesiumController {
     // Add keyboard shortcut for debug info during scrubbing
     // Press 'D' key to dump visibility debug info while dragging
     document.addEventListener("keydown", (event) => {
+      // Z key: Flip camera 180° to opposite side of Earth
+      if (event.key === "z" || event.key === "Z") {
+        this.flipCameraToOppositeSide();
+        return;
+      }
+
+      // D key: Debug scrubbing info
       if (event.key === "d" || event.key === "D") {
         if (isDraggingSatellite && draggedSatellite && orbitPositions.length > 0) {
           console.log("=== SCRUBBING DEBUG INFO (D key pressed) ===");
@@ -1483,6 +1552,21 @@ export class CesiumController {
     });
   }
 
+  setupClockTimeJumpListener() {
+    // Listen for time discontinuities detected by ClockMonitor
+    // When time jumps, update timeline window while preserving zoom level
+    // Note: SatelliteManager already listens for this event and triggers pass highlight updates
+    window.addEventListener("cesium:clockTimeJumped", (event) => {
+      const { newTime, jumpSeconds } = event.detail;
+
+      console.log(`[CesiumController] Time jump detected (${jumpSeconds.toFixed(0)}s), updating timeline window`);
+
+      // Update timeline window to center around the new time while preserving zoom level
+      const newTimeDate = JulianDate.toDate(newTime);
+      this.setCurrentTimeOnly(newTimeDate.toISOString());
+    });
+  }
+
   setupTimelineResetOnNow() {
     if (!this.viewer.timeline || !this.viewer.animation) {
       return;
@@ -1519,12 +1603,13 @@ export class CesiumController {
     const timeline = this.viewer.timeline;
     const originalTimelineMakeLabel = timeline.makeLabel.bind(timeline);
 
+    // Capture satStore reference in closure to avoid calling useSatStore from non-Vue context
+    const satStore = this.satStore;
+
     // Override timeline makeLabel to support local time
     this.viewer.timeline.makeLabel = function (time) {
       try {
-        const satStore = useSatStore();
-
-        if (satStore.useLocalTime && satStore.groundStations.length > 0) {
+        if (satStore && satStore.useLocalTime && satStore.groundStations.length > 0) {
           // Get first ground station position for timezone
           const groundStationPosition = {
             latitude: satStore.groundStations[0].lat,
@@ -1573,8 +1658,6 @@ export class CesiumController {
     // Override animation date formatter to support local time
     animation.viewModel.dateFormatter = function (date, viewModel) {
       try {
-        const satStore = useSatStore();
-
         if (satStore && satStore.useLocalTime && satStore.groundStations && satStore.groundStations.length > 0) {
           // Convert to JavaScript Date if needed
           const jsDate = date instanceof Date ? date : new Date(date);
@@ -1609,8 +1692,6 @@ export class CesiumController {
     // Override animation time formatter to support local time
     animation.viewModel.timeFormatter = function (date, viewModel) {
       try {
-        const satStore = useSatStore();
-
         if (satStore && satStore.useLocalTime && satStore.groundStations && satStore.groundStations.length > 0) {
           // Convert to JavaScript Date if needed (Cesium may pass JulianDate or other formats)
           const jsDate = date instanceof Date ? date : new Date(date);

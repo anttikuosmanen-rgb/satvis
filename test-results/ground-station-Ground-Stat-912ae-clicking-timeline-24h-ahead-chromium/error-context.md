@@ -1,0 +1,52 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - generic [ref=e3]:
+    - generic [ref=e8]:
+      - link "Cesium ion" [ref=e11] [cursor=pointer]:
+        - /url: https://cesium.com/
+        - img "Cesium ion" [ref=e12]
+      - text: Data attribution
+    - generic [ref=e17]:
+      - generic [ref=e24]:
+        - generic [ref=e27]: Dec 3 2025
+        - generic [ref=e28]: 08:11:07 UTC
+        - generic [ref=e29]: 1x
+      - generic [ref=e31]:
+        - generic "Today (real-time)" [ref=e32] [cursor=pointer]
+        - generic "Play Reverse" [ref=e35] [cursor=pointer]
+        - generic "Play Forward" [ref=e38] [cursor=pointer]
+        - generic "Pause" [ref=e41] [cursor=pointer]
+    - generic [ref=e47] [cursor=pointer]:
+      - generic [ref=e182]: Dec 2 2025 00:00:00 UTC
+      - generic [ref=e184]: Dec 2 2025 12:00:00 UTC
+      - generic [ref=e186]: Dec 3 2025 00:00:00 UTC
+      - generic [ref=e188]: Dec 3 2025 12:00:00 UTC
+      - generic [ref=e190]: Dec 4 2025 00:00:00 UTC
+      - generic [ref=e192]: Dec 4 2025 12:00:00 UTC
+      - generic [ref=e194]: Dec 5 2025 00:00:00 UTC
+    - button "Full screen" [ref=e200] [cursor=pointer]
+    - button "Enter VR mode" [ref=e204] [cursor=pointer]
+  - generic:
+    - generic:
+      - generic:
+        - generic [ref=e208]:
+          - button [ref=e209] [cursor=pointer]
+          - button [ref=e211] [cursor=pointer]:
+            - img [ref=e212]
+          - button [ref=e214] [cursor=pointer]
+          - button [ref=e216] [cursor=pointer]:
+            - img [ref=e217]
+          - button [ref=e219] [cursor=pointer]:
+            - img [ref=e220]
+        - generic [ref=e222]:
+          - link [ref=e223] [cursor=pointer]:
+            - /url: https://github.com/anttikuosmanen-rgb/satvis
+            - img [ref=e224]
+          - button [ref=e226] [cursor=pointer]:
+            - img [ref=e227]
+        - generic [ref=e229]:
+          - button "+" [ref=e230] [cursor=pointer]
+          - button "-" [active] [ref=e231] [cursor=pointer]
+```

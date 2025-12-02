@@ -95,8 +95,8 @@ export class CesiumTimelineHelper {
       return rangeEnd >= timelineStartMs && rangeStart <= timelineStopMs;
     });
 
-    // Limit to 30 passes for performance
-    const maxPasses = 30;
+    // Limit to 8 passes per satellite for performance
+    const maxPasses = 8;
     const limitedRanges = visibleRanges.slice(0, maxPasses);
 
     limitedRanges.forEach((range) => {
@@ -223,8 +223,8 @@ export class CesiumTimelineHelper {
       return rangeEnd >= timelineStartMs && rangeStart <= timelineStopMs;
     });
 
-    // Limit to 30 passes for performance
-    const maxPasses = 30;
+    // Limit to 8 passes per satellite for performance
+    const maxPasses = 8;
     const limitedRanges = visibleRanges.slice(0, maxPasses);
 
     limitedRanges.forEach((range) => {
