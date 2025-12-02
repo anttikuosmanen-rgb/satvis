@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { pauseAnimation, resumeAnimation, waitForPassCalculation, waitForAppReady, withPausedGlobe } from "./helpers/globe-interaction.js";
 
 /**
  * E2E Test: Ground Station Functionality
@@ -12,47 +13,6 @@ import { test, expect } from "@playwright/test";
  * - Timeline pass visibility highlights
  * - Time navigation when selecting passes
  */
-
-/**
- * Wait for pass calculation and timeline highlights to be ready
- * Uses event-based polling instead of fixed timeouts for faster, more reliable tests
- * @param {Page} page - Playwright page object
- * @param {Object} options - Configuration options
- * @param {string} options.satelliteName - Name of satellite to check (default: "ISS (ZARYA)")
- * @param {boolean} options.checkHighlights - Whether to also wait for timeline highlights (default: true)
- * @param {number} options.timeout - Maximum wait time in milliseconds (default: 15000)
- */
-async function waitForPassCalculation(page, options = {}) {
-  const { satelliteName = "ISS (ZARYA)", checkHighlights = true, timeout = 15000 } = options;
-
-  await page.waitForFunction(
-    ({ satName, needHighlights }) => {
-      const sats = window.cc?.sats?.satellites;
-      if (!sats || sats.length === 0) return false;
-
-      // Find the specified satellite
-      const sat = sats.find((s) => s.props?.name === satName);
-      if (!sat || !sat.props?.passes || sat.props.passes.length === 0) {
-        return false;
-      }
-
-      // If highlights check is enabled, also verify timeline has pass highlights
-      if (needHighlights) {
-        const viewer = window.cc?.viewer;
-        if (!viewer || !viewer.timeline) return false;
-
-        const highlightRanges = viewer.timeline._highlightRanges || [];
-        // Check for pass highlights (priority 0, _base === 0)
-        const passHighlights = highlightRanges.filter((h) => h._base === 0);
-        if (passHighlights.length === 0) return false;
-      }
-
-      return true;
-    },
-    { satName: satelliteName, needHighlights: checkHighlights },
-    { timeout, polling: 200 }, // Poll every 200ms
-  );
-}
 
 test.describe("Ground Station", () => {
   test("should create ground station via pick on map and verify entity is rendered", async ({ page }) => {
@@ -109,6 +69,10 @@ test.describe("Ground Station", () => {
 
     console.log("ISS satellite loaded and ready");
 
+    // Pause animation before interacting with UI elements
+    // This makes elements stable for Playwright's actionability checks
+    await pauseAnimation(page);
+
     // Open ground station menu - button has svg-groundstation icon class
     const groundStationButton = page
       .locator("button.cesium-toolbar-button")
@@ -120,32 +84,24 @@ test.describe("Ground Station", () => {
     await expect(groundStationButton).toBeVisible({ timeout: 5000 });
     await groundStationButton.click();
 
+    // Move mouse away from button to dismiss tooltip that might block other UI elements
+    await page.mouse.move(0, 0);
+
     // Enable "Pick on globe" checkbox
     // The checkbox is inside a label with text "Pick on globe"
     // Note: The actual checkbox is hidden by CSS (custom styled checkbox)
     const pickOnGlobeLabel = page.locator('label.toolbarSwitch:has-text("Pick on globe")');
-    await expect(pickOnGlobeLabel).toBeVisible({ timeout: 5000 });
+    // Wait for the menu to fully expand and become visible
+    await expect(pickOnGlobeLabel).toBeVisible({ timeout: 10000 });
 
     const pickOnGlobeCheckbox = pickOnGlobeLabel.locator('input[type="checkbox"]');
 
-    // Check if already checked (force:true because checkbox is hidden by CSS)
+    // Check if already checked
     const isChecked = await pickOnGlobeCheckbox.isChecked();
     if (!isChecked) {
-      // Click the checkbox directly (even though hidden) to trigger v-model
-      // Using force: true to bypass visibility checks
-      await pickOnGlobeCheckbox.click({ force: true });
-      // Verify checkbox is now checked
+      // Click the label to toggle the checkbox (now that tooltip is gone)
+      await pickOnGlobeLabel.click();
       await expect(pickOnGlobeCheckbox).toBeChecked({ timeout: 3000 });
-
-      // Wait for pickMode state to be updated in the store (Vue reactivity)
-      await page.waitForFunction(
-        () => {
-          // Check if pickMode is set in the Pinia store
-          const cesiumStore = window.cc?.$pinia?.state?.value?.cesium;
-          return cesiumStore?.pickMode === true;
-        },
-        { timeout: 5000 },
-      );
     }
 
     console.log("Pick mode enabled, clicking on globe...");

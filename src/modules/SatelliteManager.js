@@ -931,6 +931,19 @@ export class SatelliteManager {
       return;
     }
 
+    // Dispatch event: pass calculation started
+    window.dispatchEvent(
+      new CustomEvent("satvis:passCalculationStart", {
+        detail: {
+          satelliteCount: activeSatellites.length,
+          groundStationCount: this.#groundStations.length,
+        },
+      }),
+    );
+
+    // Show loading spinner during pass calculation
+    this.loadingSpinner.show("Calculating passes...");
+
     // Clear existing pass highlights before recalculating to avoid duplicates
     CesiumTimelineHelper.clearHighlightRanges(this.viewer);
 
@@ -958,6 +971,19 @@ export class SatelliteManager {
 
     Promise.all(passPromises).then(() => {
       console.log("[updatePassHighlightsForEnabledSatellites] All pass promises completed");
+
+      // Hide loading spinner
+      this.loadingSpinner.hide();
+
+      // Dispatch event: pass calculation completed
+      window.dispatchEvent(
+        new CustomEvent("satvis:passCalculationComplete", {
+          detail: {
+            satelliteCount: activeSatellites.length,
+          },
+        }),
+      );
+
       // Force an immediate timeline update after all passes are loaded
       if (this.viewer.timeline) {
         this.viewer.timeline.updateFromClock();
