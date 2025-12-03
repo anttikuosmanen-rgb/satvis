@@ -57,37 +57,49 @@ export async function resumeAnimation(page) {
 export async function waitForPassCalculation(page, options = {}) {
   const { timeout = 60000 } = options;
 
-  // Wait for the pass calculation complete event
+  // Set up the event listener once, outside of the polling loop
+  // This prevents event listener leaks from waitForFunction polling
+  await page.evaluate(() => {
+    // Store completion state on window to avoid event listener leaks
+    if (!window._passCalculationState) {
+      window._passCalculationState = { completed: false };
+
+      const handler = () => {
+        window._passCalculationState.completed = true;
+        window.removeEventListener("satvis:passCalculationComplete", handler);
+      };
+
+      window.addEventListener("satvis:passCalculationComplete", handler);
+    } else {
+      // Reset completion state for new wait
+      window._passCalculationState.completed = false;
+    }
+  });
+
+  // Wait for either: event completion, or passes already exist
   await page.waitForFunction(
     () => {
-      return new Promise((resolve) => {
-        // If pass calculation is already complete (no active calculation), resolve immediately
-        const hasGroundStation = window.cc?.sats?.groundStationAvailable;
-        const activeSatellites = window.cc?.sats?.activeSatellites;
+      // Check if the event was fired
+      if (window._passCalculationState?.completed) {
+        return true;
+      }
 
-        if (!hasGroundStation || !activeSatellites || activeSatellites.length === 0) {
-          resolve(true);
-          return;
-        }
+      // Check if no ground station or satellites (nothing to calculate)
+      const hasGroundStation = window.cc?.sats?.groundStationAvailable;
+      const activeSatellites = window.cc?.sats?.activeSatellites;
 
-        // Listen for the completion event
-        const handler = () => {
-          window.removeEventListener("satvis:passCalculationComplete", handler);
-          resolve(true);
-        };
-        window.addEventListener("satvis:passCalculationComplete", handler);
+      if (!hasGroundStation || !activeSatellites || activeSatellites.length === 0) {
+        return true;
+      }
 
-        // Also check if calculation might have already completed
-        // by checking if passes exist for active satellites
-        const hasPasses = activeSatellites.some((sat) => {
-          return sat?.props?.passes && sat.props.passes.length > 0;
-        });
-
-        if (hasPasses) {
-          window.removeEventListener("satvis:passCalculationComplete", handler);
-          resolve(true);
-        }
+      // Check if passes exist for most active satellites (at least 80%)
+      // Not all satellites may have passes visible from the ground station
+      const satellitesWithPasses = activeSatellites.filter((sat) => {
+        return sat?.props?.passes && sat.props.passes.length > 0;
       });
+
+      const passCalculationRate = satellitesWithPasses.length / activeSatellites.length;
+      return passCalculationRate >= 0.8;
     },
     { timeout },
   );
@@ -164,6 +176,15 @@ export async function withPausedGlobe(page, action, options = {}) {
  */
 export async function flipCameraToOppositeSide(page) {
   await page.keyboard.press("z");
-  // Give camera a moment to reposition
-  await page.waitForTimeout(100);
+  // Wait for camera to finish repositioning by checking camera state
+  await page.waitForFunction(
+    () => {
+      // Camera flip is complete when the camera is no longer moving
+      const viewer = window.cc?.viewer;
+      if (!viewer || !viewer.camera) return false;
+      // Check if camera is idle (not animating)
+      return !viewer.scene.tweens || viewer.scene.tweens.length === 0;
+    },
+    { timeout: 1000 },
+  );
 }

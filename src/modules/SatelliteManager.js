@@ -33,6 +33,10 @@ export class SatelliteManager {
 
   #overpassMode = "elevation";
 
+  // Pass calculation state tracking to prevent race conditions
+  #passCalculationInProgress = false;
+  #currentPassCalculation = null;
+
   constructor(viewer) {
     this.viewer = viewer;
 
@@ -954,6 +958,20 @@ export class SatelliteManager {
       return;
     }
 
+    // Cancel any in-progress pass calculation to prevent race conditions
+    // When timeline jumps or satellites change, we need fresh calculations
+    if (this.#passCalculationInProgress) {
+      console.log("[updatePassHighlightsForEnabledSatellites] Cancelling previous calculation");
+      if (this.#currentPassCalculation) {
+        this.#currentPassCalculation.cancelled = true;
+      }
+    }
+
+    // Mark calculation as in progress and create cancellation token
+    this.#passCalculationInProgress = true;
+    const calculationId = { cancelled: false };
+    this.#currentPassCalculation = calculationId;
+
     // Dispatch event: pass calculation started
     window.dispatchEvent(
       new CustomEvent("satvis:passCalculationStart", {
@@ -995,10 +1013,22 @@ export class SatelliteManager {
     Promise.all(passPromises).then(() => {
       console.log("[updatePassHighlightsForEnabledSatellites] All pass promises completed");
 
+      // Always mark calculation as complete and reset flags
+      // This must happen regardless of cancellation to prevent deadlocks
+      this.#passCalculationInProgress = false;
+      this.#currentPassCalculation = null;
+
       // Hide loading spinner
       this.loadingSpinner.hide();
 
+      // Check if this calculation was cancelled by a newer calculation
+      if (calculationId.cancelled) {
+        console.log("[updatePassHighlightsForEnabledSatellites] Calculation was cancelled, skipping completion event");
+        return;
+      }
+
       // Dispatch event: pass calculation completed
+      // This event is used by E2E tests to wait for calculation completion
       window.dispatchEvent(
         new CustomEvent("satvis:passCalculationComplete", {
           detail: {
