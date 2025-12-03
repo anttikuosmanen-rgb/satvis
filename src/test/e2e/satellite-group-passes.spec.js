@@ -137,20 +137,70 @@ test.describe("Satellite Group Pass Prediction", () => {
     // Wait for pass calculation to complete
     await waitForPassCalculation(page, { timeout: 60000 });
 
-    // Select ground station (this ensures pass highlights are visible on timeline)
-    await page.evaluate(() => {
+    // Select ground station entity to show info box with pass list
+    const selectionResult = await page.evaluate(() => {
       const viewer = window.cc?.viewer;
-      if (!viewer) return;
+      const sats = window.cc?.sats;
+      if (!viewer || !sats) return { success: false, error: "No viewer or sats" };
 
-      // Find ground station entity
-      const gsEntity = viewer.entities.values.find((e) => e.name && e.name.toLowerCase().includes("ground"));
-      if (gsEntity && window.cc?.sats) {
-        // Trigger ground station selection
-        window.cc.sats.groundStationSelected = gsEntity;
-      }
+      // Get ground station from SatelliteManager
+      const gs = sats.groundStations?.[0];
+      if (!gs) return { success: false, error: "No ground station found" };
+
+      // Get the Cesium entity from the ground station
+      const gsEntity = gs.components?.Groundstation;
+      if (!gsEntity) return { success: false, error: "Ground station entity not found in components" };
+
+      // Select the entity
+      viewer.selectedEntity = gsEntity;
+
+      return {
+        success: true,
+        entityName: gsEntity.name,
+        hasDescription: !!gsEntity.description,
+        selectedEntityName: viewer.selectedEntity?.name,
+      };
     });
 
-    // Check timeline highlights after ground station is selected
+    if (!selectionResult.success) {
+      console.log("Ground station selection failed:", JSON.stringify(selectionResult, null, 2));
+    }
+    expect(selectionResult.success).toBe(true);
+    expect(selectionResult.hasDescription).toBe(true);
+
+    // Wait for Cesium info box to become visible
+    await page.waitForFunction(
+      () => {
+        const infoBox = document.querySelector(".cesium-infoBox");
+        if (!infoBox) return false;
+
+        // Check if info box is visible
+        const computed = window.getComputedStyle(infoBox);
+        return computed.display !== "none" && computed.visibility !== "hidden";
+      },
+      { timeout: 10000 },
+    );
+
+    // Verify passes are shown in the info box content
+    const infoBoxContent = await page.evaluate(() => {
+      const iframe = document.querySelector(".cesium-infoBox-iframe");
+      if (!iframe || !iframe.contentDocument) return { found: false, error: "Info box iframe not found" };
+
+      const body = iframe.contentDocument.body;
+      const text = body.textContent || body.innerText;
+
+      // Check if pass information is displayed
+      const hasPassInfo = text.includes("pass") || text.includes("Pass") || text.includes("elevation");
+
+      return {
+        found: hasPassInfo,
+        preview: text.substring(0, 200),
+      };
+    });
+
+    expect(infoBoxContent.found).toBe(true);
+
+    // Check detailed timeline highlight data after ground station is selected
     const passHighlightsAfterSelection = await page.evaluate(() => {
       const viewer = window.cc?.viewer;
       if (!viewer || !viewer.timeline) return { found: false, passCount: 0, totalCount: 0 };
