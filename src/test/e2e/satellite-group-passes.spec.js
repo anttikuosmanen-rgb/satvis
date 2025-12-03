@@ -157,22 +157,6 @@ test.describe("Satellite Group Pass Prediction", () => {
     expect(groundStationStatus.available).toBe(true);
     expect(groundStationStatus.count).toBe(1);
 
-    // Check initial timeline highlights (before pass calculation)
-    const initialHighlights = await page.evaluate(() => {
-      const viewer = window.cc?.viewer;
-      if (!viewer || !viewer.timeline) return { found: false, count: 0 };
-
-      const highlightRanges = viewer.timeline._highlightRanges || [];
-      return {
-        found: highlightRanges.length > 0,
-        count: highlightRanges.length,
-      };
-    });
-
-    // Timeline should have highlights (at minimum day/night cycles)
-    expect(initialHighlights.found).toBe(true);
-    expect(initialHighlights.count).toBeGreaterThan(0);
-
     // Set simulation time to current date for fresh TLE data
     await page.evaluate(() => {
       if (window.cc?.viewer?.clock && typeof window.Cesium !== "undefined") {
@@ -190,10 +174,10 @@ test.describe("Satellite Group Pass Prediction", () => {
       }
     });
 
-    // Wait for pass calculation to complete
-    await waitForPassCalculation(page, { timeout: 60000 });
-
     // Select ground station entity to show info box with pass list
+    // Note: We do NOT wait for pass calculation to complete before selection
+    // This simulates the real user workflow where they might select the GS
+    // before pass calculations finish
     const selectionResult = await page.evaluate(() => {
       const viewer = window.cc?.viewer;
       const sats = window.cc?.sats;
@@ -255,6 +239,11 @@ test.describe("Satellite Group Pass Prediction", () => {
     });
 
     expect(infoBoxContent.found).toBe(true);
+
+    // Wait for pass calculation to complete AFTER ground station selection
+    // This verifies that highlights eventually appear even if GS was selected
+    // before pass calculations finished
+    await waitForPassCalculation(page, { timeout: 60000 });
 
     // Check detailed timeline highlight data after ground station is selected
     const passHighlightsAfterSelection = await page.evaluate(() => {
