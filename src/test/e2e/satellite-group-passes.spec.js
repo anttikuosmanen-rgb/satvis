@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { waitForPassCalculation } from "./helpers/globe-interaction.js";
+import { waitForPassCalculation, pauseAnimation } from "./helpers/globe-interaction.js";
 
 /**
  * E2E Test: Satellite Group Pass Prediction
@@ -7,7 +7,7 @@ import { waitForPassCalculation } from "./helpers/globe-interaction.js";
  * Tests that pass prediction works correctly when loading a satellite group via the group selection feature.
  * Uses the "Stations" group (data/tle/groups/stations.txt with ~24 satellites) to verify:
  * - Satellite group loading via enabledTags URL parameter
- * - Ground station creation via URL parameter
+ * - Ground station creation by picking on globe
  * - Pass calculation for satellites in the group
  * - Pass data structure and validity
  */
@@ -16,7 +16,7 @@ test.describe("Satellite Group Pass Prediction", () => {
   test("should load Stations group, create ground station, and calculate passes", async ({ page }) => {
     // Load entire Stations group (all satellites from data/tle/groups/stations.txt)
     // using the group selection feature via the "tags" URL parameter
-    await page.goto("/?tags=Stations&gs=48.1351,11.5820,Munich&hideLight=0&onlyLit=0");
+    await page.goto("/?tags=Stations&hideLight=0&onlyLit=0");
 
     // Wait for Cesium canvas to be visible
     await expect(page.locator("#cesiumContainer canvas").first()).toBeVisible({ timeout: 15000 });
@@ -73,7 +73,64 @@ test.describe("Satellite Group Pass Prediction", () => {
     expect(satelliteStatus.hasISS).toBe(true); // ISS should be in Stations group
     expect(satelliteStatus.hasCSS).toBe(true); // CSS should be in Stations group
 
-    // Verify ground station was created from URL parameter
+    // Pause animation before interacting with UI elements
+    await pauseAnimation(page);
+
+    // Create ground station by picking on globe
+    const groundStationButton = page
+      .locator("button.cesium-toolbar-button")
+      .filter({
+        has: page.locator(".svg-groundstation"),
+      })
+      .first();
+
+    await expect(groundStationButton).toBeVisible({ timeout: 5000 });
+    await groundStationButton.click();
+
+    // Move mouse away from button to dismiss tooltip
+    await page.mouse.move(0, 0);
+
+    // Enable "Pick on globe" checkbox
+    const pickOnGlobeLabel = page.locator('label.toolbarSwitch:has-text("Pick on globe")');
+    await expect(pickOnGlobeLabel).toBeVisible({ timeout: 10000 });
+
+    const pickOnGlobeCheckbox = pickOnGlobeLabel.locator('input[type="checkbox"]');
+
+    // Check if already checked
+    const isChecked = await pickOnGlobeCheckbox.isChecked();
+    if (!isChecked) {
+      await pickOnGlobeLabel.click();
+      await expect(pickOnGlobeCheckbox).toBeChecked({ timeout: 3000 });
+    }
+
+    // Get Cesium canvas for picking a location on the map
+    const canvasBox = await page.evaluate(() => {
+      const canvas = document.querySelector("#cesiumContainer canvas");
+      if (!canvas) return null;
+      const rect = canvas.getBoundingClientRect();
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    });
+
+    expect(canvasBox).not.toBeNull();
+
+    if (canvasBox) {
+      // Click on the globe to pick a ground station location
+      const clickX = canvasBox.x + canvasBox.width * 0.5;
+      const clickY = canvasBox.y + canvasBox.height * 0.5;
+
+      await page.mouse.click(clickX, clickY);
+
+      // Wait for ground station entity to be created
+      await page.waitForFunction(
+        () => {
+          const sats = window.cc?.sats;
+          return sats && sats.groundStations && sats.groundStations.length > 0;
+        },
+        { timeout: 10000 },
+      );
+    }
+
+    // Verify ground station was created
     const groundStationStatus = await page.evaluate(() => {
       const sats = window.cc?.sats;
       if (!sats) return { found: false, error: "SatelliteManager not found" };
@@ -99,7 +156,6 @@ test.describe("Satellite Group Pass Prediction", () => {
     expect(groundStationStatus.found).toBe(true);
     expect(groundStationStatus.available).toBe(true);
     expect(groundStationStatus.count).toBe(1);
-    expect(groundStationStatus.groundStation?.name).toBe("Munich");
 
     // Check initial timeline highlights (before pass calculation)
     const initialHighlights = await page.evaluate(() => {
