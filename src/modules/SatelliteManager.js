@@ -1419,10 +1419,16 @@ export class SatelliteManager {
     console.log("[set groundStations] Active satellites:", this.activeSatellites.length);
     console.log("[set groundStations] _initialTleLoadComplete:", this._initialTleLoadComplete);
 
-    // Invalidate pass cache on all existing ground stations
+    // Clean up old ground stations by removing their entities from the viewer
+    // This prevents stale entity references from accumulating
     this.#groundStations.forEach((gs) => {
+      // Invalidate pass cache
       if (gs.invalidatePassCache) {
         gs.invalidatePassCache();
+      }
+      // Remove entities from Cesium viewer
+      if (gs.hide) {
+        gs.hide();
       }
     });
 
