@@ -212,19 +212,6 @@ test.describe("Ground Station", () => {
     ];
     await page.goto(`/?sats=${satellites.join(",")}&gs=48.1351,11.5820,Munich&hideLight=0&onlyLit=0`);
 
-    // Set up pass calculation event listener immediately to avoid race condition
-    // When satellites and ground station are in URL, pass calculation starts immediately
-    await page.evaluate(() => {
-      if (!window._passCalculationState) {
-        window._passCalculationState = { completed: false };
-        const handler = () => {
-          window._passCalculationState.completed = true;
-          window.removeEventListener("satvis:passCalculationComplete", handler);
-        };
-        window.addEventListener("satvis:passCalculationComplete", handler);
-      }
-    });
-
     await expect(page.locator("#cesiumContainer canvas").first()).toBeVisible({ timeout: 15000 });
 
     // Wait for full Cesium scene initialization (globe rendering complete)
@@ -956,18 +943,6 @@ test.describe("Ground Station", () => {
     // Start with ISS and ground station
     // Disable pass filters to test unfiltered passes
     await page.goto("/?sats=ISS~(ZARYA)&gs=48.1351,11.5820,Munich&hideLight=0&onlyLit=0");
-
-    // Set up pass calculation event listener immediately to avoid race condition
-    await page.evaluate(() => {
-      if (!window._passCalculationState) {
-        window._passCalculationState = { completed: false };
-        const handler = () => {
-          window._passCalculationState.completed = true;
-          window.removeEventListener("satvis:passCalculationComplete", handler);
-        };
-        window.addEventListener("satvis:passCalculationComplete", handler);
-      }
-    });
 
     await expect(page.locator("#cesiumContainer canvas").first()).toBeVisible({ timeout: 15000 });
 
