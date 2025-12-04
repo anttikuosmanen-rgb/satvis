@@ -37,6 +37,9 @@ export class SatelliteManager {
   #passCalculationInProgress = false;
   #currentPassCalculation = null;
 
+  // Cache for activeSatellites to avoid repeated expensive filtering
+  #cachedActiveSatellites = null;
+
   constructor(viewer) {
     this.viewer = viewer;
 
@@ -556,6 +559,9 @@ export class SatelliteManager {
     this.satellites.push(newSat);
     this.satellitesByName.set(newSat.props.name, newSat); // Add to index
 
+    // Invalidate cache since satellite list changed
+    this.#invalidateActiveSatellitesCache();
+
     if (this.satIsActive(newSat)) {
       newSat.show(this.#enabledComponents);
       if (this.pendingTrackedSatellite === newSat.props.name) {
@@ -655,6 +661,7 @@ export class SatelliteManager {
 
   set enabledSatellites(newSats) {
     this.#enabledSatellites = new Set(newSats);
+    this.#invalidateActiveSatellitesCache();
 
     // Only show satellites if initial TLE loading is complete
     // This prevents race condition where URL parameters are applied before TLE data loads
@@ -689,17 +696,23 @@ export class SatelliteManager {
   satIsActive(sat) {
     const enabledByTag = sat.props.tags.some((tag) => this.#enabledTags.has(tag));
     const enabledByName = this.#enabledSatellites.has(sat.props.name);
-
-    // Debug logging for first few satellites
-    if (this.satellites.indexOf(sat) < 3) {
-      console.log(`[satIsActive] Satellite: ${sat.props.name}, tags: [${sat.props.tags.join(", ")}], enabledByTag: ${enabledByTag}, enabledByName: ${enabledByName}`);
-    }
-
     return enabledByTag || enabledByName;
   }
 
+  // Invalidate the activeSatellites cache when enabled satellites/tags change
+  #invalidateActiveSatellitesCache() {
+    this.#cachedActiveSatellites = null;
+  }
+
   get activeSatellites() {
-    return this.satellites.filter((sat) => this.satIsActive(sat));
+    // Use cached result if available to avoid repeated expensive filtering
+    if (this.#cachedActiveSatellites !== null) {
+      return this.#cachedActiveSatellites;
+    }
+
+    // Calculate and cache the result
+    this.#cachedActiveSatellites = this.satellites.filter((sat) => this.satIsActive(sat));
+    return this.#cachedActiveSatellites;
   }
 
   showEnabledSatellites() {
@@ -845,6 +858,7 @@ export class SatelliteManager {
 
   set enabledTags(newTags) {
     this.#enabledTags = new Set(newTags);
+    this.#invalidateActiveSatellitesCache();
     this.showEnabledSatellites();
 
     // Invalidate pass cache since visible satellites changed
