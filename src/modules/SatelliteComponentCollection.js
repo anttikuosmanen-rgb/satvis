@@ -406,6 +406,14 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       }
       // Use positionGeodetic for description (needs proper error handling)
       const cartographic = this.props.orbit.positionGeodetic(JulianDate.toDate(time), true);
+
+      // Guard against null position (can happen when satellite is being replaced/cleaned up)
+      // This prevents crashes when old satellite's description callback is still active
+      // but the orbit has been invalidated
+      if (!cartographic) {
+        return '<div class="ib">Position unavailable</div>';
+      }
+
       const content = DescriptionHelper.renderSatelliteDescription(time, cartographic, this.props);
       return content;
     });
