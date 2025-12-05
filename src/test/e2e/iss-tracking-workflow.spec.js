@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { pauseAnimation } from "./helpers/globe-interaction.js";
 
 /**
  * E2E Test: ISS Tracking Workflow
@@ -24,6 +25,9 @@ test.describe("ISS Tracking Workflow", () => {
 
     // Wait for satellite data to load (check for satellite select component existence)
     await expect(page.locator(".satellite-select")).toBeAttached({ timeout: 10000 });
+
+    // Pause animation to stabilize scene before UI interactions
+    await pauseAnimation(page);
 
     // Step 2: Open satellite selection menu
     // Click the toolbar button with satellite icon (has tooltip "Satellite selection")

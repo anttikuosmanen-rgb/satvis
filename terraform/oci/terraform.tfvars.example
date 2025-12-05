@@ -1,0 +1,96 @@
+# OCI Terraform Variables Example
+# Copy this file to terraform.tfvars and fill in your actual values
+
+# =============================================================================
+# OCI Credentials (Required)
+# =============================================================================
+tenancy_ocid     = "ocid1.tenancy.oc1..aaaaaaaxxxxx"
+user_ocid        = "ocid1.user.oc1..aaaaaaaxxxxx"
+fingerprint      = "xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx"
+private_key_path = "~/.oci/oci_api_key.pem"
+region           = "eu-stockholm-1"
+
+# SSH Key
+ssh_public_key_path = "~/.ssh/id_rsa.pub"
+
+# =============================================================================
+# Instance Configuration Options
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# OPTION 1: FREE TIER ARM (Default - may have capacity issues)
+# Cost: $0/month
+# Performance: Good (ARM Ampere A1)
+# Availability: Poor (frequent "Out of capacity" errors)
+# -----------------------------------------------------------------------------
+# instance_shape      = "VM.Standard.A1.Flex"
+# instance_count      = 2
+# instance_ocpus      = 2
+# instance_memory_gb  = 12
+
+# -----------------------------------------------------------------------------
+# OPTION 2: SINGLE CHEAP AMD (Recommended for minimum cost)
+# Cost: ~$15/month
+# Performance: Acceptable for light usage
+# Availability: Excellent (always available)
+# -----------------------------------------------------------------------------
+instance_shape     = "VM.Standard.E3.Flex"
+instance_count     = 1  # Single node (no HA)
+instance_ocpus     = 1
+instance_memory_gb = 6  # Minimum for K3s + SatVis + monitoring
+
+# -----------------------------------------------------------------------------
+# OPTION 3: DUAL CHEAP AMD (Recommended for high availability)
+# Cost: ~$30/month
+# Performance: Good for moderate usage
+# Availability: Excellent
+# -----------------------------------------------------------------------------
+# instance_shape     = "VM.Standard.E3.Flex"
+# instance_count     = 2  # HA cluster
+# instance_ocpus     = 1
+# instance_memory_gb = 6
+
+# -----------------------------------------------------------------------------
+# OPTION 4: SINGLE POWERFUL AMD (Best performance)
+# Cost: ~$30/month
+# Performance: Excellent
+# Availability: Excellent
+# -----------------------------------------------------------------------------
+# instance_shape     = "VM.Standard.E3.Flex"
+# instance_count     = 1
+# instance_ocpus     = 2
+# instance_memory_gb = 12
+
+# -----------------------------------------------------------------------------
+# OPTION 5: LATEST GEN AMD E4 (Best performance/efficiency)
+# Cost: ~$35/month for single node
+# Performance: Excellent (latest AMD EPYC)
+# Availability: Excellent
+# -----------------------------------------------------------------------------
+# instance_shape     = "VM.Standard.E4.Flex"
+# instance_count     = 1
+# instance_ocpus     = 2
+# instance_memory_gb = 12
+
+# =============================================================================
+# Cost Breakdown (E3.Flex pricing)
+# =============================================================================
+#
+# E3.Flex Pricing (per month):
+# - 1 OCPU:  $0.0255/hour × 730 hours = ~$18.62/month
+# - 1 GB RAM: $0.00255/hour × 730 hours = ~$1.86/month
+#
+# Configuration Costs:
+# - 1 OCPU + 6GB  = $18.62 + $11.16 = ~$30/month per instance
+# - 1 OCPU + 8GB  = $18.62 + $14.88 = ~$33/month per instance
+# - 2 OCPU + 12GB = $37.24 + $22.32 = ~$60/month per instance
+#
+# Recommended Configs:
+# - Single node (1×1+6GB):  ~$30/month  ← Best value
+# - HA cluster (2×1+6GB):   ~$60/month
+# - Single powerful (1×2+12GB): ~$60/month
+#
+# =============================================================================
+
+# Project name (used as prefix for all resources)
+project_name = "satvis"

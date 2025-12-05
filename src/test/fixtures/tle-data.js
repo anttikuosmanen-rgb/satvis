@@ -12,6 +12,12 @@ export const ISS_TLE = `ISS (ZARYA)
 export const ISS_TLE_NO_NAME = `1 25544U 98067A   18342.69352573  .00002284  00000-0  41838-4 0  9992
 2 25544  51.6407 229.0798 0005166 124.8351 329.3296 15.54069892145658`;
 
+// ISS with updated orbital elements (simulates TLE data refresh)
+// Same NORAD number and name, but different orbital elements (mean motion changed)
+export const ISS_TLE_UPDATED = `ISS (ZARYA)
+1 25544U 98067A   18350.12345678  .00002500  00000-0  45000-4 0  9999
+2 25544  51.6500 230.1234 0005200 125.0000 330.0000 15.54100000146000`;
+
 // Starlink satellite (lower altitude, faster orbit)
 export const STARLINK_TLE = `STARLINK-1007
 1 44713U 19074A   25113.54166667  .00001234  00000-0  98765-4 0  9998

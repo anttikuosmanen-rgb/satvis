@@ -1747,7 +1747,9 @@ export class CesiumController {
       // Check if the selected entity is a ground station
       if (selectedEntity && selectedEntity.name && selectedEntity.name.includes("Groundstation")) {
         // Find the ground station in the satellite manager
-        const groundStation = this.sats.groundStations.find((gs) => gs.components.Groundstation === selectedEntity);
+        // Match by entity name since the entity may be recreated with a different ID
+        // when description is refreshed or during HMR (Hot Module Reload)
+        const groundStation = this.sats.groundStations.find((gs) => gs.components?.Groundstation?.name === selectedEntity.name);
 
         if (groundStation) {
           // Get all passes for enabled satellites at this ground station

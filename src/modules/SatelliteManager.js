@@ -33,6 +33,10 @@ export class SatelliteManager {
 
   #overpassMode = "elevation";
 
+  // Pass calculation state tracking to prevent race conditions
+  #passCalculationInProgress = false;
+  #currentPassCalculation = null;
+
   constructor(viewer) {
     this.viewer = viewer;
 
@@ -515,11 +519,34 @@ export class SatelliteManager {
   #add(newSat) {
     const existingSat = this.satellitesByName.get(newSat.props.name);
     if (existingSat && existingSat.props.satnum === newSat.props.satnum) {
-      existingSat.props.addTags(newSat.props.tags);
-      if (newSat.props.tags.some((tag) => this.#enabledTags.has(tag))) {
-        existingSat.show(this.#enabledComponents);
+      // When TLE data is reloaded for an existing satellite, we need to:
+      // 1. Clean up the old satellite's entities
+      // 2. Merge tags from both old and new
+      // 3. Remove the old satellite
+      // 4. Add the new satellite with fresh TLE data
+      // This ensures orbital elements are updated when TLE files are refreshed
+
+      // Merge tags from existing satellite into new satellite
+      newSat.props.addTags(existingSat.props.tags);
+
+      // Clean up old satellite entities from Cesium viewer
+      if (existingSat.hide) {
+        existingSat.hide();
       }
-      return;
+
+      // Invalidate pass cache for old satellite
+      if (existingSat.invalidatePassCache) {
+        existingSat.invalidatePassCache();
+      }
+
+      // Remove old satellite from collections
+      const satIndex = this.satellites.indexOf(existingSat);
+      if (satIndex !== -1) {
+        this.satellites.splice(satIndex, 1);
+      }
+      this.satellitesByName.delete(newSat.props.name);
+
+      // Continue to add the new satellite with updated TLE data below
     }
     if (this.groundStationAvailable) {
       newSat.groundStations = this.#groundStations;
@@ -931,6 +958,20 @@ export class SatelliteManager {
       return;
     }
 
+    // Cancel any in-progress pass calculation to prevent race conditions
+    // When timeline jumps or satellites change, we need fresh calculations
+    if (this.#passCalculationInProgress) {
+      console.log("[updatePassHighlightsForEnabledSatellites] Cancelling previous calculation");
+      if (this.#currentPassCalculation) {
+        this.#currentPassCalculation.cancelled = true;
+      }
+    }
+
+    // Mark calculation as in progress and create cancellation token
+    this.#passCalculationInProgress = true;
+    const calculationId = { cancelled: false };
+    this.#currentPassCalculation = calculationId;
+
     // Dispatch event: pass calculation started
     window.dispatchEvent(
       new CustomEvent("satvis:passCalculationStart", {
@@ -972,10 +1013,22 @@ export class SatelliteManager {
     Promise.all(passPromises).then(() => {
       console.log("[updatePassHighlightsForEnabledSatellites] All pass promises completed");
 
+      // Always mark calculation as complete and reset flags
+      // This must happen regardless of cancellation to prevent deadlocks
+      this.#passCalculationInProgress = false;
+      this.#currentPassCalculation = null;
+
       // Hide loading spinner
       this.loadingSpinner.hide();
 
+      // Check if this calculation was cancelled by a newer calculation
+      if (calculationId.cancelled) {
+        console.log("[updatePassHighlightsForEnabledSatellites] Calculation was cancelled, skipping completion event");
+        return;
+      }
+
       // Dispatch event: pass calculation completed
+      // This event is used by E2E tests to wait for calculation completion
       window.dispatchEvent(
         new CustomEvent("satvis:passCalculationComplete", {
           detail: {
@@ -1419,10 +1472,16 @@ export class SatelliteManager {
     console.log("[set groundStations] Active satellites:", this.activeSatellites.length);
     console.log("[set groundStations] _initialTleLoadComplete:", this._initialTleLoadComplete);
 
-    // Invalidate pass cache on all existing ground stations
+    // Clean up old ground stations by removing their entities from the viewer
+    // This prevents stale entity references from accumulating
     this.#groundStations.forEach((gs) => {
+      // Invalidate pass cache
       if (gs.invalidatePassCache) {
         gs.invalidatePassCache();
+      }
+      // Remove entities from Cesium viewer
+      if (gs.hide) {
+        gs.hide();
       }
     });
 

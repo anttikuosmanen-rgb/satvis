@@ -7,12 +7,13 @@ Automated Oracle Cloud Infrastructure deployment using Terraform for the SatVis 
 **Infrastructure:**
 - Virtual Cloud Network (VCN) with internet gateway
 - Public subnet with routing and security lists
-- 2x ARM Ampere A1 instances (2 vCPUs + 12 GB RAM each)
-  - satvis-master: K3s server node
-  - satvis-worker-1: K3s agent node
+- Compute instances (configurable):
+  - **Free Tier**: 2x ARM Ampere A1 (free, but frequent capacity issues)
+  - **Paid (Default)**: 1x AMD E3.Flex (~$30/month, always available)
+  - **Paid HA**: 2x AMD E3.Flex (~$60/month, high availability)
 - Security rules for SSH, HTTP, HTTPS, Kubernetes API, and Kubelet
 
-**Cost**: $0/month (uses OCI Always Free tier)
+**Default Cost**: ~$30/month (single AMD E3 node with minimum specs)
 
 ## Prerequisites
 
@@ -77,56 +78,81 @@ Returns:
 
 ## Configuration Options
 
-Edit `terraform.tfvars` to change instance configuration:
+**See `terraform.tfvars.example` for detailed configuration examples with cost breakdowns.**
 
-### 2 Instances (Default)
+### Quick Configuration Guide
+
+Edit `terraform.tfvars` with one of these configurations:
+
+#### Option 1: Free Tier ARM (may fail due to capacity)
 ```hcl
-instance_count = 2
-instance_ocpus = 2
+instance_shape     = "VM.Standard.A1.Flex"
+instance_count     = 2
+instance_ocpus     = 2
 instance_memory_gb = 12
+# Cost: $0/month
+# Availability: Poor (use retry script)
 ```
 
-### 4 Smaller Instances
+#### Option 2: Single Cheap AMD (Recommended minimum)
 ```hcl
-instance_count = 4
-instance_ocpus = 1
+instance_shape     = "VM.Standard.E3.Flex"
+instance_count     = 1
+instance_ocpus     = 1
 instance_memory_gb = 6
+# Cost: ~$30/month
+# Availability: Excellent
+# Performance: Acceptable for light-moderate usage
 ```
 
-### Single Large Instance
+#### Option 3: HA Cluster AMD (High availability)
 ```hcl
-instance_count = 1
-instance_ocpus = 4
-instance_memory_gb = 24
+instance_shape     = "VM.Standard.E3.Flex"
+instance_count     = 2
+instance_ocpus     = 1
+instance_memory_gb = 6
+# Cost: ~$60/month
+# Availability: Excellent
+# Performance: Good for moderate usage with redundancy
 ```
 
-## Handling ARM Capacity Issues
+#### Option 4: Single Powerful AMD (Best performance/cost)
+```hcl
+instance_shape     = "VM.Standard.E3.Flex"
+instance_count     = 1
+instance_ocpus     = 2
+instance_memory_gb = 12
+# Cost: ~$60/month
+# Availability: Excellent
+# Performance: Excellent for high traffic
+```
 
-Stockholm region often has limited ARM capacity. Solutions:
+## Instance Type Comparison
 
-**1. Use Retry Script (Recommended)**
+| Feature | ARM Free Tier | AMD Paid (E3.Flex) |
+|---------|---------------|-------------------|
+| **Cost** | $0/month | ~$30-60/month |
+| **Availability** | ❌ Poor (capacity issues) | ✅ Excellent (always available) |
+| **Performance** | ⚡ Excellent (ARM Ampere) | ⚡ Good (AMD EPYC) |
+| **Deployment Time** | 🕒 Hours to days (retry needed) | ⚡ Immediate (2-3 minutes) |
+| **Reliability** | ⚠️ May be terminated if capacity needed | ✅ Stable |
+| **Best For** | Personal projects, learning | Production, reliable service |
+
+### Handling ARM Free Tier Capacity Issues
+
+If you want to use the free ARM tier:
+
+**1. Use Retry Script**
 ```bash
 ./retry-apply.sh
 ```
+Retries every 5 minutes for 11 hours.
 
-Retries every 60 seconds, up to 100 attempts. Leave running overnight if needed.
-
-**2. Try Smaller Instances**
-
-Edit `terraform.tfvars`:
+**2. Or Switch to Paid AMD (Recommended)**
 ```hcl
-instance_ocpus = 1
-instance_memory_gb = 6
+instance_shape = "VM.Standard.E3.Flex"
 ```
-
-Smaller instances are easier to allocate.
-
-**3. Try Different Times**
-
-Best times for ARM capacity:
-- Early morning (6-8 AM Sweden time)
-- Late evening (10 PM - midnight)
-- Weekends
+Deploys immediately, no waiting!
 
 ## After Deployment
 
