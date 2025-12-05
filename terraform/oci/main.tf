@@ -21,12 +21,12 @@ data "oci_identity_availability_domains" "ads" {
   compartment_id = var.tenancy_ocid
 }
 
-# Get latest Ubuntu 22.04 ARM image
-data "oci_core_images" "ubuntu_arm" {
+# Get latest Ubuntu 22.04 image for the selected shape
+data "oci_core_images" "ubuntu" {
   compartment_id           = var.tenancy_ocid
   operating_system         = "Canonical Ubuntu"
   operating_system_version = "22.04"
-  shape                    = "VM.Standard.A1.Flex"
+  shape                    = var.instance_shape
   sort_by                  = "TIMECREATED"
   sort_order               = "DESC"
 }
@@ -139,13 +139,13 @@ resource "oci_core_subnet" "satvis_public_subnet" {
   security_list_ids = [oci_core_security_list.satvis_sl.id]
 }
 
-# ARM Compute Instances (Always Free tier)
+# Compute Instances (ARM free tier or AMD paid)
 resource "oci_core_instance" "k3s_nodes" {
   count               = var.instance_count
   availability_domain = data.oci_identity_availability_domains.ads.availability_domains[0].name
   compartment_id      = var.tenancy_ocid
   display_name        = "${var.project_name}-${count.index == 0 ? "master" : "worker-${count.index}"}"
-  shape               = "VM.Standard.A1.Flex"
+  shape               = var.instance_shape
 
   shape_config {
     ocpus         = var.instance_ocpus
@@ -153,8 +153,8 @@ resource "oci_core_instance" "k3s_nodes" {
   }
 
   source_details {
-    source_type = "image"
-    source_id   = data.oci_core_images.ubuntu_arm.images[0].id
+    source_type             = "image"
+    source_id               = data.oci_core_images.ubuntu.images[0].id
     boot_volume_size_in_gbs = 50
   }
 
