@@ -314,6 +314,14 @@ export class SatelliteManager {
         }
       });
 
+      // Invalidate satellite pass intervals to force recalculation
+      // This is necessary because updatePasses() skips if current time is within existing passInterval
+      this.activeSatellites.forEach((sat) => {
+        if (sat.props) {
+          sat.props.passInterval = undefined;
+        }
+      });
+
       // Then trigger async pass calculations for all active satellites
       const currentTime = this.viewer.clock.currentTime;
       const passPromises = this.activeSatellites.map((sat) =>
@@ -352,73 +360,97 @@ export class SatelliteManager {
             showOnlyLitPasses: satStore.showOnlyLitPasses,
           };
 
-          // Get timeline window bounds for filtering passes
-          const timelineStart = JulianDate.toDate(this.viewer.clock.startTime);
-          const timelineStop = JulianDate.toDate(this.viewer.clock.stopTime);
+          // Get VISIBLE timeline window bounds for filtering passes
+          // Use timeline._startJulian/_endJulian which reflect the user's zoomed view
+          // NOT clock.startTime/stopTime which are the clock simulation bounds
+          const timeline = this.viewer.timeline;
+          const timelineStart = timeline?._startJulian ? JulianDate.toDate(timeline._startJulian) : JulianDate.toDate(this.viewer.clock.startTime);
+          const timelineStop = timeline?._endJulian ? JulianDate.toDate(timeline._endJulian) : JulianDate.toDate(this.viewer.clock.stopTime);
           const timelineStartMs = timelineStart.getTime();
           const timelineStopMs = timelineStop.getTime();
           const currentTimeMs = currentJsDate.getTime();
 
-          // Filter all passes in a batched operation
-          let totalPassesAdded = 0;
+          this.#debugLog(`[updatePassHighlightsAfterTimelineChange] Timeline window: ${timelineStart.toISOString()} to ${timelineStop.toISOString()}`);
+
+          // Collect ALL passes from all satellites, filter, and sort globally by proximity to current time
+          // This ensures passes closest to current simulation time are prioritized across all satellites
           const maxTotalHighlights = 100; // Maximum highlights across all satellites
 
+          // Collect all passes with their satellite name
+          const allPasses = [];
           satellitesWithPasses.forEach(({ name, passes }) => {
-            // Stop if we've already added 100 highlights total
-            if (totalPassesAdded >= maxTotalHighlights) {
-              this.#debugLog(`[updatePassHighlightsAfterTimelineChange] Reached maximum ${maxTotalHighlights} highlights, skipping ${name}`);
-              return;
-            }
-
             this.#debugLog(`[updatePassHighlightsAfterTimelineChange] ${name}: ${passes.length} total passes`);
 
-            // Filter passes to those visible in the timeline window
-            let filtered = passes.filter((pass) => {
+            passes.forEach((pass) => {
               const passStartMs = new Date(pass.start).getTime();
               const passEndMs = new Date(pass.end).getTime();
-              return passEndMs >= timelineStartMs && passStartMs <= timelineStopMs;
-            });
 
-            // Sort by distance from current time (nearest first)
-            filtered = filtered.sort((a, b) => {
-              const aMidMs = (new Date(a.start).getTime() + new Date(a.end).getTime()) / 2;
-              const bMidMs = (new Date(b.start).getTime() + new Date(b.end).getTime()) / 2;
-              const aDistance = Math.abs(aMidMs - currentTimeMs);
-              const bDistance = Math.abs(bMidMs - currentTimeMs);
-              return aDistance - bDistance;
-            });
+              // Filter to timeline window
+              if (passEndMs < timelineStartMs || passStartMs > timelineStopMs) {
+                return;
+              }
 
-            // Filter epoch passes
-            filtered = filtered.filter((pass) => {
+              // Filter epoch passes
               if (pass.epochInFuture && pass.epochTime) {
                 const epochMinus90 = new Date(pass.epochTime.getTime() - 90 * 60 * 1000);
                 const passStart = new Date(pass.start);
-                return passStart >= epochMinus90;
+                if (passStart < epochMinus90) {
+                  return;
+                }
               }
-              return true;
-            });
 
-            // Filter sunlight passes if enabled
-            if (filterState.hideSunlightPasses) {
-              filtered = filtered.filter((pass) => pass.groundStationDarkAtStart || pass.groundStationDarkAtEnd);
-            }
+              // Filter sunlight passes if enabled
+              if (filterState.hideSunlightPasses) {
+                if (!pass.groundStationDarkAtStart && !pass.groundStationDarkAtEnd) {
+                  return;
+                }
+              }
 
-            // Filter eclipsed passes if enabled
-            if (filterState.showOnlyLitPasses) {
-              filtered = filtered.filter((pass) => {
+              // Filter eclipsed passes if enabled
+              if (filterState.showOnlyLitPasses) {
                 const litAtStart = !pass.satelliteEclipsedAtStart;
                 const litAtEnd = !pass.satelliteEclipsedAtEnd;
                 const hasTransitions = pass.eclipseTransitions && pass.eclipseTransitions.length > 0;
-                return litAtStart || litAtEnd || hasTransitions;
+                if (!litAtStart && !litAtEnd && !hasTransitions) {
+                  return;
+                }
+              }
+
+              // Calculate distance from current time for sorting
+              const passMidMs = (passStartMs + passEndMs) / 2;
+              const distanceFromCurrent = Math.abs(passMidMs - currentTimeMs);
+
+              allPasses.push({
+                satelliteName: name,
+                pass,
+                distanceFromCurrent,
               });
-            }
+            });
+          });
 
-            this.#debugLog(`[updatePassHighlightsAfterTimelineChange] ${name}: ${filtered.length} passes after filtering`);
+          this.#debugLog(`[updatePassHighlightsAfterTimelineChange] Total passes after filtering: ${allPasses.length}`);
 
-            if (filtered.length > 0) {
-              CesiumTimelineHelper.addHighlightRanges(this.viewer, filtered, name);
-              totalPassesAdded += filtered.length;
+          // Sort all passes globally by distance from current time (nearest first)
+          allPasses.sort((a, b) => a.distanceFromCurrent - b.distanceFromCurrent);
+
+          // Take the top N closest passes
+          const closestPasses = allPasses.slice(0, maxTotalHighlights);
+          this.#debugLog(`[updatePassHighlightsAfterTimelineChange] Selected ${closestPasses.length} closest passes`);
+
+          // Group passes by satellite for adding highlights
+          const passesBySatellite = new Map();
+          closestPasses.forEach(({ satelliteName, pass }) => {
+            if (!passesBySatellite.has(satelliteName)) {
+              passesBySatellite.set(satelliteName, []);
             }
+            passesBySatellite.get(satelliteName).push(pass);
+          });
+
+          // Add highlights for each satellite (skip per-satellite limit since we've already globally limited)
+          let totalPassesAdded = 0;
+          passesBySatellite.forEach((passes, satelliteName) => {
+            CesiumTimelineHelper.addHighlightRanges(this.viewer, passes, satelliteName, { skipPerSatelliteLimit: true });
+            totalPassesAdded += passes.length;
           });
 
           this.#debugLog(`[updatePassHighlightsAfterTimelineChange] Total ${totalPassesAdded} passes added to timeline`);
@@ -443,6 +475,17 @@ export class SatelliteManager {
         if (this.viewer && this.viewer.scene) {
           this.viewer.scene.requestRender();
         }
+
+        // Dispatch event: pass calculation completed
+        // This event is used by E2E tests to wait for calculation completion
+        window.dispatchEvent(
+          new CustomEvent("satvis:passCalculationComplete", {
+            detail: {
+              source: "updatePassHighlightsAfterTimelineChange",
+              satelliteCount: this.activeSatellites.length,
+            },
+          }),
+        );
       });
     } else {
       // For satellites, trigger recalculation by temporarily clearing and restoring the selection
