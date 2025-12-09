@@ -53,9 +53,10 @@ export async function resumeAnimation(page) {
  * @param {import('@playwright/test').Page} page - Playwright page object
  * @param {Object} options - Options object
  * @param {number} [options.timeout=60000] - Maximum time to wait in milliseconds
+ * @param {boolean} [options.waitForEvent=false] - If true, only wait for the event, don't check existing passes
  */
 export async function waitForPassCalculation(page, options = {}) {
-  const { timeout = 60000 } = options;
+  const { timeout = 60000, waitForEvent = false } = options;
 
   // Set up the event listener once, outside of the polling loop
   // This prevents event listener leaks from waitForFunction polling
@@ -73,15 +74,27 @@ export async function waitForPassCalculation(page, options = {}) {
     } else {
       // Reset completion state for new wait
       window._passCalculationState.completed = false;
+
+      // Re-add listener for next wait
+      const handler = () => {
+        window._passCalculationState.completed = true;
+        window.removeEventListener("satvis:passCalculationComplete", handler);
+      };
+      window.addEventListener("satvis:passCalculationComplete", handler);
     }
   });
 
-  // Wait for either: event completion, or passes already exist
+  // Wait for either: event completion, or passes already exist (unless waitForEvent is true)
   await page.waitForFunction(
-    () => {
+    (waitForEventOnly) => {
       // Check if the event was fired
       if (window._passCalculationState?.completed) {
         return true;
+      }
+
+      // If waitForEvent is true, only wait for the event
+      if (waitForEventOnly) {
+        return false;
       }
 
       // Check if no ground station or satellites (nothing to calculate)
@@ -101,6 +114,7 @@ export async function waitForPassCalculation(page, options = {}) {
       const passCalculationRate = satellitesWithPasses.length / activeSatellites.length;
       return passCalculationRate >= 0.8;
     },
+    waitForEvent,
     { timeout },
   );
 }

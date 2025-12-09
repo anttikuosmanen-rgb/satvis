@@ -71,7 +71,7 @@ export class CesiumTimelineHelper {
     this.scheduleTimelineUpdate(viewer);
   }
 
-  static addHighlightRanges(viewer, ranges, satelliteName) {
+  static addHighlightRanges(viewer, ranges, satelliteName, options = {}) {
     if (!viewer.timeline) {
       return;
     }
@@ -80,9 +80,11 @@ export class CesiumTimelineHelper {
       return;
     }
 
-    // Get current timeline range - DO NOT modify it
-    const timelineStart = JulianDate.toDate(viewer.clock.startTime);
-    const timelineStop = JulianDate.toDate(viewer.clock.stopTime);
+    // Get VISIBLE timeline range (use timeline's zoomed view, not clock bounds)
+    // timeline._startJulian/_endJulian reflect the user's zoomed view
+    const timeline = viewer.timeline;
+    const timelineStart = timeline?._startJulian ? JulianDate.toDate(timeline._startJulian) : JulianDate.toDate(viewer.clock.startTime);
+    const timelineStop = timeline?._endJulian ? JulianDate.toDate(timeline._endJulian) : JulianDate.toDate(viewer.clock.stopTime);
 
     // Filter ranges to only those visible in current timeline (with some overlap)
     const timelineStartMs = timelineStart.getTime();
@@ -95,8 +97,9 @@ export class CesiumTimelineHelper {
       return rangeEnd >= timelineStartMs && rangeStart <= timelineStopMs;
     });
 
-    // Limit to 8 passes per satellite for performance
-    const maxPasses = 8;
+    // Limit to 8 passes per satellite for performance (unless skipPerSatelliteLimit is set)
+    // When caller has already done global prioritization, skip this limit
+    const maxPasses = options.skipPerSatelliteLimit ? visibleRanges.length : 8;
     const limitedRanges = visibleRanges.slice(0, maxPasses);
 
     limitedRanges.forEach((range) => {
@@ -211,9 +214,10 @@ export class CesiumTimelineHelper {
       return;
     }
 
-    // Get current timeline range - DO NOT modify it
-    const timelineStart = JulianDate.toDate(viewer.clock.startTime);
-    const timelineStop = JulianDate.toDate(viewer.clock.stopTime);
+    // Get VISIBLE timeline range (use timeline's zoomed view, not clock bounds)
+    const timeline = viewer.timeline;
+    const timelineStart = timeline?._startJulian ? JulianDate.toDate(timeline._startJulian) : JulianDate.toDate(viewer.clock.startTime);
+    const timelineStop = timeline?._endJulian ? JulianDate.toDate(timeline._endJulian) : JulianDate.toDate(viewer.clock.stopTime);
     const timelineStartMs = timelineStart.getTime();
     const timelineStopMs = timelineStop.getTime();
 
