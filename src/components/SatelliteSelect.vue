@@ -53,6 +53,7 @@ export default {
       default: -1,
     },
   },
+  emits: ["dropdown-opened", "dropdown-closed"],
   data() {
     return {
       currentOptionsLimit: 100, // Start with 100 items
