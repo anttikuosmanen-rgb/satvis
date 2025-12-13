@@ -23,7 +23,7 @@ const ISS_TLE = `ISS (ZARYA)
 2 25544  51.6416 247.4627 0006703  85.5961 274.6009 15.49478733123456`;
 
 test.describe("Custom Satellite Input", () => {
-  test("should load satellite from TLE URL parameter", async ({ page }) => {
+  test("should load satellite from TLE URL parameter @critical", async ({ page }) => {
     // Encode TLE in URL parameter (common use case for sharing)
     const tleParam = encodeURIComponent(ISS_TLE);
 

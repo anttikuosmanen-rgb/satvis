@@ -1,11 +1,20 @@
 <template>
   <div class="satellite-select">
     <div class="toolbarTitle">Enabled satellite groups</div>
-    <div class="toolbarContent">
-      <vue-multiselect v-model="enabledTags" :options="availableTags" :multiple="true" :searchable="false" placeholder="0 satellite groups selected" />
+    <div class="toolbarContent" :class="{ 'menu-item-focused': focusedIndex === 0 }">
+      <vue-multiselect
+        ref="groupsMultiselect"
+        v-model="enabledTags"
+        :options="availableTags"
+        :multiple="true"
+        :searchable="false"
+        placeholder="0 satellite groups selected"
+        @open="onGroupsDropdownOpen"
+        @close="onGroupsDropdownClose"
+      />
     </div>
     <div class="toolbarTitle">Enabled satellites</div>
-    <div class="toolbarContent">
+    <div class="toolbarContent" :class="{ 'menu-item-focused': focusedIndex === 1 }">
       <vue-multiselect
         ref="satelliteMultiselect"
         v-model="allEnabledSatellites"
@@ -37,6 +46,12 @@ import { useSatStore } from "../stores/sat";
 export default {
   components: {
     VueMultiselect,
+  },
+  props: {
+    focusedIndex: {
+      type: Number,
+      default: -1,
+    },
   },
   data() {
     return {
@@ -98,6 +113,25 @@ export default {
     getSatellitesFromTags(taglist) {
       return taglist.map((tag) => this.availableSatellitesByTag[tag] || []).flat();
     },
+    activateFocusedItem(index) {
+      // Focus and activate the multiselect at the given index
+      if (index === 0 && this.$refs.groupsMultiselect) {
+        // For groups dropdown, use the activate method
+        this.$refs.groupsMultiselect.activate();
+        // The @open event will handle emitting dropdown-opened
+      } else if (index === 1 && this.$refs.satelliteMultiselect) {
+        this.$refs.satelliteMultiselect.activate();
+        // The @open event will handle emitting dropdown-opened
+      }
+    },
+    onGroupsDropdownOpen() {
+      // Emit event to disable menu navigation
+      this.$emit("dropdown-opened");
+    },
+    onGroupsDropdownClose() {
+      // Emit event to re-enable menu navigation
+      this.$emit("dropdown-closed");
+    },
     onDropdownOpen() {
       // Reset to initial limit when dropdown opens
       this.currentOptionsLimit = 100;
@@ -110,6 +144,8 @@ export default {
           dropdownList.addEventListener("scroll", this.scrollListener);
         }
       });
+      // Emit event to disable menu navigation
+      this.$emit("dropdown-opened");
     },
     onDropdownClose() {
       // Clean up scroll listener when dropdown closes
@@ -118,6 +154,8 @@ export default {
         dropdownList.removeEventListener("scroll", this.scrollListener);
         this.scrollListener = null;
       }
+      // Emit event to re-enable menu navigation
+      this.$emit("dropdown-closed");
     },
     onScroll(event) {
       const target = event.target;
@@ -143,6 +181,16 @@ export default {
 <style scoped>
 .satellite-select {
   width: 300px;
+}
+
+/* Keyboard focus indicator */
+.toolbarContent.menu-item-focused {
+  outline: 2px solid #4caf50;
+  outline-offset: 2px;
+  background-color: rgba(76, 175, 80, 0.2) !important;
+  border-radius: 4px;
+  padding: 4px;
+  margin: -4px;
 }
 </style>
 

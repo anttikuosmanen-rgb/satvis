@@ -1194,15 +1194,20 @@ export class CesiumController {
     // Add keyboard shortcut for debug info during scrubbing
     // Press 'D' key to dump visibility debug info while dragging
     document.addEventListener("keydown", (event) => {
+      // Ignore keyboard shortcuts when typing in input fields
+      const activeElement = document.activeElement;
+      const isTyping = activeElement && (activeElement.tagName === "INPUT" || activeElement.tagName === "TEXTAREA" || activeElement.isContentEditable);
+
       // Z key: Flip camera 180° to opposite side of Earth
       if (event.key === "z" || event.key === "Z") {
+        if (isTyping) return; // Don't flip camera when typing
         this.flipCameraToOppositeSide();
         return;
       }
 
       // Cardinal direction shortcuts (N, E, S, W) - only in zenith view
       // Point camera at horizon in the specified direction
-      if (this.sats && this.sats.isInZenithView) {
+      if (this.sats && this.sats.isInZenithView && !isTyping) {
         const cardinalKeys = {
           n: 0, // North
           N: 0,
@@ -1229,7 +1234,7 @@ export class CesiumController {
       }
 
       // Spacebar: Toggle between GS and satellite views
-      if (event.code === "Space") {
+      if (event.code === "Space" && !isTyping) {
         event.preventDefault();
         const now = Date.now();
         const isDoubleTap = now - this._lastSpacebarTime < 300;
@@ -1264,8 +1269,37 @@ export class CesiumController {
         return;
       }
 
-      // D key: Debug scrubbing info
-      if (event.key === "d" || event.key === "D") {
+      // Menu keyboard shortcuts (don't trigger when typing in input fields)
+      if (!isTyping) {
+        // s - Satellite selection menu (only when not shift)
+        if (event.key === "s" && !event.shiftKey) {
+          window.dispatchEvent(new CustomEvent("openMenu", { detail: "cat" }));
+          return;
+        }
+        // Shift+S - Satellite visuals menu
+        if (event.key === "S" && event.shiftKey) {
+          window.dispatchEvent(new CustomEvent("openMenu", { detail: "sat" }));
+          return;
+        }
+        // g - Ground station menu (only when not shift)
+        if (event.key === "g" && !event.shiftKey) {
+          window.dispatchEvent(new CustomEvent("openMenu", { detail: "gs" }));
+          return;
+        }
+        // l - Layers menu (only when not shift)
+        if (event.key === "l" && !event.shiftKey) {
+          window.dispatchEvent(new CustomEvent("openMenu", { detail: "map" }));
+          return;
+        }
+        // Shift+D - Debug menu
+        if (event.key === "D" && event.shiftKey) {
+          window.dispatchEvent(new CustomEvent("openMenu", { detail: "dbg" }));
+          return;
+        }
+      }
+
+      // D key: Debug scrubbing info (only when not shift - Shift+D opens debug menu)
+      if ((event.key === "d" || event.key === "D") && !event.shiftKey) {
         if (isDraggingSatellite && draggedSatellite && orbitPositions.length > 0) {
           console.log("=== SCRUBBING DEBUG INFO (D key pressed) ===");
 

@@ -18,9 +18,9 @@ test.describe("Orbit Visualization", () => {
     await expect(page.locator("#cesiumContainer canvas").first()).toBeVisible({ timeout: 15000 });
     // Removed unnecessary waitForTimeout
 
-    // Open satellite elements menu
-    const satelliteElementsButton = page
-      .locator('button[title="Satellite elements"]')
+    // Open satellite visuals menu
+    const satelliteVisualsButton = page
+      .locator('button[title="Satellite visuals"]')
       .or(
         page.locator("button.cesium-toolbar-button").filter({
           has: page.locator('[data-icon="layer-group"]'),
@@ -28,11 +28,11 @@ test.describe("Orbit Visualization", () => {
       )
       .first();
 
-    await expect(satelliteElementsButton).toBeVisible({ timeout: 5000 });
-    await satelliteElementsButton.click();
+    await expect(satelliteVisualsButton).toBeVisible({ timeout: 5000 });
+    await satelliteVisualsButton.click();
     // Removed unnecessary waitForTimeout
 
-    await expect(page.locator('.toolbarSwitches:has-text("Satellite elements")')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('.toolbarSwitches:has-text("Satellite visuals")')).toBeVisible({ timeout: 5000 });
 
     // Find Orbit checkbox
     const orbitCheckbox = page.locator('input[type="checkbox"][value="Orbit"]');
@@ -96,9 +96,9 @@ test.describe("Orbit Visualization", () => {
     await expect(page.locator("#cesiumContainer canvas").first()).toBeVisible({ timeout: 15000 });
     // Removed unnecessary waitForTimeout
 
-    // Open satellite elements menu
-    const satelliteElementsButton = page
-      .locator('button[title="Satellite elements"]')
+    // Open satellite visuals menu
+    const satelliteVisualsButton = page
+      .locator('button[title="Satellite visuals"]')
       .or(
         page.locator("button.cesium-toolbar-button").filter({
           has: page.locator('[data-icon="layer-group"]'),
@@ -106,11 +106,11 @@ test.describe("Orbit Visualization", () => {
       )
       .first();
 
-    await expect(satelliteElementsButton).toBeVisible({ timeout: 5000 });
-    await satelliteElementsButton.click();
+    await expect(satelliteVisualsButton).toBeVisible({ timeout: 5000 });
+    await satelliteVisualsButton.click();
     // Removed unnecessary waitForTimeout
 
-    await expect(page.locator('.toolbarSwitches:has-text("Satellite elements")')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('.toolbarSwitches:has-text("Satellite visuals")')).toBeVisible({ timeout: 5000 });
 
     // Find Orbit track checkbox
     const orbitTrackCheckbox = page.locator('input[type="checkbox"][value="Orbit track"]');
