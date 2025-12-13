@@ -519,7 +519,7 @@ test.describe("Ground Station", () => {
     }
   });
 
-  test("should update ground station link when satellite is selected", async ({ page }) => {
+  test("should update ground station link when satellite is selected @critical", async ({ page }) => {
     // Start with ISS and ground station
     await page.goto("/?sats=ISS~(ZARYA)&gs=48.1351,11.5820,Munich");
 

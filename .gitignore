@@ -21,3 +21,9 @@ DEPLOYMENT-SETUP.md
 terraform.tfstate
 terraform.tfstate.backup
 *.tfvars
+
+# Claude Code files
+.claude/
+.claude.json
+.claude.json.backup
+.claude:statusline.sh

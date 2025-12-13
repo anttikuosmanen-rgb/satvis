@@ -31,6 +31,7 @@ import * as Sentry from "@sentry/browser";
 import { icon } from "@fortawesome/fontawesome-svg-core";
 import { faBell, faInfo } from "@fortawesome/free-solid-svg-icons";
 import infoBoxCss from "@cesium/widgets/Source/InfoBox/InfoBoxDescription.css?raw";
+import * as satellitejs from "satellite.js";
 
 import { useCesiumStore } from "../stores/cesium";
 import { useSatStore } from "../stores/sat";
@@ -87,6 +88,46 @@ export class CesiumController {
     this.viewer.scene.highDynamicRange = true;
     this.viewer.scene.maximumRenderTimeChange = 1 / 30;
     this.viewer.scene.requestRenderMode = true;
+
+    // Set initial camera view centered on Helsinki longitude (24.94°E)
+    this.viewer.camera.setView({
+      destination: Cartesian3.fromDegrees(24.94, 20, 20000000), // Helsinki longitude, looking at Earth from space
+    });
+
+    // State for spacebar double-tap detection
+    this._lastSpacebarTime = 0;
+
+    // Center the visible timeline window around current time on startup
+    // This makes the current time marker appear in the center instead of the left edge
+    if (this.viewer.timeline) {
+      const currentJulian = this.viewer.clock.currentTime;
+      const visibleStart = JulianDate.addHours(currentJulian, -12, new JulianDate());
+      const visibleStop = JulianDate.addHours(currentJulian, 12, new JulianDate());
+      this.viewer.timeline.zoomTo(visibleStart, visibleStop);
+
+      // Track timeline scrubbing state to prevent recentering during drag
+      this.isTimelineScrubbing = false;
+      this.viewer.timeline.container.addEventListener("mousedown", () => {
+        this.isTimelineScrubbing = true;
+      });
+      window.addEventListener("mouseup", () => {
+        if (this.isTimelineScrubbing) {
+          this.isTimelineScrubbing = false;
+          // Recenter timeline after scrubbing ends
+          const current = this.viewer.clock.currentTime;
+          const timeline = this.viewer.timeline;
+          const currentStart = timeline._startJulian;
+          const currentEnd = timeline._endJulian;
+          if (currentStart && currentEnd) {
+            const rangeDurationSeconds = JulianDate.secondsDifference(currentEnd, currentStart);
+            const halfDuration = rangeDurationSeconds / 2;
+            const newStart = JulianDate.addSeconds(current, -halfDuration, new JulianDate());
+            const newEnd = JulianDate.addSeconds(current, halfDuration, new JulianDate());
+            timeline.zoomTo(newStart, newEnd);
+          }
+        }
+      });
+    }
 
     // Cesium Performance Tools
     // this.viewer.scene.debugShowFramesPerSecond = true;
@@ -453,6 +494,78 @@ export class CesiumController {
     });
   }
 
+  // Helper: Capture current camera view for later restoration
+  captureCurrentView() {
+    const camera = this.viewer.camera;
+    return {
+      position: Cartesian3.clone(camera.position),
+      heading: camera.heading,
+      pitch: camera.pitch,
+      roll: camera.roll,
+    };
+  }
+
+  // Helper: Check if currently tracking a ground station
+  isTrackingGroundStation() {
+    const tracked = this.viewer.trackedEntity;
+    return tracked?.name?.includes("Groundstation");
+  }
+
+  // Helper: Toggle between GS focus and satellite tracking
+  toggleGsSatelliteFocus() {
+    if (this.isTrackingGroundStation()) {
+      // Currently at GS -> track last satellite
+      if (this.sats.lastTrackedSatelliteName) {
+        const sat = this.sats.getSatellite(this.sats.lastTrackedSatelliteName);
+        if (sat) sat.track();
+      }
+    } else {
+      // Not at GS -> save view and focus GS
+      this.sats.lastGlobeView = this.captureCurrentView();
+      this.sats.focusGroundStation();
+    }
+  }
+
+  // Helper: Point camera at last tracked satellite (for zenith view)
+  pointCameraAtLastSatellite() {
+    if (!this.sats?.lastTrackedSatelliteName) return;
+    const sat = this.sats.getSatellite(this.sats.lastTrackedSatelliteName);
+    if (!sat) return;
+
+    // Get ground station position
+    const gs = this.sats.groundStations[0];
+    if (!gs) return;
+    const gsPos = gs.position;
+
+    // Convert GS to satellite.js format (radians, km)
+    const deg2rad = Math.PI / 180;
+    const groundStation = {
+      latitude: gsPos.latitude * deg2rad,
+      longitude: gsPos.longitude * deg2rad,
+      height: gsPos.height / 1000,
+    };
+
+    // Get satellite ECF position at current time
+    const jsDate = JulianDate.toDate(this.viewer.clock.currentTime);
+    const positionEcf = sat.props.orbit.positionECF(jsDate);
+    if (!positionEcf) return;
+
+    // Calculate look angles using satellite.js
+    const lookAngles = satellitejs.ecfToLookAngles(groundStation, positionEcf);
+
+    // Clamp elevation to horizon (0°) if satellite is below horizon
+    const elevation = Math.max(0, lookAngles.elevation);
+
+    this.viewer.camera.setView({
+      orientation: {
+        heading: lookAngles.azimuth,
+        pitch: elevation,
+        roll: 0,
+      },
+    });
+    this.viewer.scene.requestRender();
+  }
+
   setTime(current, start = dayjs.utc(current).subtract(12, "hour").toISOString(), stop = dayjs.utc(current).add(7, "day").toISOString()) {
     // Skip time changes on iOS
     if (DeviceDetect.isIos()) {
@@ -463,7 +576,13 @@ export class CesiumController {
     this.viewer.clock.currentTime = JulianDate.fromIso8601(dayjs.utc(current).toISOString());
     if (typeof this.viewer.timeline !== "undefined") {
       this.viewer.timeline.updateFromClock();
-      this.viewer.timeline.zoomTo(this.viewer.clock.startTime, this.viewer.clock.stopTime);
+
+      // Center the visible timeline window around current time (±12 hours)
+      // This makes the current time marker appear in the center of the timeline
+      const currentJulian = this.viewer.clock.currentTime;
+      const visibleStart = JulianDate.addHours(currentJulian, -12, new JulianDate());
+      const visibleStop = JulianDate.addHours(currentJulian, 12, new JulianDate());
+      this.viewer.timeline.zoomTo(visibleStart, visibleStop);
     }
   }
 
@@ -476,6 +595,13 @@ export class CesiumController {
     this.viewer.clock.currentTime = newCurrentTime;
 
     if (typeof this.viewer.timeline !== "undefined") {
+      // Skip recentering while timeline is being scrubbed (mouse button down)
+      // Recentering will happen on mouseup
+      if (this.isTimelineScrubbing) {
+        this.viewer.timeline.updateFromClock();
+        return;
+      }
+
       // Get current timeline visible range duration
       const timeline = this.viewer.timeline;
       const currentStart = timeline._startJulian;
@@ -1068,14 +1194,112 @@ export class CesiumController {
     // Add keyboard shortcut for debug info during scrubbing
     // Press 'D' key to dump visibility debug info while dragging
     document.addEventListener("keydown", (event) => {
+      // Ignore keyboard shortcuts when typing in input fields
+      const activeElement = document.activeElement;
+      const isTyping = activeElement && (activeElement.tagName === "INPUT" || activeElement.tagName === "TEXTAREA" || activeElement.isContentEditable);
+
       // Z key: Flip camera 180° to opposite side of Earth
       if (event.key === "z" || event.key === "Z") {
+        if (isTyping) return; // Don't flip camera when typing
         this.flipCameraToOppositeSide();
         return;
       }
 
-      // D key: Debug scrubbing info
-      if (event.key === "d" || event.key === "D") {
+      // Cardinal direction shortcuts (N, E, S, W) - only in zenith view
+      // Point camera at horizon in the specified direction
+      if (this.sats && this.sats.isInZenithView && !isTyping) {
+        const cardinalKeys = {
+          n: 0, // North
+          N: 0,
+          e: 90, // East
+          E: 90,
+          s: 180, // South
+          S: 180,
+          w: 270, // West
+          W: 270,
+        };
+
+        if (cardinalKeys[event.key] !== undefined) {
+          const heading = CesiumMath.toRadians(cardinalKeys[event.key]);
+          this.viewer.camera.setView({
+            orientation: {
+              heading: heading,
+              pitch: CesiumMath.toRadians(20), // 20° above horizon
+              roll: 0,
+            },
+          });
+          this.viewer.scene.requestRender();
+          return;
+        }
+      }
+
+      // Spacebar: Toggle between GS and satellite views
+      if (event.code === "Space" && !isTyping) {
+        event.preventDefault();
+        const now = Date.now();
+        const isDoubleTap = now - this._lastSpacebarTime < 300;
+        this._lastSpacebarTime = now;
+
+        if (this.sats && this.sats.isInZenithView) {
+          if (isDoubleTap) {
+            // Double tap in zenith: Exit and track satellite
+            this.sats.exitZenithView();
+            if (this.sats.lastTrackedSatelliteName) {
+              const sat = this.sats.getSatellite(this.sats.lastTrackedSatelliteName);
+              if (sat) sat.track();
+            }
+          } else {
+            // Single tap in zenith: Point at satellite
+            this.pointCameraAtLastSatellite();
+          }
+        } else {
+          // Globe view
+          if (!this.sats || !this.sats.groundStationAvailable) {
+            // No GS: dispatch event to open GS menu with hint
+            window.dispatchEvent(new CustomEvent("requestGsPicker"));
+          } else if (isDoubleTap) {
+            // Double tap: Enter zenith view
+            this.sats.lastGlobeView = this.captureCurrentView();
+            this.sats.zenithViewFromGroundStation();
+          } else {
+            // Single tap: Toggle GS/satellite focus
+            this.toggleGsSatelliteFocus();
+          }
+        }
+        return;
+      }
+
+      // Menu keyboard shortcuts (don't trigger when typing in input fields)
+      if (!isTyping) {
+        // s - Satellite selection menu (only when not shift)
+        if (event.key === "s" && !event.shiftKey) {
+          window.dispatchEvent(new CustomEvent("openMenu", { detail: "cat" }));
+          return;
+        }
+        // Shift+S - Satellite visuals menu
+        if (event.key === "S" && event.shiftKey) {
+          window.dispatchEvent(new CustomEvent("openMenu", { detail: "sat" }));
+          return;
+        }
+        // g - Ground station menu (only when not shift)
+        if (event.key === "g" && !event.shiftKey) {
+          window.dispatchEvent(new CustomEvent("openMenu", { detail: "gs" }));
+          return;
+        }
+        // l - Layers menu (only when not shift)
+        if (event.key === "l" && !event.shiftKey) {
+          window.dispatchEvent(new CustomEvent("openMenu", { detail: "map" }));
+          return;
+        }
+        // Shift+D - Debug menu
+        if (event.key === "D" && event.shiftKey) {
+          window.dispatchEvent(new CustomEvent("openMenu", { detail: "dbg" }));
+          return;
+        }
+      }
+
+      // D key: Debug scrubbing info (only when not shift - Shift+D opens debug menu)
+      if ((event.key === "d" || event.key === "D") && !event.shiftKey) {
         if (isDraggingSatellite && draggedSatellite && orbitPositions.length > 0) {
           console.log("=== SCRUBBING DEBUG INFO (D key pressed) ===");
 

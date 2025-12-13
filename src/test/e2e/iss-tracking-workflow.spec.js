@@ -151,7 +151,7 @@ test.describe("ISS Tracking Workflow", () => {
     await expect(page.locator(".cesium-timeline-main")).toBeVisible({ timeout: 10000 });
   });
 
-  test("should load satellite from URL parameter", async ({ page }) => {
+  test("should load satellite from URL parameter @critical", async ({ page }) => {
     // Navigate directly with ISS using sats parameter
     await page.goto("/?sats=ISS~(ZARYA)");
 

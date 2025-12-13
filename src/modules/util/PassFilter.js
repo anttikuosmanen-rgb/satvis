@@ -9,11 +9,21 @@ import { useSatStore } from "../../stores/sat";
  * @returns {Array} Filtered and sorted passes
  */
 export function filterAndSortPasses(passes, time, deltaHours = 48) {
-  // Filter passes based on time - include passes that start within deltaHours from current time
-  // Use absolute value to handle both forward and backward time travel
+  // Filter passes based on time - include:
+  // 1. Passes that are currently active (started in past but end in future)
+  // 2. Passes that start within deltaHours from current time
   let filtered = passes.filter((pass) => {
-    const hoursDiff = dayjs(pass.start).diff(time, "hours", true); // true = floating point
-    return hoursDiff >= 0 && hoursDiff < deltaHours;
+    const startHoursDiff = dayjs(pass.start).diff(time, "hours", true); // true = floating point
+    const endHoursDiff = dayjs(pass.end).diff(time, "hours", true);
+
+    // Include if pass is currently active (started but not yet ended)
+    // Only applies if pass has an end time defined
+    const isCurrentlyActive = pass.end && startHoursDiff < 0 && endHoursDiff > 0;
+
+    // Include if pass starts within deltaHours from now
+    const startsWithinWindow = startHoursDiff >= 0 && startHoursDiff < deltaHours;
+
+    return isCurrentlyActive || startsWithinWindow;
   });
 
   // Filter out passes before epoch - 90 minutes for future epoch satellites
