@@ -62,9 +62,15 @@ export class SatelliteManager {
     // Flag to prevent pass updates while satellite database is being modified
     this._isUpdatingSatellites = false;
 
+    // State for spacebar toggle functionality
+    this.lastTrackedSatelliteName = null; // Persists across deselection
+    this.lastGlobeView = null; // Stores camera position/orientation
+
     this.viewer.trackedEntityChanged.addEventListener(() => {
       if (this.trackedSatellite) {
         this.getSatellite(this.trackedSatellite).show(this.#enabledComponents);
+        // Persist the satellite name for spacebar toggle
+        this.lastTrackedSatelliteName = this.trackedSatellite;
       }
       useSatStore().trackedSatellite = this.trackedSatellite;
     });
@@ -633,10 +639,17 @@ export class SatelliteManager {
         (taglist[tag] = taglist[tag] || []).push(sat.props.name);
       });
     });
-    Object.values(taglist).forEach((tag) => {
-      tag.sort();
+    // Sort satellites within each tag
+    Object.values(taglist).forEach((sats) => {
+      sats.sort();
     });
-    return taglist;
+    // Return with keys sorted alphabetically
+    const sortedKeys = Object.keys(taglist).sort((a, b) => a.localeCompare(b));
+    const sortedTaglist = {};
+    sortedKeys.forEach((key) => {
+      sortedTaglist[key] = taglist[key];
+    });
+    return sortedTaglist;
   }
 
   get selectedSatellite() {
@@ -717,7 +730,7 @@ export class SatelliteManager {
 
   get tags() {
     const tags = this.satellites.map((sat) => sat.props.tags);
-    return [...new Set([].concat(...tags))];
+    return [...new Set([].concat(...tags))].sort((a, b) => a.localeCompare(b));
   }
 
   getSatellitesWithTag(tag) {

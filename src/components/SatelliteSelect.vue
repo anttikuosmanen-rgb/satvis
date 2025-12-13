@@ -11,9 +11,6 @@
         v-model="allEnabledSatellites"
         :options="availableSatellites"
         :multiple="true"
-        group-values="sats"
-        group-label="tag"
-        :group-select="true"
         placeholder="Type to search"
         :close-on-select="false"
         :limit="0"
@@ -51,21 +48,18 @@ export default {
   computed: {
     ...mapWritableState(useSatStore, ["availableSatellitesByTag", "availableTags", "enabledSatellites", "enabledTags", "trackedSatellite"]),
     availableSatellites() {
-      let satlist = Object.keys(this.availableSatellitesByTag).map((tag) => ({
-        tag,
-        sats: this.availableSatellitesByTag[tag],
-      }));
-      if (satlist.length === 0) {
-        satlist = [];
-      }
-      return satlist;
+      // Return flat sorted list of all unique satellite names
+      const allSats = new Set();
+      Object.values(this.availableSatellitesByTag).forEach((sats) => {
+        sats.forEach((sat) => allSats.add(sat));
+      });
+      return [...allSats].sort((a, b) => a.localeCompare(b));
     },
     satellitesEnabledByTag() {
       return this.getSatellitesFromTags(this.enabledTags);
     },
     totalAvailableOptions() {
-      // Count total satellites across all tags
-      return this.availableSatellites.reduce((sum, group) => sum + (group.sats?.length || 0), 0);
+      return this.availableSatellites.length;
     },
     hasMoreOptions() {
       return this.currentOptionsLimit < this.totalAvailableOptions;

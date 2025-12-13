@@ -59,10 +59,11 @@
       </div>
       <div v-show="menu.gs" class="toolbarSwitches">
         <div class="toolbarTitle">Ground station</div>
-        <label class="toolbarSwitch">
+        <label class="toolbarSwitch" :class="{ 'gs-picker-hint': showGsPickerHint }">
           <input v-model="pickMode" type="checkbox" :disabled="isInZenithView" />
           <span class="slider"></span>
           Pick on globe
+          <span v-if="showGsPickerHint" class="hint-arrow">← Click on globe</span>
         </label>
         <label class="toolbarSwitch">
           <input type="button" :disabled="isInZenithView" @click="cc.setGroundStationFromGeolocation()" />
@@ -314,6 +315,7 @@ export default {
       showPassCountdown: false, // Toggle for pass countdown timer visibility
       showIosClock: false, // Toggle for iOS clock visibility (default off)
       currentTime: "",
+      showGsPickerHint: false, // Show hint arrow next to "Pick on globe" when spacebar pressed with no GS
     };
   },
   computed: {
@@ -461,6 +463,11 @@ export default {
       }
       cc.setGroundStations(newGroundStations);
 
+      // Hide GS picker hint when a ground station is placed
+      if (newGroundStations.length > 0 && this.showGsPickerHint) {
+        this.showGsPickerHint = false;
+      }
+
       // Disable local time if no ground stations exist
       if (newGroundStations.length === 0 && this.useLocalTime) {
         this.useLocalTime = false;
@@ -599,6 +606,18 @@ export default {
     };
     window.addEventListener("satellitesLoaded", this.satellitesLoadedHandler);
 
+    // Listen for spacebar press when no GS is set - open GS menu with hint
+    this.requestGsPickerHandler = () => {
+      // Close all menus first, then open GS menu
+      Object.keys(this.menu).forEach((k) => {
+        this.menu[k] = false;
+      });
+      this.menu.gs = true; // Open GS menu
+      this.pickMode = true; // Enable pick mode
+      this.showGsPickerHint = true; // Show hint arrow
+    };
+    window.addEventListener("requestGsPicker", this.requestGsPickerHandler);
+
     // Monitor selected entity changes to hide countdown timer
     this.selectedEntityChangeHandler = () => {
       const selectedEntity = cc.viewer.selectedEntity;
@@ -651,6 +670,10 @@ export default {
     // Clean up satellites loaded listener
     if (this.satellitesLoadedHandler) {
       window.removeEventListener("satellitesLoaded", this.satellitesLoadedHandler);
+    }
+    // Clean up GS picker request listener
+    if (this.requestGsPickerHandler) {
+      window.removeEventListener("requestGsPicker", this.requestGsPickerHandler);
     }
     // Clean up selected entity listener
     if (this.selectedEntityChangeHandler && cc.viewer) {
@@ -1077,6 +1100,30 @@ export default {
   padding: 10px;
   text-align: center;
   font-style: italic;
+}
+
+/* GS picker hint styling */
+.gs-picker-hint {
+  background-color: rgba(76, 175, 80, 0.3) !important;
+  border: 1px solid #4caf50;
+  border-radius: 4px;
+}
+
+.hint-arrow {
+  color: #4caf50;
+  font-weight: bold;
+  margin-left: 8px;
+  animation: pulse-hint 1s ease-in-out infinite;
+}
+
+@keyframes pulse-hint {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
 #cameraAltitudeDisplay {
