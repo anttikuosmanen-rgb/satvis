@@ -5,14 +5,14 @@
 
     <div v-show="showUI" id="toolbarLeft">
       <div class="toolbarButtons">
-        <button v-tooltip="'Satellite selection'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('cat')">
+        <button v-tooltip="'Satellite selection (s)'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('cat')">
           <i class="icon svg-sat"></i>
         </button>
-        <button v-tooltip="'Satellite elements'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('sat')">
+        <button v-tooltip="'Satellite visuals (Shift+S)'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('sat')">
           <font-awesome-icon icon="fas fa-layer-group" />
         </button>
         <button
-          v-tooltip="'Ground station (double-click to toggle focus)'"
+          v-tooltip="'Ground station (g) [double-click to toggle focus]'"
           type="button"
           class="cesium-button cesium-toolbar-button"
           @click="toggleMenu('gs')"
@@ -20,7 +20,7 @@
         >
           <i class="icon svg-groundstation"></i>
         </button>
-        <button v-tooltip="'Map'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('map')">
+        <button v-tooltip="'Map (l)'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('map')">
           <font-awesome-icon icon="fas fa-globe-africa" />
         </button>
         <button v-if="cc.minimalUI" v-tooltip="'Mobile'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('ios')">
@@ -36,16 +36,21 @@
         >
           <font-awesome-icon icon="fas fa-stopwatch" />
         </button>
-        <button v-tooltip="'Debug'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('dbg')">
+        <button v-tooltip="'Debug (Shift+D)'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('dbg')">
           <font-awesome-icon icon="fas fa-hammer" />
         </button>
       </div>
       <div v-show="menu.cat" class="toolbarSwitches">
-        <satellite-select />
+        <satellite-select
+          ref="satelliteSelect"
+          :focused-index="activeMenuKey === 'cat' ? menuFocusIndex : -1"
+          @dropdown-opened="onDropdownOpened"
+          @dropdown-closed="onDropdownClosed"
+        />
       </div>
       <div v-show="menu.sat" class="toolbarSwitches">
-        <div class="toolbarTitle">Satellite elements</div>
-        <label v-for="componentName in cc.sats.availableComponents" :key="componentName" class="toolbarSwitch">
+        <div class="toolbarTitle">Satellite visuals</div>
+        <label v-for="(componentName, index) in cc.sats.availableComponents" :key="componentName" class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('sat', index) }">
           <input v-model="enabledComponents" type="checkbox" :value="componentName" />
           <span class="slider"></span>
           {{ componentName }}
@@ -59,64 +64,80 @@
       </div>
       <div v-show="menu.gs" class="toolbarSwitches">
         <div class="toolbarTitle">Ground station</div>
-        <label class="toolbarSwitch">
+        <label class="toolbarSwitch" :class="{ 'gs-picker-hint': showGsPickerHint, 'menu-item-focused': isFocused('gs', 0) }">
           <input v-model="pickMode" type="checkbox" :disabled="isInZenithView" />
           <span class="slider"></span>
           Pick on globe
+          <span v-if="showGsPickerHint" class="hint-arrow">← Click on globe</span>
         </label>
-        <label class="toolbarSwitch">
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('gs', 1) }">
           <input type="button" :disabled="isInZenithView" @click="cc.setGroundStationFromGeolocation()" />
           Set from geolocation
         </label>
-        <label class="toolbarSwitch">
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('gs', 2) }">
           <input type="button" :disabled="isInZenithView" @click="cc.sats.focusGroundStation()" />
           Focus
         </label>
-        <label class="toolbarSwitch">
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('gs', 3) }">
+          <input type="button" :disabled="isInZenithView" @click="removeGroundStation()" />
+          Remove ground station
+        </label>
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('gs', 4) }">
           <input type="button" @click="toggleZenithView()" />
           {{ isInZenithView ? "Normal view" : "Zenith view" }}
         </label>
-        <label class="toolbarSwitch">
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('gs', 5) }">
           <input v-model="hideSunlightPasses" type="checkbox" />
           <span class="slider"></span>
           Hide passes in daylight
         </label>
-        <label class="toolbarSwitch">
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('gs', 6) }">
           <input v-model="showOnlyLitPasses" type="checkbox" />
           <span class="slider"></span>
           Show only lit satellites
         </label>
-        <label class="toolbarSwitch">
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('gs', 7) }">
           <input v-model="useLocalTime" type="checkbox" :disabled="!canUseLocalTime" />
           <span class="slider"></span>
           Use local time
         </label>
-        <label class="toolbarSwitch">
-          <input type="button" :disabled="isInZenithView" @click="removeGroundStation()" />
-          Remove ground station
-        </label>
       </div>
       <div v-show="menu.map" class="toolbarSwitches">
         <div class="toolbarTitle">Layers</div>
-        <label v-for="name in cc.imageryProviderNames" :key="name" class="toolbarSwitch">
+        <label v-for="(name, index) in cc.imageryProviderNames" :key="name" class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('map', index) }">
           <input v-model="layers" type="checkbox" :value="name" />
           <span class="slider"></span>
           {{ name }}
         </label>
         <div class="toolbarTitle">Terrain</div>
-        <label v-for="name in cc.terrainProviderNames" :key="name" class="toolbarSwitch">
+        <label
+          v-for="(name, index) in cc.terrainProviderNames"
+          :key="name"
+          class="toolbarSwitch"
+          :class="{ 'menu-item-focused': isFocused('map', cc.imageryProviderNames.length + index) }"
+        >
           <input v-model="terrainProvider" type="radio" :value="name" />
           <span class="slider"></span>
           {{ name }}
         </label>
         <div class="toolbarTitle">View</div>
-        <label v-for="name in cc.sceneModes" :key="name" class="toolbarSwitch">
+        <label
+          v-for="(name, index) in cc.sceneModes"
+          :key="name"
+          class="toolbarSwitch"
+          :class="{ 'menu-item-focused': isFocused('map', cc.imageryProviderNames.length + cc.terrainProviderNames.length + index) }"
+        >
           <input v-model="sceneMode" type="radio" :value="name" />
           <span class="slider"></span>
           {{ name }}
         </label>
         <div class="toolbarTitle">Camera</div>
-        <label v-for="name in cc.cameraModes" :key="name" class="toolbarSwitch">
+        <label
+          v-for="(name, index) in cc.cameraModes"
+          :key="name"
+          class="toolbarSwitch"
+          :class="{ 'menu-item-focused': isFocused('map', cc.imageryProviderNames.length + cc.terrainProviderNames.length + cc.sceneModes.length + index) }"
+        >
           <input v-model="cameraMode" type="radio" :value="name" />
           <span class="slider"></span>
           {{ name }}
@@ -149,63 +170,55 @@
       </div>
       <div v-show="menu.dbg" class="toolbarSwitches">
         <div class="toolbarTitle">Debug</div>
-        <label class="toolbarSwitch">
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 0) }">
           <input v-model="debugConsoleLog" type="checkbox" />
           <span class="slider"></span>
           Console Logging
         </label>
-        <label class="toolbarSwitch">
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 1) }">
           <input v-model="showFps" type="checkbox" />
           <span class="slider"></span>
           FPS
         </label>
-        <label class="toolbarSwitch">
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 2) }">
           <input v-model="showCameraAltitude" type="checkbox" />
           <span class="slider"></span>
           Camera Altitude
         </label>
-        <label v-if="isIos" class="toolbarSwitch">
+        <label v-if="isIos" class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 3) }">
           <input v-model="showIosClock" type="checkbox" />
           <span class="slider"></span>
           Show iOS Clock
         </label>
-        <label class="toolbarSwitch">
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 4) }">
           <input v-model="cc.viewer.scene.requestRenderMode" type="checkbox" />
           <span class="slider"></span>
           RequestRender
         </label>
-        <label class="toolbarSwitch">
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 5) }">
           <input v-model="qualityPreset" true-value="high" false-value="low" type="checkbox" />
           <span class="slider"></span>
           High Quality
         </label>
-        <label class="toolbarSwitch">
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 6) }">
           <input v-model="cc.viewer.scene.fog.enabled" type="checkbox" />
           <span class="slider"></span>
           Fog
         </label>
-        <label class="toolbarSwitch">
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 7) }">
           <input v-model="cc.viewer.scene.globe.enableLighting" type="checkbox" />
           <span class="slider"></span>
           Lighting
         </label>
-        <label class="toolbarSwitch">
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 8) }">
           <input v-model="cc.viewer.scene.highDynamicRange" type="checkbox" />
           <span class="slider"></span>
           HDR
         </label>
-        <label class="toolbarSwitch">
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 9) }">
           <input v-model="cc.viewer.scene.globe.showGroundAtmosphere" type="checkbox" />
           <span class="slider"></span>
           Atmosphere
-        </label>
-        <label class="toolbarSwitch">
-          <input type="button" @click="cc.jumpTo('Everest')" />
-          Jump to Everest
-        </label>
-        <label class="toolbarSwitch">
-          <input type="button" @click="cc.jumpTo('HalfDome')" />
-          Jump to HalfDome
         </label>
         <div class="toolbarTitle">Planets</div>
         <label class="toolbarSwitch">
@@ -314,6 +327,10 @@ export default {
       showPassCountdown: false, // Toggle for pass countdown timer visibility
       showIosClock: false, // Toggle for iOS clock visibility (default off)
       currentTime: "",
+      showGsPickerHint: false, // Show hint arrow next to "Pick on globe" when spacebar pressed with no GS
+      menuFocusIndex: -1, // Currently focused item in menu (-1 = none)
+      activeMenuKey: null, // Which menu is open via keyboard shortcut
+      dropdownOpen: false, // Track if a dropdown is currently open (disables menu navigation)
     };
   },
   computed: {
@@ -461,6 +478,11 @@ export default {
       }
       cc.setGroundStations(newGroundStations);
 
+      // Hide GS picker hint when a ground station is placed
+      if (newGroundStations.length > 0 && this.showGsPickerHint) {
+        this.showGsPickerHint = false;
+      }
+
       // Disable local time if no ground stations exist
       if (newGroundStations.length === 0 && this.useLocalTime) {
         this.useLocalTime = false;
@@ -599,6 +621,82 @@ export default {
     };
     window.addEventListener("satellitesLoaded", this.satellitesLoadedHandler);
 
+    // Listen for spacebar press when no GS is set - open GS menu with hint
+    this.requestGsPickerHandler = () => {
+      // Close all menus first, then open GS menu
+      Object.keys(this.menu).forEach((k) => {
+        this.menu[k] = false;
+      });
+      this.menu.gs = true; // Open GS menu
+      this.pickMode = true; // Enable pick mode
+      this.showGsPickerHint = true; // Show hint arrow
+    };
+    window.addEventListener("requestGsPicker", this.requestGsPickerHandler);
+
+    // Listen for menu open events from keyboard shortcuts
+    this.openMenuHandler = (event) => {
+      // Close all menus first
+      Object.keys(this.menu).forEach((k) => {
+        this.menu[k] = false;
+      });
+      // Open the requested menu
+      this.menu[event.detail] = true;
+      this.activeMenuKey = event.detail;
+      this.menuFocusIndex = 0; // Focus first item
+    };
+    window.addEventListener("openMenu", this.openMenuHandler);
+
+    // Listen for keyboard navigation within menus
+    this.menuKeyHandler = (event) => {
+      // ESC key: Close menu first if open, otherwise close info box
+      if (event.key === "Escape") {
+        event.preventDefault();
+        // If a menu is open, close it
+        if (this.activeMenuKey) {
+          this.closeActiveMenu();
+          return;
+        }
+        // If no menu is open but info box is open, close it
+        if (this.cc.viewer.selectedEntity) {
+          this.cc.viewer.selectedEntity = undefined;
+          return;
+        }
+      }
+
+      if (!this.activeMenuKey) return;
+
+      // Disable menu navigation when a dropdown is open
+      if (this.dropdownOpen) return;
+
+      const menuItems = this.getMenuItems(this.activeMenuKey);
+      if (!menuItems.length) return; // No keyboard navigation for this menu
+
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        const nextIndex = (this.menuFocusIndex + 1) % menuItems.length;
+        this.menuFocusIndex = nextIndex;
+        // For satellite selection menu, auto-open dropdown when navigating with arrows
+        if (this.activeMenuKey === "cat") {
+          this.activateMenuItem(menuItems[nextIndex]);
+        }
+      } else if (event.key === "ArrowUp") {
+        event.preventDefault();
+        const prevIndex = (this.menuFocusIndex - 1 + menuItems.length) % menuItems.length;
+        this.menuFocusIndex = prevIndex;
+        // For satellite selection menu, auto-open dropdown when navigating with arrows
+        if (this.activeMenuKey === "cat") {
+          this.activateMenuItem(menuItems[prevIndex]);
+        }
+      } else if (event.key === "Enter") {
+        event.preventDefault();
+        // Only activate if focus index is valid (not -1, which means dropdown is open)
+        if (this.menuFocusIndex >= 0) {
+          this.activateMenuItem(menuItems[this.menuFocusIndex]);
+        }
+      }
+    };
+    window.addEventListener("keydown", this.menuKeyHandler);
+
     // Monitor selected entity changes to hide countdown timer
     this.selectedEntityChangeHandler = () => {
       const selectedEntity = cc.viewer.selectedEntity;
@@ -651,6 +749,18 @@ export default {
     // Clean up satellites loaded listener
     if (this.satellitesLoadedHandler) {
       window.removeEventListener("satellitesLoaded", this.satellitesLoadedHandler);
+    }
+    // Clean up GS picker request listener
+    if (this.requestGsPickerHandler) {
+      window.removeEventListener("requestGsPicker", this.requestGsPickerHandler);
+    }
+    // Clean up menu open listener
+    if (this.openMenuHandler) {
+      window.removeEventListener("openMenu", this.openMenuHandler);
+    }
+    // Clean up menu keyboard navigation listener
+    if (this.menuKeyHandler) {
+      window.removeEventListener("keydown", this.menuKeyHandler);
     }
     // Clean up selected entity listener
     if (this.selectedEntityChangeHandler && cc.viewer) {
@@ -790,6 +900,166 @@ export default {
         this.menu[k] = false;
       });
       this.menu[name] = !oldState;
+      // Set activeMenuKey so ESC works for click-opened menus
+      // Reset focus index since menu was opened by click (not keyboard)
+      if (!oldState) {
+        // Menu is being opened
+        this.activeMenuKey = name;
+        this.menuFocusIndex = -1; // -1 means no keyboard focus yet
+      } else {
+        // Menu is being closed
+        this.activeMenuKey = null;
+        this.menuFocusIndex = -1;
+      }
+    },
+    // Get list of interactive items for a menu
+    getMenuItems(menuKey) {
+      if (menuKey === "cat") {
+        // Satellite selection has two dropdown items: groups and satellites
+        return [
+          { type: "satellite-dropdown", index: 0 },
+          { type: "satellite-dropdown", index: 1 },
+        ];
+      } else if (menuKey === "sat") {
+        return this.cc.sats.availableComponents.map((componentName) => ({
+          type: "checkbox",
+          component: componentName,
+        }));
+      } else if (menuKey === "gs") {
+        return [
+          { type: "checkbox", model: "pickMode" },
+          { type: "button", action: "setGsFromGeolocation" },
+          { type: "button", action: "focusFirstGroundStation" },
+          { type: "button", action: "removeGroundStation" },
+          { type: "button", action: "toggleZenithView" },
+          { type: "checkbox", model: "hideSunlightPasses" },
+          { type: "checkbox", model: "showOnlyLitPasses" },
+          { type: "checkbox", model: "useLocalTime" },
+        ];
+      } else if (menuKey === "map") {
+        const items = [];
+        // Layers checkboxes
+        this.cc.imageryProviderNames.forEach((name) => {
+          items.push({ type: "checkbox-array", model: "layers", value: name });
+        });
+        // Terrain radio buttons
+        this.cc.terrainProviderNames.forEach((name) => {
+          items.push({ type: "radio", model: "terrainProvider", value: name });
+        });
+        // View radio buttons
+        this.cc.sceneModes.forEach((name) => {
+          items.push({ type: "radio", model: "sceneMode", value: name });
+        });
+        // Camera radio buttons
+        this.cc.cameraModes.forEach((name) => {
+          items.push({ type: "radio", model: "cameraMode", value: name });
+        });
+        return items;
+      } else if (menuKey === "dbg") {
+        const items = [
+          { type: "checkbox", model: "debugConsoleLog" },
+          { type: "checkbox", model: "showFps" },
+          { type: "checkbox", model: "showCameraAltitude" },
+        ];
+        if (this.isIos) {
+          items.push({ type: "checkbox", model: "showIosClock" });
+        }
+        items.push(
+          { type: "cesium-checkbox", path: "viewer.scene.requestRenderMode" },
+          { type: "quality-checkbox", model: "qualityPreset" },
+          { type: "cesium-checkbox", path: "viewer.scene.fog.enabled" },
+          { type: "cesium-checkbox", path: "viewer.scene.globe.enableLighting" },
+          { type: "cesium-checkbox", path: "viewer.scene.highDynamicRange" },
+          { type: "cesium-checkbox", path: "viewer.scene.globe.showGroundAtmosphere" },
+        );
+        return items;
+      }
+      return [];
+    },
+    // Activate the focused menu item (toggle checkbox or click button)
+    activateMenuItem(item) {
+      if (!item) return;
+      if (item.type === "satellite-dropdown") {
+        // Focus and activate the satellite selection dropdown
+        if (this.$refs.satelliteSelect) {
+          this.$refs.satelliteSelect.activateFocusedItem(item.index);
+        }
+      } else if (item.type === "checkbox") {
+        // Handle satellite component checkboxes (array-based)
+        if (item.component) {
+          const index = this.enabledComponents.indexOf(item.component);
+          if (index > -1) {
+            // Remove from array
+            this.enabledComponents.splice(index, 1);
+          } else {
+            // Add to array
+            this.enabledComponents.push(item.component);
+          }
+        } else if (item.model in this) {
+          // Handle regular boolean checkboxes
+          this[item.model] = !this[item.model];
+        }
+      } else if (item.type === "checkbox-array") {
+        // Handle array-based checkboxes (like layers)
+        const arr = this[item.model];
+        const index = arr.indexOf(item.value);
+        if (index > -1) {
+          arr.splice(index, 1);
+        } else {
+          arr.push(item.value);
+        }
+      } else if (item.type === "radio") {
+        // Handle radio buttons
+        this[item.model] = item.value;
+      } else if (item.type === "cesium-checkbox") {
+        // Handle Cesium viewer property checkboxes
+        const keys = item.path.split(".");
+        let obj = this.cc;
+        for (let i = 0; i < keys.length - 1; i++) {
+          obj = obj[keys[i]];
+        }
+        const lastKey = keys[keys.length - 1];
+        obj[lastKey] = !obj[lastKey];
+      } else if (item.type === "quality-checkbox") {
+        // Handle quality preset toggle
+        this.qualityPreset = this.qualityPreset === "high" ? "low" : "high";
+      } else if (item.type === "button") {
+        // Call the button action
+        if (item.action === "setGsFromGeolocation") {
+          cc.setGroundStationFromGeolocation();
+        } else if (item.action === "focusFirstGroundStation") {
+          cc.sats.focusGroundStation();
+        } else if (item.action === "removeGroundStation") {
+          this.removeGroundStation();
+        } else if (item.action === "toggleZenithView") {
+          this.toggleZenithView();
+        }
+      }
+    },
+    // Close the currently active menu
+    closeActiveMenu() {
+      if (this.activeMenuKey) {
+        this.menu[this.activeMenuKey] = false;
+        this.activeMenuKey = null;
+        this.menuFocusIndex = -1;
+        this.dropdownOpen = false;
+      }
+    },
+    // Handle dropdown opened event from satellite-select
+    onDropdownOpened() {
+      // Remove highlight when dropdown is opened
+      this.menuFocusIndex = -1;
+      // Disable menu keyboard navigation
+      this.dropdownOpen = true;
+    },
+    // Handle dropdown closed event from satellite-select
+    onDropdownClosed() {
+      // Re-enable menu keyboard navigation
+      this.dropdownOpen = false;
+    },
+    // Check if a menu item is focused (for applying CSS class)
+    isFocused(menuKey, index) {
+      return this.activeMenuKey === menuKey && this.menuFocusIndex === index;
     },
     focusFirstGroundStation() {
       // Toggle between focusing on first ground station and returning to normal view
@@ -1077,6 +1347,37 @@ export default {
   padding: 10px;
   text-align: center;
   font-style: italic;
+}
+
+/* GS picker hint styling */
+.gs-picker-hint {
+  background-color: rgba(76, 175, 80, 0.3) !important;
+  border: 1px solid #4caf50;
+  border-radius: 4px;
+}
+
+.hint-arrow {
+  color: #4caf50;
+  font-weight: bold;
+  margin-left: 8px;
+  animation: pulse-hint 1s ease-in-out infinite;
+}
+
+@keyframes pulse-hint {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Menu item keyboard focus indicator */
+.menu-item-focused {
+  outline: 2px solid #4caf50;
+  outline-offset: 2px;
+  background-color: rgba(76, 175, 80, 0.2) !important;
 }
 
 #cameraAltitudeDisplay {

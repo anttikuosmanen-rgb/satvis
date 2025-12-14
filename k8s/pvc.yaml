@@ -8,8 +8,10 @@ metadata:
     component: storage
 spec:
   accessModes:
-    - ReadWriteMany  # Multiple pods need read access, CronJob needs write access
+    - ReadWriteOnce  # K3s local-path supports ReadWriteOnce only
+    # Note: All pods accessing this volume must run on the same node
+    # Use nodeAffinity to ensure web pods and cronjob run on the same node as the PV
   resources:
     requests:
       storage: 1Gi  # TLE data is small, 1GB is more than sufficient
-  # storageClassName: ""  # Use default storage class or specify your cluster's storage class
+  storageClassName: "local-path"  # K3s default storage class

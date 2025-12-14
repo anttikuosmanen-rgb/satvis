@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SatelliteManager } from "../modules/SatelliteManager";
-import { ISS_TLE, STARLINK_TLE } from "./fixtures/tle-data";
+import { ISS_TLE, ISS_TLE_UPDATED, STARLINK_TLE } from "./fixtures/tle-data";
 
 // Mock Cesium viewer
 const createMockViewer = () => ({
@@ -83,6 +83,60 @@ describe("SatelliteManager - TLE Parsing and Loading", () => {
     const sat = manager.satellites[0];
     expect(sat.props.tags).toContain("Space Stations");
     expect(sat.props.tags).toContain("Special Interest");
+  });
+
+  it("should update TLE orbital data when reloading satellite with same NORAD number", () => {
+    // Add ISS with original TLE data and "Space Stations" tag
+    manager.addFromTle(ISS_TLE, ["Space Stations"], false);
+
+    const originalSat = manager.satellites[0];
+
+    // Capture original TLE orbital elements from the orbit object
+    const originalJulianDate = originalSat.props.orbit.julianDate; // Epoch as Julian date
+    const originalMeanMotion = originalSat.props.orbit.satrec.no; // Mean motion in rad/min
+
+    // Mock the hide() and invalidatePassCache() methods to verify cleanup
+    originalSat.hide = vi.fn();
+    originalSat.invalidatePassCache = vi.fn();
+
+    // Add ISS again with UPDATED TLE data and "Active" tag
+    // This simulates reloading TLE files with updated orbital elements
+    manager.addFromTle(ISS_TLE_UPDATED, ["Active"], false);
+
+    // Should still have only 1 satellite (not 2)
+    expect(manager.satellites.length).toBe(1);
+
+    const updatedSat = manager.satellites[0];
+
+    // Verify the satellite object is actually a new instance (old one was replaced)
+    expect(updatedSat).not.toBe(originalSat);
+
+    // Verify cleanup methods were called on old satellite
+    expect(originalSat.hide).toHaveBeenCalled();
+    expect(originalSat.invalidatePassCache).toHaveBeenCalled();
+
+    // Verify tags were merged (should have both old and new tags)
+    expect(updatedSat.props.tags).toContain("Space Stations");
+    expect(updatedSat.props.tags).toContain("Active");
+    expect(updatedSat.props.tags).toHaveLength(2);
+
+    // Verify satellite keeps same name and NORAD number
+    expect(updatedSat.props.name).toBe("ISS (ZARYA)");
+    expect(updatedSat.props.satnum).toBe("25544");
+
+    // CRITICAL: Verify TLE orbital data was actually updated
+    const updatedJulianDate = updatedSat.props.orbit.julianDate;
+    const updatedMeanMotion = updatedSat.props.orbit.satrec.no;
+
+    // Epoch (Julian date) should be different (original: 18342.69..., updated: 18350.12...)
+    expect(updatedJulianDate).toBeDefined();
+    expect(originalJulianDate).toBeDefined();
+    expect(updatedJulianDate).not.toBe(originalJulianDate);
+
+    // Mean motion should be different (verifies orbital elements were updated)
+    expect(updatedMeanMotion).toBeDefined();
+    expect(originalMeanMotion).toBeDefined();
+    expect(updatedMeanMotion).not.toBe(originalMeanMotion);
   });
 
   it("should create satellite with correct name", () => {

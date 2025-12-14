@@ -1,0 +1,32 @@
+#cloud-config
+# Cloud-init configuration for Ubuntu instances
+
+hostname: ${hostname}
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - curl
+  - wget
+  - git
+  - ufw
+
+runcmd:
+  # Configure firewall
+  - ufw allow 22/tcp
+  - ufw allow 80/tcp
+  - ufw allow 443/tcp
+  - ufw allow 6443/tcp
+  - ufw allow 10250/tcp
+  - ufw --force enable
+
+  # Disable swap (required for K3s)
+  - swapoff -a
+  - sed -i '/ swap / s/^/#/' /etc/fstab
+
+  # Set up system for K3s
+  - sysctl -w net.ipv4.ip_forward=1
+  - echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+
+final_message: "System initialized and ready for K3s installation"

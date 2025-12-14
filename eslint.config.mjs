@@ -135,4 +135,31 @@ export default [
       ],
     },
   },
+  // Configuration for test files (must come last to override other configs)
+  {
+    files: ["src/test/**/*.js", "src/test/**/*.spec.js", "src/test/**/*.test.js", "src/test/**/*.mjs"],
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+        ...globals.node,
+        ...globals.serviceworker,
+        cc: "readonly",
+        global: "readonly",
+        Cesium: "readonly",
+      },
+      parser: vueEslintParser,
+      parserOptions: {
+        ecmaVersion: 2024,
+        sourceType: "module",
+      },
+    },
+    rules: {
+      "no-console": "off",
+      "@typescript-eslint/no-unused-vars": "off",
+      "import/extensions": "off",
+      "import/order": "off",
+      "no-misleading-character-class": "off",
+      "no-undef": "off",
+    },
+  },
 ];
