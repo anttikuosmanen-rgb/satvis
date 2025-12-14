@@ -11,6 +11,29 @@ Satellite orbit visualization and pass prediction with enhanced features for vis
 
 ![Screenshot](https://anttikuosmanen-rgb.github.io/satvis/data/images/screenshot.png)
 
+## Keyboard Shortcuts
+
+### Menu Navigation
+- `s` - Open satellite selection menu
+- `Shift+S` - Open satellite visuals menu
+- `g` - Open ground station menu
+- `l` - Open map layers menu
+- `Shift+D` - Open debug menu
+- `↑` `↓` - Navigate menu items
+- `Enter` - Activate/toggle selected item
+- `Esc` - Close menu (or info box if no menu open)
+
+### View & Navigation
+- `Space` - Toggle between satellite and ground station view
+- `z` - Flip camera to opposite side of globe
+- `Double-click GS button` - Toggle ground station focus
+
+### Time Navigation
+- `,` - Jump backward 1 hour
+- `.` - Jump forward 1 hour
+- `;` or `<` - Jump backward 24 hours
+- `:` or `>` - Jump forward 24 hours
+
 ## Features
 - Calculate position and orbit of satellites from TLE
 - Set groundstation through geolocation or pick on map
@@ -21,50 +44,47 @@ Satellite orbit visualization and pass prediction with enhanced features for vis
 
 ## Enhanced Features in This Fork
 
-### Zenith View - Ground-Level Sky Viewing
-View satellite passes from a ground-level perspective, looking up at the sky from your ground station location.
+### Zenith View
+Ground-level sky viewing from your ground station location with sky-up camera perspective. Watch satellites move across the sky as they would appear during passes. Toggle between normal 3D globe and zenith view modes.
 
-- **Sky-Up Camera** - Top-down view with camera fixed at ground station, simulating observer's perspective of satellites passing overhead
-- **Pass Tracking** - Watch satellites move across the sky as they would appear from your location during passes
-- **Toggle Mode** - Switch between normal 3D globe view and zenith view with ground station menu button
+### Pass Prediction & Visualization
+- **Smart Pass Calculations** - Optimized caching and chunked processing with automatic cache invalidation
+- **Eclipse Tracking** - Display satellite illumination transitions during passes with precise timing
+- **Timeline Highlights** - Visual markers for satellite passes and ground station daylight periods
+- **Pass Filtering** - Filter by sunlight conditions (hide sunlit passes, show only lit satellite passes)
+- **Local Time Support** - Ground station timezone display alongside UTC
+- **Click Navigation** - Click pass cards in info panel to jump to pass start time
+- **Polar Coordinates** - Proper daytime calculation and caching for polar regions
+- **GEO Satellites** - Continuous visibility display for geostationary satellites
+- **Pre-launch Support** - Dedicated group for upcoming launches with epoch-based filtering
 
-### Timeline & Pass Visualization
-- **Timeline Zoom Controls** - Plus/minus buttons for smooth timeline zoom in (0.75x) and zoom out (1.33x)
-- **Ground Station Daytime Highlights** - Visual indicators showing daylight periods at ground station location
-- **Improved Pass Highlights** - Visual timeline markers showing satellite passes with better visibility
-- **Pass Time Navigation** - Click pass entries in info panel to jump timeline to pass start time while maintaining zoom level
-- **Polar Coordinate Support** - Proper daytime calculation and caching for polar regions
+### Keyboard Navigation
+Full keyboard control with shortcuts for all menus and functions. Arrow keys navigate menu items, Enter activates, ESC closes menus/info boxes. Time jumps with comma/period (1h) and semicolon/colon (24h). Spacebar toggles satellite/ground station views. Z key flips camera to opposite side of globe. Shortcuts displayed in tooltips.
 
-### Ground Station Features
-- **Zenith View Mode** - Top-down view from ground station perspective for better pass visualization
-- **Local Time Display** - Show ground station local timezone alongside UTC
-- **Pass Filtering Options** - Filter passes by sunlight conditions (hide sunlit passes, show only lit satellite passes)
-- **GEO Satellite Handling** - Proper display of continuous visibility for geostationary satellites
+### Timeline Controls
+- **Zoom Controls** - Plus/minus buttons with smooth 0.75x/1.33x zoom steps
+- **Zoom Preservation** - Maintains zoom level during time navigation and pass jumps
+- **Improved Bounds** - Better handling of timeline limits and consistency
 
-### Pass Prediction Improvements
-- **Optimized Pass Calculations** - Caching and chunked processing for better performance
-- **Epoch-Based Filtering** - Accurate pass predictions for pre-launch satellites with future epochs
-- **Eclipse Transition Times** - Display when satellites enter/exit Earth's shadow during passes
-- **Pass Cache Invalidation** - Automatic cache updates when filters or settings change
-- **Enhanced Pass Details** - Improved formatting and information display in pass listings
+### User Interface
+- **Pass Info Cards** - Clean card-based layout for pass listings with countdown timers
+- **Mobile Optimization** - Streamlined interface with timeline controls hidden on iOS
+- **Debug Menu** - Advanced options (swath mode, performance stats) in dedicated menu
+- **Tooltip Shortcuts** - Keyboard shortcuts displayed on all menu buttons
+- **Info Box Improvements** - ESC key support, disabled spacebar scrolling for consistent shortcuts
 
-### Pre-launch Satellite Support
-- **Pre-launch Group** - Dedicated satellite group for upcoming launches (marked with *)
-- **Automated Data Updates** - GitHub Actions workflow updates TLE and pre-launch data on deployment
-- **Epoch Clamping** - Proper handling of satellites with future launch dates
-
-### User Interface Enhancements
-- **Improved Timeline Bounds** - Better handling of timeline limits and zoom consistency
-- **Timeline Zoom Preservation** - Zoom level maintained when navigating to passes or using time controls
-- **Mobile UI Optimization** - Cleaner interface with timeline controls hidden on iOS devices
-- **Debug Menu** - Moved advanced options (swath mode, etc.) to dedicated debug section
-- **Performance Stats** - Optional performance monitoring display
+### Orbit & Camera Features
+- **Orbit Scrubbing** - Click and drag satellites along their orbit to explore passes
+- **Smart Path Mode** - Color-coded orbit visualization showing ground station visibility and lighting
+- **Camera Flip** - Z key to view opposite side of globe (useful when satellite is behind Earth)
+- **View Toggle** - Spacebar to quickly switch between satellite tracking and ground station focus
 
 ### Technical Improvements
-- **Automated Deployment** - GitHub Actions workflow for continuous deployment
-- **Code Quality** - ESLint and Prettier integration for consistent code formatting
+- **Automated Deployment** - GitHub Actions CI/CD with TLE data updates
+- **Code Quality** - ESLint and Prettier integration, comprehensive E2E test suite
 - **Browser Compatibility** - Replaced geo-tz with tz-lookup for better browser support
-- **Runtime Error Handling** - Improved error handling for TLE data updates and entity tracking
+- **Error Handling** - Improved error handling for TLE data, entity tracking, and pass calculations
+- **Performance** - Optimized rendering, caching strategies, and worker-based calculations
 
 ## Built With
 - [CesiumJS](https://cesiumjs.org)
