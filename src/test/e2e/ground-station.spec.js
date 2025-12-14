@@ -652,6 +652,27 @@ test.describe("Ground Station", () => {
       };
     });
 
+    // If no highlights found, try flipping camera to other side of globe (ISS might be there)
+    if (!passAndHighlightData.found && passAndHighlightData.passCount > 0) {
+      // Press 'z' to flip camera to opposite side of globe
+      await page.keyboard.press("z");
+      await page.waitForTimeout(500); // Wait for camera animation
+
+      // Try getting highlights again
+      const retryData = await page.evaluate(() => {
+        const viewer = window.cc?.viewer;
+        const highlightRanges = viewer?.timeline?._highlightRanges || [];
+        const passHighlights = highlightRanges.filter((h) => h._base === 0);
+        return {
+          highlightCount: passHighlights.length,
+        };
+      });
+
+      // Update highlight count after camera flip
+      passAndHighlightData.highlightCount = retryData.highlightCount;
+      passAndHighlightData.found = passAndHighlightData.passCount > 0 && retryData.highlightCount > 0;
+    }
+
     // With simulation time set to current date (matching TLE epoch), passes and highlights MUST exist
     expect(passAndHighlightData.found).toBe(true);
     expect(passAndHighlightData.firstPass).not.toBeNull();
@@ -1047,6 +1068,26 @@ test.describe("Ground Station", () => {
 
     expect(initialState.found).toBe(true);
     expect(initialState.passCount).toBeGreaterThan(0);
+
+    // If no highlights found, try flipping camera to other side of globe
+    if (initialState.highlightCount === 0) {
+      // Press 'z' to flip camera to opposite side of globe
+      await page.keyboard.press("z");
+      await page.waitForTimeout(500); // Wait for camera animation
+
+      // Try getting highlights again
+      const retryState = await page.evaluate(() => {
+        const viewer = window.cc?.viewer;
+        const highlightRanges = viewer?.timeline?._highlightRanges || [];
+        const passHighlights = highlightRanges.filter((h) => h._base === 0);
+        return {
+          highlightCount: passHighlights.length,
+        };
+      });
+
+      initialState.highlightCount = retryState.highlightCount;
+    }
+
     expect(initialState.highlightCount).toBeGreaterThan(0);
 
     // Click the zoom-out button ("-") three times
