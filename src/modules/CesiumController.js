@@ -1296,6 +1296,40 @@ export class CesiumController {
           window.dispatchEvent(new CustomEvent("openMenu", { detail: "dbg" }));
           return;
         }
+
+        // Time jump shortcuts
+        // , (comma) - jump backward 1 hour
+        if (event.key === ",") {
+          event.preventDefault();
+          const currentTime = this.viewer.clock.currentTime;
+          const newTime = JulianDate.addHours(currentTime, -1, new JulianDate());
+          this.viewer.clock.currentTime = newTime;
+          return;
+        }
+        // . (period) - jump forward 1 hour
+        if (event.key === ".") {
+          event.preventDefault();
+          const currentTime = this.viewer.clock.currentTime;
+          const newTime = JulianDate.addHours(currentTime, 1, new JulianDate());
+          this.viewer.clock.currentTime = newTime;
+          return;
+        }
+        // ; (semicolon) or < - jump backward 24 hours
+        if (event.key === ";" || event.key === "<") {
+          event.preventDefault();
+          const currentTime = this.viewer.clock.currentTime;
+          const newTime = JulianDate.addHours(currentTime, -24, new JulianDate());
+          this.viewer.clock.currentTime = newTime;
+          return;
+        }
+        // : (colon) or > - jump forward 24 hours
+        if (event.key === ":" || event.key === ">") {
+          event.preventDefault();
+          const currentTime = this.viewer.clock.currentTime;
+          const newTime = JulianDate.addHours(currentTime, 24, new JulianDate());
+          this.viewer.clock.currentTime = newTime;
+          return;
+        }
       }
 
       // D key: Debug scrubbing info (only when not shift - Shift+D opens debug menu)
@@ -1653,6 +1687,15 @@ export class CesiumController {
         const node = document.createTextNode(infoBoxCss + "\n" + infoBoxOverrideCss);
         style.appendChild(node);
         head.appendChild(style);
+
+        // Disable spacebar navigation in infoBox - let spacebar trigger global GS/Sat toggle
+        frame.contentDocument.addEventListener("keydown", (event) => {
+          if (event.code === "Space") {
+            event.preventDefault();
+            // Trigger the global spacebar handler in the parent window
+            window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space", bubbles: true }));
+          }
+        });
       },
       false,
     );

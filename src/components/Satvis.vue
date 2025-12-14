@@ -5,14 +5,14 @@
 
     <div v-show="showUI" id="toolbarLeft">
       <div class="toolbarButtons">
-        <button v-tooltip="'Satellite selection'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('cat')">
+        <button v-tooltip="'Satellite selection (s)'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('cat')">
           <i class="icon svg-sat"></i>
         </button>
-        <button v-tooltip="'Satellite visuals'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('sat')">
+        <button v-tooltip="'Satellite visuals (Shift+S)'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('sat')">
           <font-awesome-icon icon="fas fa-layer-group" />
         </button>
         <button
-          v-tooltip="'Ground station (double-click to toggle focus)'"
+          v-tooltip="'Ground station (g) [double-click to toggle focus]'"
           type="button"
           class="cesium-button cesium-toolbar-button"
           @click="toggleMenu('gs')"
@@ -20,7 +20,7 @@
         >
           <i class="icon svg-groundstation"></i>
         </button>
-        <button v-tooltip="'Map'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('map')">
+        <button v-tooltip="'Map (l)'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('map')">
           <font-awesome-icon icon="fas fa-globe-africa" />
         </button>
         <button v-if="cc.minimalUI" v-tooltip="'Mobile'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('ios')">
@@ -36,7 +36,7 @@
         >
           <font-awesome-icon icon="fas fa-stopwatch" />
         </button>
-        <button v-tooltip="'Debug'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('dbg')">
+        <button v-tooltip="'Debug (Shift+D)'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('dbg')">
           <font-awesome-icon icon="fas fa-hammer" />
         </button>
       </div>
@@ -648,14 +648,22 @@ export default {
 
     // Listen for keyboard navigation within menus
     this.menuKeyHandler = (event) => {
-      if (!this.activeMenuKey) return;
-
-      // ESC always works to close menu, regardless of menuItems
+      // ESC key: Close menu first if open, otherwise close info box
       if (event.key === "Escape") {
         event.preventDefault();
-        this.closeActiveMenu();
-        return;
+        // If a menu is open, close it
+        if (this.activeMenuKey) {
+          this.closeActiveMenu();
+          return;
+        }
+        // If no menu is open but info box is open, close it
+        if (this.cc.viewer.selectedEntity) {
+          this.cc.viewer.selectedEntity = undefined;
+          return;
+        }
       }
+
+      if (!this.activeMenuKey) return;
 
       // Disable menu navigation when a dropdown is open
       if (this.dropdownOpen) return;
