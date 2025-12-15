@@ -1461,6 +1461,8 @@ export class CesiumController {
       coordinates.cartesian = cartesian;
       this.sats.addGroundStation(coordinates);
       useCesiumStore().pickMode = false;
+      // Close the GS menu after placement
+      window.dispatchEvent(new CustomEvent("closeGsMenu"));
     }
   }
 
@@ -1870,12 +1872,11 @@ export class CesiumController {
     const timeline = this.viewer.timeline;
     const originalTimelineMakeLabel = timeline.makeLabel.bind(timeline);
 
-    // Capture satStore reference in closure to avoid calling useSatStore from non-Vue context
-    const satStore = this.satStore;
-
     // Override timeline makeLabel to support local time
     this.viewer.timeline.makeLabel = function (time) {
       try {
+        // Get store lazily - Pinia may not be initialized when CesiumController is created
+        const satStore = useSatStore();
         if (satStore && satStore.useLocalTime && satStore.groundStations.length > 0) {
           // Get first ground station position for timezone
           const groundStationPosition = {
@@ -1925,6 +1926,8 @@ export class CesiumController {
     // Override animation date formatter to support local time
     animation.viewModel.dateFormatter = function (date, viewModel) {
       try {
+        // Get store lazily - Pinia may not be initialized when CesiumController is created
+        const satStore = useSatStore();
         if (satStore && satStore.useLocalTime && satStore.groundStations && satStore.groundStations.length > 0) {
           // Convert to JavaScript Date if needed
           const jsDate = date instanceof Date ? date : new Date(date);
@@ -1959,6 +1962,8 @@ export class CesiumController {
     // Override animation time formatter to support local time
     animation.viewModel.timeFormatter = function (date, viewModel) {
       try {
+        // Get store lazily - Pinia may not be initialized when CesiumController is created
+        const satStore = useSatStore();
         if (satStore && satStore.useLocalTime && satStore.groundStations && satStore.groundStations.length > 0) {
           // Convert to JavaScript Date if needed (Cesium may pass JulianDate or other formats)
           const jsDate = date instanceof Date ? date : new Date(date);

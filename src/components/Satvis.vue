@@ -628,6 +628,7 @@ export default {
         this.menu[k] = false;
       });
       this.menu.gs = true; // Open GS menu
+      this.activeMenuKey = "gs"; // Set active menu so ESC works
       this.pickMode = true; // Enable pick mode
       this.showGsPickerHint = true; // Show hint arrow
     };
@@ -645,6 +646,19 @@ export default {
       this.menuFocusIndex = 0; // Focus first item
     };
     window.addEventListener("openMenu", this.openMenuHandler);
+
+    // Listen for GS menu close event (after GS placement)
+    this.closeGsMenuHandler = () => {
+      if (this.menu.gs) {
+        this.menu.gs = false;
+        if (this.activeMenuKey === "gs") {
+          this.activeMenuKey = null;
+          this.menuFocusIndex = -1;
+        }
+        this.showGsPickerHint = false;
+      }
+    };
+    window.addEventListener("closeGsMenu", this.closeGsMenuHandler);
 
     // Listen for keyboard navigation within menus
     this.menuKeyHandler = (event) => {
@@ -757,6 +771,10 @@ export default {
     // Clean up menu open listener
     if (this.openMenuHandler) {
       window.removeEventListener("openMenu", this.openMenuHandler);
+    }
+    // Clean up GS menu close listener
+    if (this.closeGsMenuHandler) {
+      window.removeEventListener("closeGsMenu", this.closeGsMenuHandler);
     }
     // Clean up menu keyboard navigation listener
     if (this.menuKeyHandler) {
@@ -908,6 +926,11 @@ export default {
         this.menuFocusIndex = -1; // -1 means no keyboard focus yet
       } else {
         // Menu is being closed
+        // If closing GS menu, also disable pick mode and hide hint
+        if (name === "gs") {
+          this.pickMode = false;
+          this.showGsPickerHint = false;
+        }
         this.activeMenuKey = null;
         this.menuFocusIndex = -1;
       }
@@ -1039,6 +1062,11 @@ export default {
     // Close the currently active menu
     closeActiveMenu() {
       if (this.activeMenuKey) {
+        // If closing GS menu, also disable pick mode and hide hint
+        if (this.activeMenuKey === "gs") {
+          this.pickMode = false;
+          this.showGsPickerHint = false;
+        }
         this.menu[this.activeMenuKey] = false;
         this.activeMenuKey = null;
         this.menuFocusIndex = -1;
