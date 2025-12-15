@@ -1,9 +1,8 @@
 import { test, expect } from "@playwright/test";
 import { pauseAnimation, resumeAnimation } from "./helpers/globe-interaction.js";
 
-// Skip this test in CI/headless mode - requires GPU for accurate measurements
-// Run manually with: npx playwright test pass-calculation-performance --headed
-test.skip(({ headless }) => headless, "Performance test requires headed mode with GPU");
+// This test only runs in the "performance" project (headed mode with GPU)
+// Run with: npx playwright test --project=performance
 
 test.describe("Pass Calculation Performance", () => {
   test("should maintain FPS across scenarios with high clock multiplier", async ({ page }) => {
