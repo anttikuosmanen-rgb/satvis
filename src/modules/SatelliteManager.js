@@ -284,21 +284,22 @@ export class SatelliteManager {
       return;
     }
 
+    // Skip timeline highlight updates during fast playback to avoid performance degradation
+    // At high clock multipliers (>10x), timeline highlights would be updated too frequently
+    // causing excessive DOM manipulation and severe FPS drops
+    const clockMultiplier = Math.abs(this.viewer.clock.multiplier || 1);
+    if (clockMultiplier > 10) {
+      this.#debugLog(`[updatePassHighlightsAfterTimelineChange] Clock multiplier is ${clockMultiplier}x, skipping timeline highlight update for performance`);
+      return;
+    }
+
     // Skip if no ground station or no active satellites
     if (this.#groundStations.length === 0 || this.activeSatellites.length === 0) {
       this.#debugLog("[updatePassHighlightsAfterTimelineChange] No GS or satellites, skipping");
       return;
     }
 
-    let selectedEntity = this.viewer.selectedEntity;
-
-    // If no entity is selected but ground station exists, default to ground station
-    if (!selectedEntity && this.#groundStations.length > 0) {
-      this.#debugLog("[updatePassHighlightsAfterTimelineChange] No selected entity, defaulting to ground station");
-      selectedEntity = this.#groundStations[0].components.Groundstation;
-      // Select the ground station so the info panel shows
-      this.viewer.selectedEntity = selectedEntity;
-    }
+    const selectedEntity = this.viewer.selectedEntity;
 
     if (!selectedEntity) {
       this.#debugLog("[updatePassHighlightsAfterTimelineChange] No selected entity, skipping");

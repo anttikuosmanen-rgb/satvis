@@ -101,7 +101,13 @@ export class GroundStationEntity extends CesiumComponentCollection {
     // Only do expensive validation if quick check failed
     if (this._passesCache && this._passesCacheTime && this._passesCacheCesiumTime) {
       const currentTimeMs = JulianDate.toDate(time).getTime();
-      const cacheValidityMs = 60 * 1000; // Cache valid for 60 seconds (real time)
+      // Adjust cache validity based on clock multiplier to prevent excessive invalidation
+      // At 1x speed: cache valid for 60s real time
+      // At 100x speed: cache valid for 6000s real time (100 minutes)
+      const clockMultiplier = Math.abs(this.viewer.clock.multiplier || 1.0);
+      const clampedMultiplier = Math.max(0.1, Math.min(1000, clockMultiplier));
+      const baseCacheValidityMs = 60 * 1000;
+      const cacheValidityMs = baseCacheValidityMs * clampedMultiplier;
       const cacheValidityHours = 1; // Cache valid if Cesium time hasn't jumped more than 1 hour
 
       const realTimeCacheAge = currentTimeMs - this._passesCacheTime;
@@ -191,7 +197,13 @@ export class GroundStationEntity extends CesiumComponentCollection {
     // Only do expensive validation if quick check failed
     if (this._passesCache && this._passesCacheTime && this._passesCacheCesiumTime) {
       const currentTimeMs = JulianDate.toDate(time).getTime();
-      const cacheValidityMs = 60 * 1000; // Cache valid for 60 seconds (real time)
+      // Adjust cache validity based on clock multiplier to prevent excessive invalidation
+      // At 1x speed: cache valid for 60s real time
+      // At 100x speed: cache valid for 6000s real time (100 minutes)
+      const clockMultiplier = Math.abs(this.viewer.clock.multiplier || 1.0);
+      const clampedMultiplier = Math.max(0.1, Math.min(1000, clockMultiplier));
+      const baseCacheValidityMs = 60 * 1000;
+      const cacheValidityMs = baseCacheValidityMs * clampedMultiplier;
       const cacheValidityHours = 1; // Cache valid if Cesium time hasn't jumped more than 1 hour
 
       const realTimeCacheAge = currentTimeMs - this._passesCacheTime;
