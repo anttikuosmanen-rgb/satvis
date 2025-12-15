@@ -1330,6 +1330,14 @@ export class CesiumController {
           this.viewer.clock.currentTime = newTime;
           return;
         }
+        // t - Set to real time (current time at 1x speed)
+        if (event.key === "t") {
+          event.preventDefault();
+          this.viewer.clock.currentTime = JulianDate.now();
+          this.viewer.clock.multiplier = 1;
+          this.viewer.clock.shouldAnimate = true;
+          return;
+        }
       }
 
       // D key: Debug scrubbing info (only when not shift - Shift+D opens debug menu)
