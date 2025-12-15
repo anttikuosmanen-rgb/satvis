@@ -3,9 +3,9 @@
 
 echo "🧪 Running E2E tests before push..."
 
-# Run all non-keyboard-shortcuts E2E tests
+# Run all chromium E2E tests (excludes performance tests which need headed mode)
 echo "Running core E2E tests..."
-npm run test:e2e -- --grep-invert "keyboard-shortcuts.spec.js" --timeout=120000 --reporter=line
+npm run test:e2e -- --project=chromium --grep-invert "keyboard-shortcuts.spec.js" --timeout=120000 --reporter=line
 
 if [ $? -ne 0 ]; then
   echo "❌ Core E2E tests failed. Push aborted."
@@ -15,7 +15,7 @@ fi
 
 # Run only critical keyboard shortcuts tests (from keyboard-shortcuts.spec.js file)
 echo "Running critical keyboard shortcuts tests..."
-npm run test:e2e -- keyboard-shortcuts.spec.js --grep "@critical" --timeout=120000 --reporter=line
+npm run test:e2e -- --project=chromium keyboard-shortcuts.spec.js --grep "@critical" --timeout=120000 --reporter=line
 
 if [ $? -ne 0 ]; then
   echo "❌ Critical keyboard shortcuts tests failed. Push aborted."
@@ -25,3 +25,4 @@ fi
 
 echo "✅ All E2E tests passed!"
 echo "💡 Run 'npm run test:e2e' to execute the full test suite including all keyboard shortcut tests"
+echo "💡 Run 'npx playwright test --project=performance' for GPU performance tests (requires headed mode)"

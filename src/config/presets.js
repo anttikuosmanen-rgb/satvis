@@ -26,6 +26,7 @@ export const presets = {
       ["data/tle/groups/stations.txt", ["Stations"]],
       ["data/tle/groups/weather.txt", ["Weather"]],
       ["data/tle/groups/eutelsat.txt", ["Eutelsat"]],
+      ["data/tle/groups/classfd.tle", ["Classified"]],
       // ["data/tle/groups/active.txt", ["Active"]],
     ],
   },

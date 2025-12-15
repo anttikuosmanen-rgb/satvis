@@ -12,24 +12,48 @@ dayjs.extend(utc);
 export class DescriptionHelper {
   /** cachedCallbackProperty
    * Caches the results of a callback property to prevent unnecessary recalculation.
-   * @param {function} callback - The amount of simulation time to use the calculated result
-   * @param {number} updateTreshold - The amount of simulation time to use the calculated result
+   * The cache accounts for clock multiplier to prevent excessive re-evaluation during fast playback.
+   * @param {function} callback - The function to call when cache is invalid
+   * @param {number} baseUpdateThreshold - Base simulation time threshold in seconds (default 1)
    * @param {number} usageTreshold - The number of invocations to serve the same result
    */
-  static cachedCallbackProperty(callback, updateTreshold = 1, usageTreshold = 1000) {
+  static cachedCallbackProperty(callback, baseUpdateThreshold = 1, usageTreshold = 1000) {
     let cache;
+    let lastRealTime = null;
+
     return new CallbackProperty((time) => {
-      if (cache && JulianDate.equalsEpsilon(time, cache.time, updateTreshold) && cache.usage < usageTreshold) {
-        // console.log("Cached callback", time, cache.usage);
+      const currentRealTime = performance.now();
+
+      // Get clock multiplier from the global viewer if available
+      // This allows the cache to adapt to simulation speed
+      const viewer = typeof window !== "undefined" && window.cc ? window.cc.viewer : null;
+      const clockMultiplier = viewer ? Math.abs(viewer.clock.multiplier || 1) : 1;
+
+      // Adjust threshold based on clock multiplier
+      // At 1x: updateThreshold = 1 second simulation time
+      // At 100x: updateThreshold = 100 seconds simulation time
+      // At 2000x: updateThreshold = 2000 seconds simulation time
+      const adjustedThreshold = baseUpdateThreshold * Math.max(1, clockMultiplier);
+
+      // Real-time throttle: at high speeds, reduce update frequency significantly
+      // At 1x: update every 1 second real time
+      // At 10x-100x: update every 3 seconds real time
+      // At 100x+: update every 5 seconds real time (countdown doesn't need precision during fast-forward)
+      const minRealTimeInterval = clockMultiplier > 100 ? 5000 : clockMultiplier > 10 ? 3000 : 1000;
+      const realTimeSinceLastUpdate = lastRealTime ? currentRealTime - lastRealTime : Infinity;
+
+      if (cache && JulianDate.equalsEpsilon(time, cache.time, adjustedThreshold) && cache.usage < usageTreshold && realTimeSinceLastUpdate < minRealTimeInterval) {
         cache.usage += 1;
         return cache.content;
       }
+
       const content = callback(time);
       cache = {
-        time,
+        time: JulianDate.clone(time),
         content,
         usage: 0,
       };
+      lastRealTime = currentRealTime;
       return content;
     }, false);
   }
@@ -275,12 +299,20 @@ export class DescriptionHelper {
     }
     const upcomingPasses = filteredPasses.slice(upcomingPassIdx);
 
+    // Limit displayed passes to what fits in the info box (~6 cards visible)
+    const MAX_DISPLAYED_PASSES = 6;
+    const displayedPasses = upcomingPasses.slice(0, MAX_DISPLAYED_PASSES);
+    const hiddenCount = upcomingPasses.length - displayedPasses.length;
+
     const passNameField = isGroundStation ? "name" : null;
+    const morePassesNote = hiddenCount > 0 ? `<div class="ib-text" style="margin-top: 8px; color: #888;">+ ${hiddenCount} more passes</div>` : "";
+
     const html = `
       <h3>Passes (${overpassMode.charAt(0).toUpperCase() + overpassMode.slice(1)})${epochNote}</h3>
       <div class="passes-list">
-        ${upcomingPasses.map((pass) => this.renderPassCard(start, pass, passNameField)).join("")}
+        ${displayedPasses.map((pass) => this.renderPassCard(start, pass, passNameField)).join("")}
       </div>
+      ${morePassesNote}
     `;
     return html;
   }
@@ -301,11 +333,22 @@ export class DescriptionHelper {
       const seconds = Math.floor((durationMs % 60000) / 1000);
       return `${minutes}m ${seconds}s`;
     }
+
+    // Simplified countdown calculation - avoid expensive dayjs operations
+    const passStartMs = new Date(pass.start).getTime();
+    const passEndMs = new Date(pass.end).getTime();
+    const currentMs = time.valueOf();
+
     let countdown = "ONGOING";
-    if (dayjs(pass.end).diff(time) < 0) {
+    if (currentMs > passEndMs) {
       countdown = "PREVIOUS";
-    } else if (dayjs(pass.start).diff(time) > 0) {
-      countdown = `${pad2(dayjs(pass.start).diff(time, "days"))}:${pad2(dayjs(pass.start).diff(time, "hours") % 24)}:${pad2(dayjs(pass.start).diff(time, "minutes") % 60)}:${pad2(dayjs(pass.start).diff(time, "seconds") % 60)}`;
+    } else if (currentMs < passStartMs) {
+      const diffMs = passStartMs - currentMs;
+      const days = Math.floor(diffMs / 86400000);
+      const hours = Math.floor((diffMs % 86400000) / 3600000);
+      const minutes = Math.floor((diffMs % 3600000) / 60000);
+      const seconds = Math.floor((diffMs % 60000) / 1000);
+      countdown = `${pad2(days)}:${pad2(hours)}:${pad2(minutes)}:${pad2(seconds)}`;
     }
 
     // Generate ground station lighting conditions display

@@ -17,9 +17,10 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
-    "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui",
-    "test:e2e:debug": "playwright test --debug",
+    "test:e2e": "playwright test --project=chromium",
+    "test:e2e:ui": "playwright test --project=chromium --ui",
+    "test:e2e:debug": "playwright test --project=chromium --debug",
+    "test:e2e:perf": "playwright test --project=performance",
     "update-tle": "node data/tle/update-tle.js",
     "update-custom-data": "npm run update-tle && bash data/custom/update-custom-data.sh",
     "prepare": "husky"

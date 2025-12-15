@@ -52,6 +52,27 @@ export default defineConfig({
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
+      // Exclude performance tests - they run in the performance project with headed mode
+      testIgnore: ["**/pass-calculation-performance.spec.js"],
+    },
+    {
+      // Performance tests run separately in headed mode with GPU acceleration
+      // Run with: npx playwright test --project=performance
+      name: "performance",
+      use: {
+        ...devices["Desktop Chrome"],
+        headless: false,
+        launchOptions: {
+          args: [
+            "--enable-gpu",
+            "--use-gl=angle",
+            "--use-angle=gl",
+            "--enable-webgl",
+            "--ignore-gpu-blocklist",
+          ],
+        },
+      },
+      testMatch: "**/pass-calculation-performance.spec.js",
     },
   ],
 

@@ -559,7 +559,6 @@ test.describe("Satellite Group Pass Prediction", () => {
 
     // ===== STEP 1: Check initial pass highlights =====
     const initialHighlights = await getPassHighlights(page);
-    console.log(`Initial highlights: ${initialHighlights.passCount} passes`);
 
     expect(initialHighlights.passCount).toBeGreaterThan(0);
 
@@ -567,7 +566,6 @@ test.describe("Satellite Group Pass Prediction", () => {
     const initialHighlightTimes = new Set(initialHighlights.highlights.map((h) => `${h.startSeconds}-${h.stopSeconds}`));
 
     // ===== STEP 2: Jump 24 hours forward =====
-    console.log("Jumping 24 hours forward...");
     await advanceTimeByHours(page, 24);
     await triggerPassRecalculation(page);
 
@@ -577,7 +575,6 @@ test.describe("Satellite Group Pass Prediction", () => {
 
     // Get highlights after first 24h jump
     const highlightsAfter24h = await getPassHighlights(page);
-    console.log(`After 24h jump: ${highlightsAfter24h.passCount} passes`);
 
     // Verify we have pass highlights after jump
     expect(highlightsAfter24h.passCount).toBeGreaterThan(0);
@@ -593,14 +590,11 @@ test.describe("Satellite Group Pass Prediction", () => {
       }
     }
 
-    console.log(`New highlights after 24h jump: ${newHighlightsAfter24h} (out of ${highlightsAfter24h.passCount})`);
-
     // At least some highlights should be new after jumping 24h
     // (passes from 24h ago should no longer be visible in timeline)
     expect(newHighlightsAfter24h).toBeGreaterThan(0);
 
     // ===== STEP 3: Jump another 24 hours forward (48h total) =====
-    console.log("Jumping another 24 hours forward (48h total)...");
     await advanceTimeByHours(page, 24);
     await triggerPassRecalculation(page);
 
@@ -610,7 +604,6 @@ test.describe("Satellite Group Pass Prediction", () => {
 
     // Get highlights after second 24h jump (48h total)
     const highlightsAfter48h = await getPassHighlights(page);
-    console.log(`After 48h total: ${highlightsAfter48h.passCount} passes`);
 
     // Verify we have pass highlights after second jump
     expect(highlightsAfter48h.passCount).toBeGreaterThan(0);
@@ -626,8 +619,6 @@ test.describe("Satellite Group Pass Prediction", () => {
       }
     }
 
-    console.log(`New highlights after 48h (vs 24h): ${newHighlightsAfter48h} (out of ${highlightsAfter48h.passCount})`);
-
     // At least some highlights should be new after jumping another 24h
     expect(newHighlightsAfter48h).toBeGreaterThan(0);
 
@@ -639,17 +630,9 @@ test.describe("Satellite Group Pass Prediction", () => {
       }
     }
 
-    console.log(`Highlights at 48h overlapping with initial: ${overlappingWithInitial}`);
-
     // After 48 hours, most (if not all) highlights should be different from initial
     // The timeline typically shows ~24h of passes, so 48h later should have mostly new passes
     const overlapPercentage = overlappingWithInitial / highlightsAfter48h.passCount;
     expect(overlapPercentage).toBeLessThan(0.5); // Less than 50% overlap expected
-
-    console.log(`Timeline highlight update test completed successfully:
-      - Initial highlights: ${initialHighlights.passCount}
-      - After 24h: ${highlightsAfter24h.passCount} (${newHighlightsAfter24h} new)
-      - After 48h: ${highlightsAfter48h.passCount} (${newHighlightsAfter48h} new vs 24h, ${overlappingWithInitial} overlap with initial)
-    `);
   });
 });
