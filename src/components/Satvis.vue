@@ -662,7 +662,7 @@ export default {
 
     // Listen for keyboard navigation within menus
     this.menuKeyHandler = (event) => {
-      // ESC key: Close menu first if open, otherwise close info box
+      // ESC key: Close menu first if open, then info box, then reset to globe view
       if (event.key === "Escape") {
         event.preventDefault();
         // If a menu is open, close it
@@ -673,6 +673,15 @@ export default {
         // If no menu is open but info box is open, close it
         if (this.cc.viewer.selectedEntity) {
           this.cc.viewer.selectedEntity = undefined;
+          return;
+        }
+        // If camera is tracking a satellite or GS with no menus/infoboxes open,
+        // reset to default globe view with nothing tracked or selected
+        if (this.cc.viewer.trackedEntity) {
+          this.cc.viewer.trackedEntity = undefined;
+          this.cc.viewer.selectedEntity = undefined;
+          // Fly to default globe view
+          this.cc.viewer.camera.flyHome(1.5);
           return;
         }
       }

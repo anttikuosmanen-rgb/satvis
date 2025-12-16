@@ -734,6 +734,8 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       const entity = new Entity({
         polyline,
       });
+      // Mark as non-selectable so clicking doesn't show infobox
+      entity._nonSelectable = true;
 
       entities.push(entity);
       this.viewer.entities.add(entity);

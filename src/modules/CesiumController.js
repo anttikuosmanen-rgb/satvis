@@ -11,6 +11,7 @@ import {
   ImageryLayer,
   JulianDate,
   Math as CesiumMath,
+  Matrix3,
   Matrix4,
   OpenStreetMapImageryProvider,
   SceneMode,
@@ -47,6 +48,7 @@ import { PlanetManager } from "./PlanetManager";
 import { EarthManager } from "./EarthManager";
 import { filterAndSortPasses } from "./util/PassFilter";
 import { ClockMonitor } from "./util/ClockMonitor";
+import { DescriptionHelper } from "./util/DescriptionHelper";
 
 dayjs.extend(utc);
 
@@ -505,6 +507,51 @@ export class CesiumController {
     };
   }
 
+  // Helper: Capture camera offset relative to currently tracked entity
+  // Returns the viewFrom Cartesian3 that can be used to restore camera position
+  captureTrackedEntityCameraOffset() {
+    const trackedEntity = this.viewer.trackedEntity;
+    if (!trackedEntity) return null;
+
+    const camera = this.viewer.camera;
+    const currentTime = this.viewer.clock.currentTime;
+    const entityPosition = trackedEntity.position?.getValue(currentTime);
+    if (!entityPosition) return null;
+
+    // Calculate vector from entity to camera in world coordinates
+    const cameraOffset = Cartesian3.subtract(camera.positionWC, entityPosition, new Cartesian3());
+    const range = Cartesian3.magnitude(cameraOffset);
+
+    // Check if entity has an orientation property (satellites have VelocityOrientationProperty)
+    const entityOrientation = trackedEntity.orientation?.getValue(currentTime);
+
+    let inverseTransform;
+    if (entityOrientation) {
+      // Entity has orientation (satellite) - use entity's actual local frame
+      // The viewFrom is interpreted in this oriented frame
+      const rotationMatrix = Matrix3.fromQuaternion(entityOrientation, new Matrix3());
+      const modelMatrix = Matrix4.fromRotationTranslation(rotationMatrix, entityPosition, new Matrix4());
+      inverseTransform = Matrix4.inverse(modelMatrix, new Matrix4());
+    } else {
+      // No orientation (ground station) - use ENU frame at entity position
+      const transform = Transforms.eastNorthUpToFixedFrame(entityPosition);
+      inverseTransform = Matrix4.inverse(transform, new Matrix4());
+    }
+
+    // Transform camera offset to entity's local coordinates
+    const localOffset = Matrix4.multiplyByPointAsVector(inverseTransform, cameraOffset, new Cartesian3());
+
+    return {
+      viewFrom: Cartesian3.clone(localOffset),
+      range: range,
+    };
+  }
+
+  // Helper: Apply saved camera offset - no longer needed since we use viewFrom
+  applyTrackedEntityCameraOffset() {
+    // This function is now deprecated - we set viewFrom before tracking instead
+  }
+
   // Helper: Check if currently tracking a ground station
   isTrackingGroundStation() {
     const tracked = this.viewer.trackedEntity;
@@ -513,15 +560,71 @@ export class CesiumController {
 
   // Helper: Toggle between GS focus and satellite tracking
   toggleGsSatelliteFocus() {
+    // Initialize camera offset storage if not exists
+    if (!this._savedCameraOffsets) {
+      this._savedCameraOffsets = new Map();
+    }
+
+    // Default viewFrom used by entities (matches CesiumComponentCollection.createCesiumEntity)
+    const defaultViewFrom = new Cartesian3(0, -3600000, 4200000);
+
     if (this.isTrackingGroundStation()) {
-      // Currently at GS -> track last satellite
+      // Currently at GS -> save GS camera offset and track last satellite
+      const gsEntity = this.viewer.trackedEntity;
+      if (gsEntity) {
+        const gsOffset = this.captureTrackedEntityCameraOffset();
+        if (gsOffset) {
+          this._savedCameraOffsets.set("groundstation", gsOffset);
+        }
+      }
+
       if (this.sats.lastTrackedSatelliteName) {
         const sat = this.sats.getSatellite(this.sats.lastTrackedSatelliteName);
-        if (sat) sat.track();
+        if (sat) {
+          // Set viewFrom on satellite entity BEFORE tracking if we have a saved offset
+          const satOffset = this._savedCameraOffsets.get(this.sats.lastTrackedSatelliteName);
+          if (satOffset && sat.defaultEntity) {
+            sat.defaultEntity.viewFrom = satOffset.viewFrom;
+          }
+          sat.track();
+
+          // Reset viewFrom to default after camera is positioned
+          // Use timeout to ensure Cesium has used the viewFrom for positioning
+          // This ensures other tracking methods (pass clicks, etc.) use default view
+          if (satOffset && sat.defaultEntity) {
+            const entity = sat.defaultEntity;
+            setTimeout(() => {
+              entity.viewFrom = defaultViewFrom;
+            }, 500);
+          }
+        }
       }
     } else {
-      // Not at GS -> save view and focus GS
+      // Not at GS -> save satellite camera offset and focus GS
+      const trackedEntity = this.viewer.trackedEntity;
+      if (trackedEntity && this.sats.lastTrackedSatelliteName) {
+        const satOffset = this.captureTrackedEntityCameraOffset();
+        if (satOffset) {
+          this._savedCameraOffsets.set(this.sats.lastTrackedSatelliteName, satOffset);
+        }
+      }
+
       this.sats.lastGlobeView = this.captureCurrentView();
+
+      // Set viewFrom on GS entity BEFORE focusing if we have a saved offset
+      const gsOffset = this._savedCameraOffsets.get("groundstation");
+      const gs = this.sats.groundStations[0];
+      if (gsOffset && gs?.defaultEntity) {
+        gs.defaultEntity.viewFrom = gsOffset.viewFrom;
+
+        // Reset viewFrom to default after camera is positioned
+        // Use timeout to ensure Cesium has used the viewFrom for positioning
+        const entity = gs.defaultEntity;
+        setTimeout(() => {
+          entity.viewFrom = defaultViewFrom;
+        }, 500);
+      }
+
       this.sats.focusGroundStation();
     }
   }
@@ -1338,6 +1441,93 @@ export class CesiumController {
           this.viewer.clock.shouldAnimate = true;
           return;
         }
+
+        // T (Shift+T) - Track selected entity (camera follows it)
+        if (event.key === "T" && event.shiftKey) {
+          event.preventDefault();
+          const selectedEntity = this.viewer.selectedEntity;
+          if (selectedEntity && selectedEntity.name) {
+            // Try to find satellite by name
+            const satelliteName = selectedEntity.name.split(" - ")[0];
+            const satellite = this.sats.getSatellite(satelliteName);
+            if (satellite) {
+              satellite.track();
+              return;
+            }
+            // If not a satellite, might be a ground station - track directly
+            if (selectedEntity.name.includes("Groundstation")) {
+              this.viewer.trackedEntity = selectedEntity;
+              return;
+            }
+          }
+          return;
+        }
+
+        // Number keys 0-9 for time acceleration
+        // 1 = 1x, 2 = 2x, 3 = 8x (2^3), 4 = 16x (2^4), ... 0 = 1024x (2^10)
+        // Shift+number = negative (reverse time)
+        const digitMatch = event.key.match(/^[0-9]$/);
+        if (digitMatch) {
+          event.preventDefault();
+          const digit = parseInt(event.key, 10);
+          // digit 0 -> 2^10 = 1024, digit 1 -> 2^0 = 1, digit 2 -> 2^1 = 2, etc.
+          const exponent = digit === 0 ? 10 : digit - 1;
+          let multiplier = Math.pow(2, exponent);
+          // Shift key makes it negative (reverse time)
+          if (event.shiftKey) {
+            multiplier = -multiplier;
+          }
+          this.viewer.clock.multiplier = multiplier;
+          this.viewer.clock.shouldAnimate = true;
+          return;
+        }
+
+        // i - Select tracked entity (show info box for camera-tracked satellite/GS)
+        if (event.key === "i") {
+          event.preventDefault();
+          const trackedEntity = this.viewer.trackedEntity;
+          if (trackedEntity && trackedEntity !== this.viewer.selectedEntity) {
+            this.viewer.selectedEntity = trackedEntity;
+          }
+          return;
+        }
+
+        // o - Toggle orbit track, double-tap for Smart Path on current satellite
+        if (event.key === "o") {
+          event.preventDefault();
+          const doubleTapThreshold = 300; // ms
+
+          if (this._oKeyTimeout) {
+            // Double-tap detected: cancel single-tap action and do Smart Path toggle
+            clearTimeout(this._oKeyTimeout);
+            this._oKeyTimeout = null;
+
+            const selectedEntity = this.viewer.selectedEntity;
+            if (selectedEntity && selectedEntity.name) {
+              const satelliteName = selectedEntity.name.split(" - ")[0];
+              const satellite = this.sats.getSatellite(satelliteName);
+              if (satellite) {
+                satellite.cyclePathMode();
+                this.viewer.scene.requestRender();
+              }
+            }
+          } else {
+            // First tap: schedule single-tap action (toggle Orbit)
+            this._oKeyTimeout = setTimeout(() => {
+              this._oKeyTimeout = null;
+              const isEnabled = this.sats.enabledComponents.includes("Orbit");
+              if (isEnabled) {
+                this.sats.disableComponent("Orbit");
+              } else {
+                this.sats.enableComponent("Orbit");
+              }
+              // Update store
+              const satStore = useSatStore();
+              satStore.enabledComponents = this.sats.enabledComponents;
+            }, doubleTapThreshold);
+          }
+          return;
+        }
       }
 
       // D key: Debug scrubbing info (only when not shift - Shift+D opens debug menu)
@@ -1618,10 +1808,59 @@ export class CesiumController {
       container.setAttribute("class", "cesium-infoBox-container");
       infoBox.insertBefore(container, close);
 
+      // Find when satellite crosses horizon (0° elevation) before pass.start
+      const findHorizonCrossing = (pass) => {
+        const satellite = this.sats.getSatellite(pass.name);
+        if (!satellite || !satellite.props.orbit) {
+          return pass.start; // Fallback to pass.start
+        }
+
+        const gs = this.sats.groundStations[0];
+        if (!gs) {
+          return pass.start;
+        }
+
+        const deg2rad = Math.PI / 180;
+        const groundStation = {
+          latitude: gs.position.latitude * deg2rad,
+          longitude: gs.position.longitude * deg2rad,
+          height: (gs.position.height || 0) / 1000,
+        };
+
+        // Search backwards from pass.start in 5-second steps to find horizon crossing
+        const searchDate = new Date(pass.start);
+        const minSearchDate = new Date(pass.start - 10 * 60 * 1000); // Max 10 min before
+
+        while (searchDate > minSearchDate) {
+          searchDate.setSeconds(searchDate.getSeconds() - 5);
+          const position = satellite.props.orbit.positionECF(searchDate);
+          if (!position) continue;
+
+          const positionEcf = {
+            x: position.x / 1000,
+            y: position.y / 1000,
+            z: position.z / 1000,
+          };
+          const lookAngles = satellitejs.ecfToLookAngles(groundStation, positionEcf);
+          const elevation = lookAngles.elevation / deg2rad;
+
+          if (elevation <= 0) {
+            // Found horizon crossing, return next step (just above horizon)
+            return searchDate.getTime() + 5000;
+          }
+        }
+
+        return pass.start; // Fallback if not found
+      };
+
       const notifyForPass = (pass, aheadMin = 5) => {
-        const start = dayjs(pass.start).startOf("second");
-        this.pm.notifyAtDate(start.subtract(aheadMin, "minute"), `${pass.name} pass in ${aheadMin} minutes`);
-        this.pm.notifyAtDate(start, `${pass.name} pass starting now`);
+        const horizonTime = findHorizonCrossing(pass);
+        const horizonStart = dayjs(horizonTime).startOf("second");
+        const passStart = dayjs(pass.start).startOf("second");
+
+        this.pm.notifyAtDate(horizonStart.subtract(aheadMin, "minute"), `${pass.name} pass in ${aheadMin} minutes`);
+        this.pm.notifyAtDate(horizonStart, `${pass.name} rising over horizon`);
+        this.pm.notifyAtDate(passStart, `${pass.name} above 5° elevation`);
         // this.pm.notifyAtDate(dayjs().add(5, "second"), `${pass.name} notification test`);
       };
 
@@ -1717,7 +1956,38 @@ export class CesiumController {
 
     // Allow time changes and satellite tracking from infobox pass clicks
     window.addEventListener("message", (e) => {
-      const pass = e.data;
+      const data = e.data;
+
+      // Handle "Load More Passes" button click
+      if (data.action === "loadMorePasses") {
+        // Increment the loaded batch count for this entity
+        // This persists across re-renders so the passes stay visible
+        DescriptionHelper.incrementLoadedBatches(data.entityId);
+
+        // Also show the batch immediately in the current DOM
+        const frameDoc = frame.contentDocument;
+        if (frameDoc) {
+          const hiddenBatches = frameDoc.querySelectorAll('.passes-batch[style*="display: none"]');
+          if (hiddenBatches.length > 0) {
+            hiddenBatches[0].style.display = "block";
+
+            // Update button text
+            const btn = frameDoc.getElementById("load-more-passes");
+            const remainingBatches = hiddenBatches.length - 1;
+            if (btn) {
+              if (remainingBatches > 0) {
+                const remainingPasses = remainingBatches * data.batchSize;
+                btn.textContent = `Load ${Math.min(data.batchSize, remainingPasses)} more (${remainingPasses} remaining)`;
+              } else {
+                btn.style.display = "none";
+              }
+            }
+          }
+        }
+        return;
+      }
+
+      const pass = data;
       if ("start" in pass) {
         // Set time to pass start without changing timeline zoom
         this.setCurrentTimeOnly(pass.start);
@@ -1834,9 +2104,7 @@ export class CesiumController {
     // When time jumps, update timeline window while preserving zoom level
     // Note: SatelliteManager already listens for this event and triggers pass highlight updates
     window.addEventListener("cesium:clockTimeJumped", (event) => {
-      const { newTime, jumpSeconds } = event.detail;
-
-      console.log(`[CesiumController] Time jump detected (${jumpSeconds.toFixed(0)}s), updating timeline window`);
+      const { newTime } = event.detail;
 
       // Update timeline window to center around the new time while preserving zoom level
       const newTimeDate = JulianDate.toDate(newTime);
@@ -2017,6 +2285,12 @@ export class CesiumController {
     // Use selectedEntityChanged event to detect selection changes
     this.viewer.selectedEntityChanged.addEventListener(() => {
       const selectedEntity = this.viewer.selectedEntity;
+
+      // Deselect non-selectable entities (e.g., Smart Path polylines)
+      if (selectedEntity && selectedEntity._nonSelectable) {
+        this.viewer.selectedEntity = undefined;
+        return;
+      }
 
       // Only process if selection actually changed
       if (selectedEntity === lastSelectedEntity) {

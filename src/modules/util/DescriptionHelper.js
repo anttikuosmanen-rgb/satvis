@@ -9,7 +9,25 @@ import { TimeFormatHelper } from "./TimeFormatHelper";
 dayjs.extend(relativeTime);
 dayjs.extend(utc);
 
+// Track how many pass batches have been loaded (persists across re-renders)
+// Key is entity identifier, value is number of batches shown
+const loadedPassBatches = new Map();
+
 export class DescriptionHelper {
+  // Get/set loaded batch count for current entity
+  static getLoadedBatches(entityId) {
+    return loadedPassBatches.get(entityId) || 0;
+  }
+
+  static incrementLoadedBatches(entityId) {
+    const current = loadedPassBatches.get(entityId) || 0;
+    loadedPassBatches.set(entityId, current + 1);
+    return current + 1;
+  }
+
+  static resetLoadedBatches(entityId) {
+    loadedPassBatches.delete(entityId);
+  }
   /** cachedCallbackProperty
    * Caches the results of a callback property to prevent unnecessary recalculation.
    * The cache accounts for clock multiplier to prevent excessive re-evaluation during fast playback.
@@ -146,7 +164,7 @@ export class DescriptionHelper {
             </tr>
           </tbody>
         </table>
-        ${this.renderPasses(passes, time, false, overpassMode, epochInFuture, orbit.orbitalPeriod, groundStationAvailable)}
+        ${this.renderPasses(passes, time, false, overpassMode, epochInFuture, orbit.orbitalPeriod, groundStationAvailable, name)}
         ${this.renderTLE(tle, julianDate)}
       </div>
     `;
@@ -223,13 +241,13 @@ export class DescriptionHelper {
             </tr>
           </tbody>
         </table>
-        ${this.renderPasses(passes, time, true, overpassMode)}
+        ${this.renderPasses(passes, time, true, overpassMode, false, 0, false, name)}
       </div>
     `;
     return description;
   }
 
-  static renderPasses(passes, time, isGroundStation, overpassMode, epochInFuture = false, orbitalPeriod = 0, groundStationAvailable = false) {
+  static renderPasses(passes, time, isGroundStation, overpassMode, epochInFuture = false, orbitalPeriod = 0, groundStationAvailable = false, entityId = "default") {
     const epochNote = epochInFuture ? " (* Epoch in future)" : "";
     if (passes.length === 0) {
       if (isGroundStation) {
@@ -299,20 +317,62 @@ export class DescriptionHelper {
     }
     const upcomingPasses = filteredPasses.slice(upcomingPassIdx);
 
-    // Limit displayed passes to what fits in the info box (~6 cards visible)
-    const MAX_DISPLAYED_PASSES = 6;
-    const displayedPasses = upcomingPasses.slice(0, MAX_DISPLAYED_PASSES);
-    const hiddenCount = upcomingPasses.length - displayedPasses.length;
+    // Determine initial batch size based on clock speed
+    // At real-time or slower (-1 to +1), show more passes
+    // At faster speeds, limit to 6 for performance
+    const viewer = typeof window !== "undefined" && window.cc ? window.cc.viewer : null;
+    const clockMultiplier = viewer ? viewer.clock.multiplier : 1;
+    const isRealTimeOrSlower = Math.abs(clockMultiplier) <= 1;
+    const INITIAL_PASSES = isRealTimeOrSlower ? 20 : 6;
+    const LOAD_MORE_COUNT = 10;
 
+    // Reset loaded batches when switching to fast-forward mode
+    if (!isRealTimeOrSlower && this.getLoadedBatches(entityId) > 0) {
+      this.resetLoadedBatches(entityId);
+    }
+
+    const displayedPasses = upcomingPasses.slice(0, INITIAL_PASSES);
     const passNameField = isGroundStation ? "name" : null;
-    const morePassesNote = hiddenCount > 0 ? `<div class="ib-text" style="margin-top: 8px; color: #888;">+ ${hiddenCount} more passes</div>` : "";
+
+    // Pre-render ALL passes but hide extras with CSS, show on button click
+    const remainingPasses = upcomingPasses.slice(INITIAL_PASSES);
+    const remainingRendered = remainingPasses.map((pass) => this.renderPassCard(start, pass, passNameField));
+
+    // Get how many batches have been loaded for this entity (persists across re-renders)
+    const loadedBatchCount = this.getLoadedBatches(entityId);
+
+    // Render passes in batches - show already-loaded batches, hide the rest
+    let batchesHtml = "";
+    const totalBatches = Math.ceil(remainingRendered.length / LOAD_MORE_COUNT);
+    for (let batch = 0; batch < totalBatches; batch++) {
+      const batchPasses = remainingRendered.slice(batch * LOAD_MORE_COUNT, (batch + 1) * LOAD_MORE_COUNT);
+      const isVisible = batch < loadedBatchCount;
+      batchesHtml += `<div class="passes-batch" data-batch="${batch + 1}" style="display: ${isVisible ? "block" : "none"};">${batchPasses.join("")}</div>`;
+    }
+
+    // Calculate remaining hidden passes
+    const visibleExtraPasses = loadedBatchCount * LOAD_MORE_COUNT;
+    const stillHiddenCount = Math.max(0, remainingRendered.length - visibleExtraPasses);
+
+    // Button uses postMessage to parent which handles showing batches
+    const loadMoreButton =
+      stillHiddenCount > 0
+        ? `
+      <button id="load-more-passes"
+              style="width: 100%; padding: 8px; margin-top: 8px; background: #303336; border: 1px solid #444; color: #fff; cursor: pointer; border-radius: 4px;"
+              onclick="parent.postMessage({action: 'loadMorePasses', entityId: '${entityId}', batchSize: ${LOAD_MORE_COUNT}, totalHidden: ${stillHiddenCount}}, '*')">
+        Load ${Math.min(LOAD_MORE_COUNT, stillHiddenCount)} more (${stillHiddenCount} remaining)
+      </button>
+    `
+        : "";
 
     const html = `
       <h3>Passes (${overpassMode.charAt(0).toUpperCase() + overpassMode.slice(1)})${epochNote}</h3>
       <div class="passes-list">
         ${displayedPasses.map((pass) => this.renderPassCard(start, pass, passNameField)).join("")}
+        ${batchesHtml}
       </div>
-      ${morePassesNote}
+      ${loadMoreButton}
     `;
     return html;
   }

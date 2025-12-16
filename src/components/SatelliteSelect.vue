@@ -53,12 +53,14 @@ export default {
       default: -1,
     },
   },
-  emits: ["dropdown-opened", "dropdown-closed"],
+  emits: ["dropdown-opened", "dropdown-closed", "navigate-to-groups"],
   data() {
     return {
       currentOptionsLimit: 100, // Start with 100 items
       optionsLimitIncrement: 100, // Load 100 more at a time
       scrollListener: null,
+      satelliteKeydownListener: null,
+      groupsKeydownListener: null,
     };
   },
   computed: {
@@ -105,9 +107,12 @@ export default {
     },
   },
   beforeUnmount() {
-    // Clean up listener if component is destroyed while dropdown is open
-    if (this.scrollListener) {
+    // Clean up listeners if component is destroyed while dropdowns are open
+    if (this.scrollListener || this.satelliteKeydownListener) {
       this.onDropdownClose();
+    }
+    if (this.groupsKeydownListener) {
+      this.onGroupsDropdownClose();
     }
   },
   methods: {
@@ -128,8 +133,37 @@ export default {
     onGroupsDropdownOpen() {
       // Emit event to disable menu navigation
       this.$emit("dropdown-opened");
+
+      // Add keydown listener to handle navigation to satellites dropdown
+      this.$nextTick(() => {
+        const el = this.$refs.groupsMultiselect?.$el;
+        if (el) {
+          this.groupsKeydownListener = (event) => {
+            if (event.key === "ArrowDown") {
+              const multiselect = this.$refs.groupsMultiselect;
+              // Check if at last option
+              if (multiselect && multiselect.pointer === this.availableTags.length - 1) {
+                event.preventDefault();
+                event.stopPropagation();
+                // Close groups dropdown and open satellites dropdown
+                multiselect.deactivate();
+                this.$nextTick(() => {
+                  this.$refs.satelliteMultiselect?.activate();
+                });
+              }
+            }
+          };
+          el.addEventListener("keydown", this.groupsKeydownListener, true);
+        }
+      });
     },
     onGroupsDropdownClose() {
+      // Clean up keydown listener
+      const el = this.$refs.groupsMultiselect?.$el;
+      if (el && this.groupsKeydownListener) {
+        el.removeEventListener("keydown", this.groupsKeydownListener, true);
+        this.groupsKeydownListener = null;
+      }
       // Emit event to re-enable menu navigation
       this.$emit("dropdown-closed");
     },
@@ -144,6 +178,27 @@ export default {
           this.scrollListener = this.onScroll.bind(this);
           dropdownList.addEventListener("scroll", this.scrollListener);
         }
+
+        // Add keydown listener to handle navigation to groups dropdown
+        const el = this.$refs.satelliteMultiselect?.$el;
+        if (el) {
+          this.satelliteKeydownListener = (event) => {
+            if (event.key === "ArrowUp") {
+              const multiselect = this.$refs.satelliteMultiselect;
+              // Check if at first option (pointer === 0 or -1 for no selection)
+              if (multiselect && multiselect.pointer <= 0) {
+                event.preventDefault();
+                event.stopPropagation();
+                // Close satellites dropdown and open groups dropdown
+                multiselect.deactivate();
+                this.$nextTick(() => {
+                  this.$refs.groupsMultiselect?.activate();
+                });
+              }
+            }
+          };
+          el.addEventListener("keydown", this.satelliteKeydownListener, true);
+        }
       });
       // Emit event to disable menu navigation
       this.$emit("dropdown-opened");
@@ -154,6 +209,12 @@ export default {
       if (dropdownList && this.scrollListener) {
         dropdownList.removeEventListener("scroll", this.scrollListener);
         this.scrollListener = null;
+      }
+      // Clean up keydown listener
+      const el = this.$refs.satelliteMultiselect?.$el;
+      if (el && this.satelliteKeydownListener) {
+        el.removeEventListener("keydown", this.satelliteKeydownListener, true);
+        this.satelliteKeydownListener = null;
       }
       // Emit event to re-enable menu navigation
       this.$emit("dropdown-closed");

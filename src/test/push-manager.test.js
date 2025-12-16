@@ -83,11 +83,11 @@ describe("PushManager", () => {
       expect(console.log).toHaveBeenCalledWith("Notification API not supported!");
     });
 
-    it("should return false when ServiceWorkerRegistration is not supported", () => {
+    it("should return true even when ServiceWorkerRegistration is not supported (fallback to Notification)", () => {
       delete global.ServiceWorkerRegistration;
 
-      expect(pushManager.available).toBe(false);
-      expect(console.log).toHaveBeenCalledWith("Notification API not supported!");
+      // ServiceWorkerRegistration is no longer required - we fall back to regular Notification
+      expect(pushManager.available).toBe(true);
     });
 
     it("should return true when permission is granted", () => {
@@ -210,13 +210,54 @@ describe("PushManager", () => {
       });
     });
 
-    it("should handle service worker registration error", async () => {
+    it("should handle service worker registration error and fall back to Notification", async () => {
+      const NotificationMock = vi.fn();
+      global.Notification = Object.assign(NotificationMock, mockNotification);
       navigator.serviceWorker.getRegistration = vi.fn().mockRejectedValue(new Error("Registration failed"));
 
       pushManager.persistentNotification("Test message");
 
       await vi.waitFor(() => {
         expect(console.log).toHaveBeenCalledWith(expect.stringContaining("Service Worker registration error"));
+        expect(NotificationMock).toHaveBeenCalledWith("Test message", { icon: "test-icon.png" });
+      });
+    });
+
+    it("should fall back to Notification when service worker registration returns undefined", async () => {
+      const NotificationMock = vi.fn();
+      global.Notification = Object.assign(NotificationMock, mockNotification);
+      navigator.serviceWorker.getRegistration = vi.fn().mockResolvedValue(undefined);
+
+      pushManager.persistentNotification("Test message", { tag: "fallback-test" });
+
+      await vi.waitFor(() => {
+        expect(NotificationMock).toHaveBeenCalledWith("Test message", { icon: "test-icon.png", tag: "fallback-test" });
+      });
+    });
+
+    it("should fall back to Notification when navigator.serviceWorker is not available", async () => {
+      const NotificationMock = vi.fn();
+      global.Notification = Object.assign(NotificationMock, mockNotification);
+      delete navigator.serviceWorker;
+
+      pushManager.persistentNotification("Test message");
+
+      await vi.waitFor(() => {
+        expect(NotificationMock).toHaveBeenCalledWith("Test message", { icon: "test-icon.png" });
+      });
+    });
+
+    it("should log error when fallback Notification fails", async () => {
+      const NotificationMock = vi.fn().mockImplementation(() => {
+        throw new Error("Notification blocked");
+      });
+      global.Notification = Object.assign(NotificationMock, mockNotification);
+      navigator.serviceWorker.getRegistration = vi.fn().mockResolvedValue(undefined);
+
+      pushManager.persistentNotification("Test message");
+
+      await vi.waitFor(() => {
+        expect(console.log).toHaveBeenCalledWith(expect.stringContaining("Notification API error"));
       });
     });
   });
