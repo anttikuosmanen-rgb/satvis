@@ -1,48 +1,10 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { setActivePinia, createPinia } from "pinia";
-import { useSatStore } from "../stores/sat";
+import { useSatStore, satStoreUrlSyncConfig } from "../stores/sat";
 import { ISS_TLE_NO_NAME, STARLINK_TLE, ONEWEB_TLE, TWO_SATS_CONCATENATED, FIVE_SATS_CONCATENATED } from "./fixtures/tle-data";
 
-// Define the custom satellites URL sync config for testing
-// This mirrors the config from src/stores/sat.js but is defined as a plain object for testing
-const customSatellitesConfig = {
-  name: "customSatellites",
-  url: "sat",
-  serialize: (v) => {
-    if (!v || v.length === 0) return "";
-    return v.join("");
-  },
-  deserialize: (v) => {
-    if (!v) return [];
-    const tles = [];
-    let buffer = v.trim();
-
-    while (buffer.length > 0) {
-      const line1Index = buffer.search(/1 \d{5}/);
-      if (line1Index === -1) break;
-
-      const namePart = buffer.substring(0, line1Index).trim();
-      const line1Start = line1Index;
-      const line1End = line1Start + 69;
-      const line1 = buffer.substring(line1Start, line1End);
-
-      const line2Start = buffer.substring(line1End).search(/2 \d{5}/);
-      if (line2Start === -1) break;
-
-      const line2Pos = line1End + line2Start;
-      const line2End = line2Pos + 69;
-      const line2 = buffer.substring(line2Pos, line2End);
-
-      const currentTle = namePart ? `${namePart}\n${line1}\n${line2}` : `${line1}\n${line2}`;
-      tles.push(currentTle);
-
-      buffer = buffer.substring(line2End).trim();
-    }
-
-    return tles;
-  },
-  default: [],
-};
+// Get the custom satellites config from the exported config
+const customSatellitesConfig = satStoreUrlSyncConfig.find((c) => c.name === "customSatellites");
 
 describe("Sat Store - Initialization", () => {
   beforeEach(() => {
@@ -88,6 +50,57 @@ describe("Sat Store - Initialization", () => {
     expect(store.hideSunlightPasses).toBe(true);
     expect(store.showOnlyLitPasses).toBe(true);
   });
+
+  it("should set default useLocalTime to false", () => {
+    const store = useSatStore();
+
+    expect(store.useLocalTime).toBe(false);
+  });
+
+  it("should initialize with empty groundStations array", () => {
+    const store = useSatStore();
+
+    expect(store.groundStations).toEqual([]);
+  });
+});
+
+describe("Sat Store - Local Time", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+
+  it("should allow toggling useLocalTime", () => {
+    const store = useSatStore();
+
+    expect(store.useLocalTime).toBe(false);
+
+    store.useLocalTime = true;
+    expect(store.useLocalTime).toBe(true);
+
+    store.useLocalTime = false;
+    expect(store.useLocalTime).toBe(false);
+  });
+
+  it("should persist useLocalTime state changes", () => {
+    const store = useSatStore();
+
+    store.useLocalTime = true;
+
+    // Get store again - should retain the value
+    const store2 = useSatStore();
+    expect(store2.useLocalTime).toBe(true);
+  });
+
+  it("should have groundStations array for local time calculations", () => {
+    const store = useSatStore();
+
+    // Add a ground station
+    store.groundStations = [{ lat: 60.17, lon: 24.94, name: "Helsinki" }];
+
+    expect(store.groundStations).toHaveLength(1);
+    expect(store.groundStations[0].lat).toBe(60.17);
+    expect(store.groundStations[0].lon).toBe(24.94);
+  });
 });
 
 describe("Sat Store - URL Sync Config", () => {
@@ -117,7 +130,6 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
   });
 
   it("should serialize single custom satellite TLE to URL", () => {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const store = useSatStore();
     const config = customSatellitesConfig;
 
@@ -129,7 +141,6 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
   });
 
   it("should deserialize 2-line TLE without name", () => {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const store = useSatStore();
     const config = customSatellitesConfig;
 
@@ -141,7 +152,6 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
   });
 
   it("should deserialize 3-line TLE with name", () => {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const store = useSatStore();
     const config = customSatellitesConfig;
 
@@ -154,7 +164,6 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
   });
 
   it("should deserialize multiple TLEs concatenated back-to-back", () => {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const store = useSatStore();
     const config = customSatellitesConfig;
 
@@ -166,7 +175,6 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
   });
 
   it("should parse TLE with spaces (browser newline conversion)", () => {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const store = useSatStore();
     const config = customSatellitesConfig;
 
@@ -181,7 +189,6 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
   });
 
   it("should detect TLE line 1 by '1 ' + 5 digits pattern", () => {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const store = useSatStore();
     const config = customSatellitesConfig;
 
@@ -193,7 +200,6 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
   });
 
   it("should detect TLE line 2 by '2 ' + 5 digits pattern", () => {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const store = useSatStore();
     const config = customSatellitesConfig;
 
@@ -205,7 +211,6 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
   });
 
   it("should extract 69 characters for each TLE line", () => {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const store = useSatStore();
     const config = customSatellitesConfig;
 
@@ -222,7 +227,6 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
   });
 
   it("should handle TLE with name before line 1", () => {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const store = useSatStore();
     const config = customSatellitesConfig;
 
@@ -233,7 +237,6 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
   });
 
   it("should handle TLE without name (2-line format)", () => {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const store = useSatStore();
     const config = customSatellitesConfig;
 
@@ -246,7 +249,6 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
   });
 
   it("should skip invalid TLE with missing line 2", () => {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const store = useSatStore();
     const config = customSatellitesConfig;
 
@@ -259,7 +261,6 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
   });
 
   it("should skip invalid TLE with malformed line 1", () => {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const store = useSatStore();
     const config = customSatellitesConfig;
 
@@ -272,7 +273,6 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
   });
 
   it("should return empty array for empty URL parameter", () => {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const store = useSatStore();
     const config = customSatellitesConfig;
 
@@ -282,7 +282,6 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
   });
 
   it("should parse 2 satellites back-to-back without separator", () => {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const store = useSatStore();
     const config = customSatellitesConfig;
 
@@ -292,7 +291,6 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
   });
 
   it("should parse 5 satellites back-to-back without separator", () => {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const store = useSatStore();
     const config = customSatellitesConfig;
 
@@ -307,7 +305,6 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
   });
 
   it("should handle whitespace between concatenated TLEs gracefully", () => {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const store = useSatStore();
     const config = customSatellitesConfig;
 
@@ -319,5 +316,163 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
     expect(result).toHaveLength(2);
     expect(result[0]).toContain("STARLINK");
     expect(result[1]).toContain("ONEWEB");
+  });
+});
+
+describe("Sat Store - URL Sync - Other Configs", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+
+  // Get configs from exported config
+  const enabledComponentsConfig = satStoreUrlSyncConfig.find((c) => c.name === "enabledComponents");
+  const enabledSatellitesConfig = satStoreUrlSyncConfig.find((c) => c.name === "enabledSatellites");
+  const enabledTagsConfig = satStoreUrlSyncConfig.find((c) => c.name === "enabledTags");
+  const groundStationsConfig = satStoreUrlSyncConfig.find((c) => c.name === "groundStations");
+  const hideSunlightPassesConfig = satStoreUrlSyncConfig.find((c) => c.name === "hideSunlightPasses");
+  const showOnlyLitPassesConfig = satStoreUrlSyncConfig.find((c) => c.name === "showOnlyLitPasses");
+  const useLocalTimeConfig = satStoreUrlSyncConfig.find((c) => c.name === "useLocalTime");
+
+  describe("enabledComponents", () => {
+    it("should serialize components array to comma-separated string with spaces replaced", () => {
+      const result = enabledComponentsConfig.serialize(["Point", "Label", "Ground Track"]);
+      expect(result).toBe("Point,Label,Ground-Track");
+    });
+
+    it("should deserialize comma-separated string back to array", () => {
+      const result = enabledComponentsConfig.deserialize("Point,Label,Ground-Track");
+      expect(result).toEqual(["Point", "Label", "Ground Track"]);
+    });
+
+    it("should filter empty values on deserialize", () => {
+      const result = enabledComponentsConfig.deserialize("Point,,Label,");
+      expect(result).toEqual(["Point", "Label"]);
+    });
+  });
+
+  describe("enabledSatellites", () => {
+    it("should serialize satellites array with tildes for spaces", () => {
+      const result = enabledSatellitesConfig.serialize(["ISS (ZARYA)", "STARLINK-1007"]);
+      expect(result).toBe("ISS~(ZARYA),STARLINK-1007");
+    });
+
+    it("should deserialize satellites string back to array", () => {
+      const result = enabledSatellitesConfig.deserialize("ISS~(ZARYA),STARLINK-1007");
+      expect(result).toEqual(["ISS (ZARYA)", "STARLINK-1007"]);
+    });
+
+    it("should filter empty values on deserialize", () => {
+      const result = enabledSatellitesConfig.deserialize("ISS~(ZARYA),,STARLINK-1007,");
+      expect(result).toEqual(["ISS (ZARYA)", "STARLINK-1007"]);
+    });
+  });
+
+  describe("enabledTags", () => {
+    it("should serialize tags array with dashes for spaces", () => {
+      const result = enabledTagsConfig.serialize(["Space Stations", "Weather"]);
+      expect(result).toBe("Space-Stations,Weather");
+    });
+
+    it("should deserialize tags string back to array", () => {
+      const result = enabledTagsConfig.deserialize("Space-Stations,Weather");
+      expect(result).toEqual(["Space Stations", "Weather"]);
+    });
+
+    it("should filter empty values on deserialize", () => {
+      const result = enabledTagsConfig.deserialize("Space-Stations,,Weather");
+      expect(result).toEqual(["Space Stations", "Weather"]);
+    });
+  });
+
+  describe("groundStations", () => {
+    it("should serialize ground stations array to underscore-separated string", () => {
+      const result = groundStationsConfig.serialize([
+        { lat: 60.1695, lon: 24.9354, name: "Helsinki" },
+        { lat: 40.7128, lon: -74.006, name: "New York" },
+      ]);
+      expect(result).toBe("60.1695,24.9354,Helsinki_40.7128,-74.0060,New York");
+    });
+
+    it("should serialize ground station without name", () => {
+      const result = groundStationsConfig.serialize([{ lat: 60.1695, lon: 24.9354 }]);
+      expect(result).toBe("60.1695,24.9354");
+    });
+
+    it("should deserialize ground stations string back to array", () => {
+      const result = groundStationsConfig.deserialize("60.1695,24.9354,Helsinki_40.7128,-74.0060,New York");
+      expect(result).toHaveLength(2);
+      expect(result[0].lat).toBeCloseTo(60.1695, 4);
+      expect(result[0].lon).toBeCloseTo(24.9354, 4);
+      expect(result[0].name).toBe("Helsinki");
+      expect(result[1].lat).toBeCloseTo(40.7128, 4);
+      expect(result[1].lon).toBeCloseTo(-74.006, 4);
+      expect(result[1].name).toBe("New York");
+    });
+  });
+
+  describe("hideSunlightPasses", () => {
+    it("should serialize true to '1'", () => {
+      const result = hideSunlightPassesConfig.serialize(true);
+      expect(result).toBe("1");
+    });
+
+    it("should serialize false to '0'", () => {
+      const result = hideSunlightPassesConfig.serialize(false);
+      expect(result).toBe("0");
+    });
+
+    it("should deserialize '1' to true", () => {
+      const result = hideSunlightPassesConfig.deserialize("1");
+      expect(result).toBe(true);
+    });
+
+    it("should deserialize '0' to false", () => {
+      const result = hideSunlightPassesConfig.deserialize("0");
+      expect(result).toBe(false);
+    });
+  });
+
+  describe("showOnlyLitPasses", () => {
+    it("should serialize true to '1'", () => {
+      const result = showOnlyLitPassesConfig.serialize(true);
+      expect(result).toBe("1");
+    });
+
+    it("should serialize false to '0'", () => {
+      const result = showOnlyLitPassesConfig.serialize(false);
+      expect(result).toBe("0");
+    });
+
+    it("should deserialize '1' to true", () => {
+      const result = showOnlyLitPassesConfig.deserialize("1");
+      expect(result).toBe(true);
+    });
+
+    it("should deserialize '0' to false", () => {
+      const result = showOnlyLitPassesConfig.deserialize("0");
+      expect(result).toBe(false);
+    });
+  });
+
+  describe("useLocalTime", () => {
+    it("should serialize true to '1'", () => {
+      const result = useLocalTimeConfig.serialize(true);
+      expect(result).toBe("1");
+    });
+
+    it("should serialize false to '0'", () => {
+      const result = useLocalTimeConfig.serialize(false);
+      expect(result).toBe("0");
+    });
+
+    it("should deserialize '1' to true", () => {
+      const result = useLocalTimeConfig.deserialize("1");
+      expect(result).toBe(true);
+    });
+
+    it("should deserialize '0' to false", () => {
+      const result = useLocalTimeConfig.deserialize("0");
+      expect(result).toBe(false);
+    });
   });
 });

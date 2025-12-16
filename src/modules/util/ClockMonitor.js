@@ -59,7 +59,6 @@ export class ClockMonitor {
     this.lastRealTime = Date.now();
     this.intervalId = null;
 
-    console.log("[ClockMonitor] Initialized with checkInterval:", this.checkInterval, "threshold:", this.threshold);
     this.#setupListener();
   }
 
@@ -72,8 +71,6 @@ export class ClockMonitor {
     this.intervalId = setInterval(() => {
       this.#checkForTimeJump();
     }, this.checkInterval);
-
-    console.log("[ClockMonitor] Started checking for time jumps every", this.checkInterval, "ms");
   }
 
   #checkForTimeJump() {
@@ -126,13 +123,6 @@ export class ClockMonitor {
     if (typeof window !== "undefined") {
       window.dispatchEvent(event);
     }
-
-    // Also log for debugging
-    console.log(
-      `[ClockMonitor] Time discontinuity detected: ${discontinuitySeconds.toFixed(0)}s jump ` +
-        `(multiplier: ${clockMultiplier.toFixed(1)}x) ` +
-        `(${JulianDate.toDate(oldTime).toISOString()} -> ${JulianDate.toDate(newTime).toISOString()})`,
-    );
   }
 
   /**
@@ -171,6 +161,5 @@ export class ClockMonitor {
       this.intervalId = null;
     }
     this.enabled = false;
-    console.log("[ClockMonitor] Stopped");
   }
 }

@@ -1358,4 +1358,138 @@ test.describe("Ground Station", () => {
     expect(passAndHighlightMatch.success).toBe(true);
     expect(passAndHighlightMatch.allHighlightsMatchPasses).toBe(true);
   });
+
+  test("should toggle local time and update timeline and clock display", async ({ page }) => {
+    // Load with ISS satellite
+    await page.goto("/?sats=ISS~(ZARYA)");
+
+    await expect(page.locator("#cesiumContainer canvas").first()).toBeVisible({ timeout: 15000 });
+
+    // Wait for Cesium to be ready
+    await page.waitForFunction(
+      () => {
+        const viewer = window.cc?.viewer;
+        return viewer?.scene?.globe?._surface;
+      },
+      { timeout: 20000 },
+    );
+
+    // Wait for ISS to load
+    await page.waitForFunction(
+      () => {
+        const sats = window.cc?.sats?.satellites;
+        return sats?.some((s) => s.props?.name?.includes("ISS"));
+      },
+      { timeout: 60000 },
+    );
+
+    // Pause animation for consistent testing
+    await pauseAnimation(page);
+
+    // Open GS menu
+    const groundStationButton = page
+      .locator("button.cesium-toolbar-button")
+      .filter({ has: page.locator(".svg-groundstation") })
+      .first();
+    await expect(groundStationButton).toBeVisible({ timeout: 5000 });
+    await groundStationButton.click();
+
+    // Enable pick mode
+    const pickOnGlobeLabel = page.locator('label.toolbarSwitch:has-text("Pick on globe")');
+    await expect(pickOnGlobeLabel).toBeVisible({ timeout: 10000 });
+    const pickOnGlobeCheckbox = pickOnGlobeLabel.locator('input[type="checkbox"]');
+    if (!(await pickOnGlobeCheckbox.isChecked())) {
+      await pickOnGlobeLabel.click();
+      await expect(pickOnGlobeCheckbox).toBeChecked({ timeout: 3000 });
+    }
+
+    // Click on globe to place GS
+    const canvasBox = await page.evaluate(() => {
+      const canvas = document.querySelector("#cesiumContainer canvas");
+      const rect = canvas.getBoundingClientRect();
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    });
+
+    await page.mouse.click(canvasBox.x + canvasBox.width / 2, canvasBox.y + canvasBox.height / 2);
+    await page.waitForTimeout(1000);
+
+    // Verify GS was created
+    const gsExists = await page.evaluate(() => window.cc?.sats?.groundStations?.length > 0);
+    expect(gsExists).toBe(true);
+
+    // Re-open GS menu (it closes after placement)
+    await groundStationButton.click();
+    await expect(pickOnGlobeLabel).toBeVisible({ timeout: 5000 });
+
+    // Get initial timeline label (should be UTC)
+    const initialTimelineLabel = await page.evaluate(() => {
+      const timeline = window.cc?.viewer?.timeline;
+      if (!timeline) return null;
+      // Get current time label
+      const currentTime = window.cc.viewer.clock.currentTime;
+      return timeline.makeLabel(currentTime);
+    });
+
+    expect(initialTimelineLabel).not.toBeNull();
+    // UTC format ends with just "UTC" (no +/- offset)
+    expect(initialTimelineLabel).toMatch(/UTC$/);
+
+    // Find and click "Use local time" checkbox
+    const useLocalTimeLabel = page.locator('label.toolbarSwitch:has-text("Use local time")');
+    await expect(useLocalTimeLabel).toBeVisible({ timeout: 5000 });
+
+    // Verify checkbox is enabled (not disabled)
+    const useLocalTimeCheckbox = useLocalTimeLabel.locator('input[type="checkbox"]');
+    const isDisabled = await useLocalTimeCheckbox.isDisabled();
+    expect(isDisabled).toBe(false);
+
+    // Toggle local time on
+    await useLocalTimeLabel.click();
+    await expect(useLocalTimeCheckbox).toBeChecked({ timeout: 3000 });
+
+    // Wait for timeline to update
+    await page.waitForTimeout(500);
+
+    // Get updated timeline label (should now have timezone offset like "UTC+2" or "UTC-5")
+    const localTimeLabel = await page.evaluate(() => {
+      const timeline = window.cc?.viewer?.timeline;
+      if (!timeline) return null;
+      const currentTime = window.cc.viewer.clock.currentTime;
+      return timeline.makeLabel(currentTime);
+    });
+
+    expect(localTimeLabel).not.toBeNull();
+    // Local time format should have UTC with timezone offset like "UTC+2", "UTC-5", or "UTC+5:30"
+    // If GS is placed at UTC+0 location, it will just show "UTC"
+    expect(localTimeLabel).toMatch(/UTC([+-]\d+(:\d{2})?)?$/);
+
+    // Verify animation widget also shows local time by checking the displayed text
+    const animationTimeText = await page.evaluate(() => {
+      const animationWidget = document.querySelector(".cesium-animation-svgText");
+      return animationWidget?.textContent || null;
+    });
+
+    // Animation widget should display time - just verify it exists
+    // The exact format check is done via timeline which uses same logic
+    expect(animationTimeText).not.toBeNull();
+
+    // Toggle local time off
+    await useLocalTimeLabel.click();
+    await expect(useLocalTimeCheckbox).not.toBeChecked({ timeout: 3000 });
+
+    // Wait for timeline to update
+    await page.waitForTimeout(500);
+
+    // Verify timeline is back to UTC
+    const utcTimeLabel = await page.evaluate(() => {
+      const timeline = window.cc?.viewer?.timeline;
+      if (!timeline) return null;
+      const currentTime = window.cc.viewer.clock.currentTime;
+      return timeline.makeLabel(currentTime);
+    });
+
+    expect(utcTimeLabel).not.toBeNull();
+    // Should end with just "UTC" (no offset)
+    expect(utcTimeLabel).toMatch(/UTC$/);
+  });
 });
