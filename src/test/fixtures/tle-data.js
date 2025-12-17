@@ -3,13 +3,28 @@
  * All TLEs use real orbital elements for accurate testing
  */
 
-// ISS (3-line format with name) - December 2018
+// ISS (3-line format with name) - December 2018 (STALE - used for staleness tests)
 export const ISS_TLE = `ISS (ZARYA)
 1 25544U 98067A   18342.69352573  .00002284  00000-0  41838-4 0  9992
 2 25544  51.6407 229.0798 0005166 124.8351 329.3296 15.54069892145658`;
 
-// ISS (2-line format without name) - Same epoch
+// ISS (2-line format without name) - Same epoch (STALE)
 export const ISS_TLE_NO_NAME = `1 25544U 98067A   18342.69352573  .00002284  00000-0  41838-4 0  9992
+2 25544  51.6407 229.0798 0005166 124.8351 329.3296 15.54069892145658`;
+
+// ISS with dynamically generated fresh epoch - always recent for tests
+// Generates epoch as "today" to ensure TLE is never flagged as stale
+function generateFreshEpoch() {
+  const now = new Date();
+  const year = now.getUTCFullYear() % 100; // 2-digit year
+  const startOfYear = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+  const dayOfYear = Math.floor((now - startOfYear) / (24 * 60 * 60 * 1000)) + 1;
+  const fractionOfDay = (now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds()) / 86400;
+  return `${year.toString().padStart(2, "0")}${(dayOfYear + fractionOfDay).toFixed(8).padStart(12, "0")}`;
+}
+
+export const ISS_TLE_FRESH = `ISS (ZARYA)
+1 25544U 98067A   ${generateFreshEpoch()}  .00002284  00000-0  41838-4 0  9992
 2 25544  51.6407 229.0798 0005166 124.8351 329.3296 15.54069892145658`;
 
 // ISS with updated orbital elements (simulates TLE data refresh)

@@ -628,6 +628,10 @@ export class SatelliteManager {
   get taglist() {
     const taglist = {};
     this.satellites.forEach((sat) => {
+      // Skip stale satellites (decayed or TLE too old for reliable propagation)
+      if (sat.props.isStale) {
+        return;
+      }
       sat.props.tags.forEach((tag) => {
         (taglist[tag] = taglist[tag] || []).push(sat.props.name);
       });
@@ -736,6 +740,10 @@ export class SatelliteManager {
    * @returns {boolean} true if the satellite is enabled
    */
   satIsActive(sat) {
+    // Stale satellites (decayed or TLE too old) should never be active
+    if (sat.props.isStale) {
+      return false;
+    }
     const enabledByTag = sat.props.tags.some((tag) => this.#enabledTags.has(tag));
     const enabledByName = this.#enabledSatellites.has(sat.props.name);
     return enabledByTag || enabledByName;
