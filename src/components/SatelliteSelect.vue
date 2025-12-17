@@ -29,7 +29,7 @@
         @close="onDropdownClose"
       >
         <template #option="{ option }">
-          <span class="satellite-option" title="Right-click to track" @contextmenu.prevent="onSatelliteRightClick(option)">{{ option }}</span>
+          <span class="satellite-option" :data-satellite-name="option">{{ option }}</span>
         </template>
         <template #noResult> No matching satellites </template>
         <template #afterList>
@@ -64,6 +64,7 @@ export default {
       scrollListener: null,
       satelliteKeydownListener: null,
       groupsKeydownListener: null,
+      contextMenuListener: null,
     };
   },
   computed: {
@@ -180,6 +181,22 @@ export default {
         if (dropdownList) {
           this.scrollListener = this.onScroll.bind(this);
           dropdownList.addEventListener("scroll", this.scrollListener);
+
+          // Add contextmenu listener for right-click to track (event delegation)
+          this.contextMenuListener = (event) => {
+            // Find the option element that was right-clicked
+            const optionEl = event.target.closest(".multiselect__option");
+            if (optionEl) {
+              // Find the satellite name from our data attribute
+              const satelliteSpan = optionEl.querySelector(".satellite-option[data-satellite-name]");
+              if (satelliteSpan) {
+                event.preventDefault();
+                const satelliteName = satelliteSpan.dataset.satelliteName;
+                this.onSatelliteRightClick(satelliteName);
+              }
+            }
+          };
+          dropdownList.addEventListener("contextmenu", this.contextMenuListener);
         }
 
         // Add keydown listener to handle navigation to groups dropdown
@@ -209,9 +226,15 @@ export default {
     onDropdownClose() {
       // Clean up scroll listener when dropdown closes
       const dropdownList = this.$refs.satelliteMultiselect?.$el?.querySelector(".multiselect__content-wrapper");
-      if (dropdownList && this.scrollListener) {
-        dropdownList.removeEventListener("scroll", this.scrollListener);
-        this.scrollListener = null;
+      if (dropdownList) {
+        if (this.scrollListener) {
+          dropdownList.removeEventListener("scroll", this.scrollListener);
+          this.scrollListener = null;
+        }
+        if (this.contextMenuListener) {
+          dropdownList.removeEventListener("contextmenu", this.contextMenuListener);
+          this.contextMenuListener = null;
+        }
       }
       // Clean up keydown listener
       const el = this.$refs.satelliteMultiselect?.$el;
