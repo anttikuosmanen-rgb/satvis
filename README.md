@@ -21,14 +21,20 @@ Satellite orbit visualization and pass prediction with enhanced features for vis
 - `Shift+D` - Open debug menu
 - `↑` `↓` - Navigate menu items
 - `Enter` - Activate/toggle selected item
-- `Esc` - Close menu (or info box if no menu open)
+- `Esc` - Close menu, info box, or reset to globe view when tracking
 
 ### View & Navigation
-- `Space` - Toggle between satellite and ground station view
+- `Space` - Toggle between satellite and ground station view (preserves camera position)
+- `Shift+T` - Track selected entity (camera follows it)
+- `i` - Show info box for tracked entity
+- `o` - Toggle orbit track (double-tap for Smart Path)
 - `z` - Flip camera to opposite side of globe
 - `Double-click GS button` - Toggle ground station focus
 
-### Time Navigation
+### Time Controls
+- `t` - Set to real time (current time at 1x speed)
+- `1-9, 0` - Time acceleration (1x, 2x, 4x, 8x... 1024x)
+- `Shift+1-9, 0` - Negative time acceleration (reverse)
 - `,` - Jump backward 1 hour
 - `.` - Jump forward 1 hour
 - `;` or `<` - Jump backward 24 hours
@@ -59,7 +65,7 @@ Ground-level sky viewing from your ground station location with sky-up camera pe
 - **Pre-launch Support** - Dedicated group for upcoming launches with epoch-based filtering
 
 ### Keyboard Navigation
-Full keyboard control with shortcuts for all menus and functions. Arrow keys navigate menu items, Enter activates, ESC closes menus/info boxes. Time jumps with comma/period (1h) and semicolon/colon (24h). Spacebar toggles satellite/ground station views. Z key flips camera to opposite side of globe. Shortcuts displayed in tooltips.
+Full keyboard control with shortcuts for all menus and functions. Arrow keys navigate menu items, Enter activates, ESC closes menus/info boxes or resets to globe view when tracking. Time acceleration with number keys (1-9, 0 for 1x to 1024x, Shift for reverse). Spacebar toggles satellite/ground station views with camera position persistence. Shift+T tracks selected entity. Z key flips camera to opposite side of globe. Shortcuts displayed in tooltips.
 
 ### Timeline Controls
 - **Zoom Controls** - Plus/minus buttons with smooth 0.75x/1.33x zoom steps

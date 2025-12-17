@@ -10,7 +10,7 @@ export class PushManager {
     if ("webkit" in window) {
       return true;
     }
-    if (!("Notification" in window) || !("ServiceWorkerRegistration" in window)) {
+    if (!("Notification" in window)) {
       console.log("Notification API not supported!");
       return false;
     }
@@ -49,13 +49,35 @@ export class PushManager {
       return;
     }
     const optionsMerged = { ...this.options, ...options };
-    try {
+
+    // Helper to show regular notification as fallback
+    const showFallbackNotification = () => {
+      try {
+        new Notification(message, optionsMerged);
+      } catch (err) {
+        console.log(`Notification API error: ${err}`);
+      }
+    };
+
+    // Try service worker notification first (persistent, survives page close)
+    if (navigator.serviceWorker) {
       navigator.serviceWorker
         .getRegistration()
-        .then((reg) => reg.showNotification(message, optionsMerged))
-        .catch((err) => console.log(`Service Worker registration error: ${err}`));
-    } catch (err) {
-      console.log(`Notification API error: ${err}`);
+        .then((reg) => {
+          if (reg) {
+            reg.showNotification(message, optionsMerged);
+          } else {
+            // No service worker registered, fall back to regular notification
+            showFallbackNotification();
+          }
+        })
+        .catch((err) => {
+          console.log(`Service Worker registration error: ${err}`);
+          showFallbackNotification();
+        });
+    } else {
+      // No service worker support, use regular notification
+      showFallbackNotification();
     }
   }
 
