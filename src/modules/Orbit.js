@@ -38,6 +38,179 @@ export default class Orbit {
     return period;
   }
 
+  /**
+   * Get the TLE epoch as a JavaScript Date
+   * @returns {Date} The epoch date
+   */
+  get epochDate() {
+    // Convert Julian date to JavaScript Date
+    // Julian day 2440587.5 = Unix epoch (Jan 1, 1970)
+    return new Date((this.julianDate - 2440587.5) * 86400000);
+  }
+
+  /**
+   * Get the age of the TLE epoch in days
+   * @returns {number} Days since epoch (negative if epoch is in future)
+   */
+  get epochAgeDays() {
+    const now = new Date();
+    return (now - this.epochDate) / (86400 * 1000);
+  }
+
+  /**
+   * Get the drag coefficient (ndot - first derivative of mean motion)
+   * satellite.js stores ndot directly from TLE (which is ndot/2 in rev/day^2)
+   * @returns {number} ndot value from satrec (TLE format: ndot/2)
+   */
+  get dragCoefficient() {
+    return this.satrec.ndot;
+  }
+
+  /**
+   * Get the B* drag term
+   * @returns {number} B* in 1/earth-radii
+   */
+  get bstar() {
+    return this.satrec.bstar;
+  }
+
+  /**
+   * Check if this is a high-drag satellite (LEO with significant decay)
+   * @returns {boolean} True if satellite has high drag
+   */
+  get isHighDrag() {
+    // High drag thresholds (using TLE format values):
+    // - ndot > 0.0001 (TLE format, actual ndot/2 in rev/day^2) - significant orbital decay
+    // - or B* > 0.0001 (drag term in 1/earth-radii)
+    // - and mean motion > 10 rev/day (LEO satellite)
+    const meanMotionRevDay = (this.satrec.no * 1440) / (2 * Math.PI);
+    const isLEO = meanMotionRevDay > 10;
+    const hasHighNdot = Math.abs(this.dragCoefficient) > 0.0001;
+    const hasHighBstar = Math.abs(this.bstar) > 0.0001;
+
+    return isLEO && (hasHighNdot || hasHighBstar);
+  }
+
+  /**
+   * Estimate when the satellite will/did decay based on drag
+   * Returns estimated days until decay from epoch (can be negative if already decayed)
+   * @returns {number|null} Days until decay, or null if not applicable
+   */
+  get estimatedDaysUntilDecay() {
+    if (!this.isHighDrag) {
+      return null;
+    }
+
+    // The TLE ndot value is ndot/2 in rev/day^2
+    // Actual ndot = 2 * dragCoefficient
+    // If actual ndot = 0.002 rev/day^2, mean motion increases by 0.002 rev/day each day
+    // LEO satellite decays roughly when it gains ~1 rev/day (from ~15 to ~16+ rev/day)
+    // This is a simplification; actual decay is non-linear and accelerates
+    const actualNdot = Math.abs(this.dragCoefficient) * 2;
+    if (actualNdot < 0.00001) {
+      return null; // Too low to estimate
+    }
+
+    // Rough estimate: time to decay ≈ 1 / (ndot * factor)
+    // For ndot = 0.002, decay happens in roughly 200-300 days
+    // Using factor of 5 gives reasonable estimates
+    return Math.min(365, 1 / (actualNdot * 5));
+  }
+
+  /**
+   * Check if the TLE is likely stale (too old for reliable propagation)
+   * For high-drag satellites, SGP4 produces garbage after ~2x the decay time
+   * @returns {{isStale: boolean, reason: string|null, epochAgeDays: number}}
+   */
+  checkTLEStaleness() {
+    const epochAgeDays = this.epochAgeDays;
+
+    // If epoch is in the future, it's not stale
+    if (epochAgeDays < 0) {
+      return { isStale: false, reason: null, epochAgeDays };
+    }
+
+    // For high-drag satellites, check if we're past the reliable propagation window
+    if (this.isHighDrag) {
+      const estimatedDecay = this.estimatedDaysUntilDecay;
+      if (estimatedDecay !== null) {
+        // SGP4 returns null for a while after decay, then garbage
+        // The garbage zone starts at roughly 3-4x the decay time
+        const maxReliableDays = estimatedDecay * 3;
+
+        if (epochAgeDays > maxReliableDays) {
+          return {
+            isStale: true,
+            reason: `High-drag satellite with TLE ${Math.round(epochAgeDays)} days old (max reliable: ~${Math.round(maxReliableDays)} days)`,
+            epochAgeDays,
+            estimatedDecayDays: estimatedDecay,
+          };
+        }
+      }
+
+      // General rule for high-drag: warn if TLE is > 60 days old
+      if (epochAgeDays > 60) {
+        return {
+          isStale: true,
+          reason: `High-drag LEO satellite with TLE ${Math.round(epochAgeDays)} days old`,
+          epochAgeDays,
+        };
+      }
+    }
+
+    // For all satellites, TLEs > 365 days are considered stale
+    if (epochAgeDays > 365) {
+      return {
+        isStale: true,
+        reason: `TLE is ${Math.round(epochAgeDays)} days old (>1 year)`,
+        epochAgeDays,
+      };
+    }
+
+    return { isStale: false, reason: null, epochAgeDays };
+  }
+
+  /**
+   * Validate a propagated position to check for SGP4 garbage results
+   * @param {Object} position - Position object with x, y, z in km
+   * @returns {boolean} True if position appears valid
+   */
+  validatePosition(position) {
+    if (!position || typeof position.x !== "number" || typeof position.y !== "number" || typeof position.z !== "number") {
+      return false;
+    }
+
+    // Check for NaN values
+    if (Number.isNaN(position.x) || Number.isNaN(position.y) || Number.isNaN(position.z)) {
+      return false;
+    }
+
+    const magnitude = Math.sqrt(position.x * position.x + position.y * position.y + position.z * position.z);
+    const altitude = magnitude - 6378; // Earth radius in km
+
+    // Sanity checks for position validity
+    // - Altitude should be between -100 km (slight underground is ok for edge cases) and 100,000 km
+    // - For LEO satellites (mean motion > 10 rev/day), max altitude should be ~3000 km
+    const meanMotionRevDay = (this.satrec.no * 1440) / (2 * Math.PI);
+    const isLEO = meanMotionRevDay > 10;
+
+    if (altitude < -100) {
+      return false; // Underground
+    }
+
+    if (isLEO && altitude > 5000) {
+      // LEO satellite shouldn't be above 5000 km
+      return false;
+    }
+
+    if (altitude > 100000) {
+      // Nothing should be above 100,000 km (beyond GEO by far)
+      return false;
+    }
+
+    return true;
+  }
+
   positionECI(time) {
     const result = satellitejs.propagate(this.satrec, time);
     return result ? result.position : null;
