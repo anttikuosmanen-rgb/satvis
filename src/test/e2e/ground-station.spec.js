@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { pauseAnimation, resumeAnimation, waitForPassCalculation, waitForAppReady, withPausedGlobe } from "./helpers/globe-interaction.js";
+import { buildFreshIssUrl } from "./helpers/fresh-tle.js";
 
 /**
  * E2E Test: Ground Station Functionality
@@ -554,9 +555,9 @@ test.describe("Ground Station", () => {
   });
 
   test("should skip to pass time when clicking on timeline highlight", async ({ page }) => {
-    // Start with ISS and ground station
+    // Start with ISS and ground station using fresh TLE to avoid staleness
     // Disable pass filters to test unfiltered passes
-    await page.goto("/?sats=ISS~(ZARYA)&gs=48.1351,11.5820,Munich&hideLight=0&onlyLit=0");
+    await page.goto(buildFreshIssUrl({ gs: "48.1351,11.5820,Munich", hideLight: false, onlyLit: false }));
 
     await expect(page.locator("#cesiumContainer canvas").first()).toBeVisible({ timeout: 15000 });
 
