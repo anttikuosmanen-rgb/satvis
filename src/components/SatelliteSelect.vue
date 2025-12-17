@@ -28,6 +28,9 @@
         @open="onDropdownOpen"
         @close="onDropdownClose"
       >
+        <template #option="{ option }">
+          <span class="satellite-option" title="Right-click to track" @contextmenu.prevent="onSatelliteRightClick(option)">{{ option }}</span>
+        </template>
         <template #noResult> No matching satellites </template>
         <template #afterList>
           <div v-if="hasMoreOptions" class="multiselect__loading-more">Scroll for more...</div>
@@ -236,6 +239,27 @@ export default {
       const newLimit = this.currentOptionsLimit + this.optionsLimitIncrement;
       this.currentOptionsLimit = Math.min(newLimit, this.totalAvailableOptions);
     },
+    onSatelliteRightClick(satelliteName) {
+      // Enable satellite if not already enabled
+      if (!this.allEnabledSatellites.includes(satelliteName)) {
+        // Add to enabled satellites list
+        const newEnabledSatellites = [...(this.enabledSatellites ?? []), satelliteName];
+        cc.sats.enabledSatellites = newEnabledSatellites;
+      }
+
+      // Close the dropdown
+      this.$refs.satelliteMultiselect?.deactivate();
+
+      // Track the satellite after a short delay to allow it to be created
+      this.$nextTick(() => {
+        setTimeout(() => {
+          const sat = cc.sats.getSatellite(satelliteName);
+          if (sat) {
+            sat.track();
+          }
+        }, 100);
+      });
+    },
   },
 };
 </script>
@@ -266,5 +290,11 @@ export default {
   color: #666;
   background: #f8f8f8;
   border-top: 1px solid #e8e8e8;
+}
+
+/* Make satellite option span full width for right-click target */
+.satellite-option {
+  display: block;
+  width: 100%;
 }
 </style>
