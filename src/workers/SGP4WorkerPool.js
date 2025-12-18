@@ -77,14 +77,15 @@ class SGP4WorkerPoolSingleton {
    * @param {number} endDateMs - End time in milliseconds
    * @param {number} minElevation - Minimum elevation angle
    * @param {number} maxPasses - Maximum number of passes to compute
+   * @param {boolean} collectStats - Whether to collect performance stats
    * @returns {Promise<Array>} Array of pass objects
    */
-  async computePassesElevation(tle, groundStationPosition, startDateMs, endDateMs, minElevation = 5, maxPasses = 50) {
+  async computePassesElevation(tle, groundStationPosition, startDateMs, endDateMs, minElevation = 5, maxPasses = 50, collectStats = false) {
     const pool = this.getPool();
     if (!pool || !this.enabled) {
       throw new Error("SGP4 WorkerPool not available");
     }
-    return pool.computePassesElevation(tle, groundStationPosition, startDateMs, endDateMs, minElevation, maxPasses);
+    return pool.computePassesElevation(tle, groundStationPosition, startDateMs, endDateMs, minElevation, maxPasses, collectStats);
   }
 
   /**
@@ -95,14 +96,15 @@ class SGP4WorkerPoolSingleton {
    * @param {number} startDateMs - Start time in milliseconds
    * @param {number} endDateMs - End time in milliseconds
    * @param {number} maxPasses - Maximum number of passes to compute
+   * @param {boolean} collectStats - Whether to collect performance stats
    * @returns {Promise<Array>} Array of pass objects
    */
-  async computePassesSwath(tle, groundStationPosition, swathKm, startDateMs, endDateMs, maxPasses = 50) {
+  async computePassesSwath(tle, groundStationPosition, swathKm, startDateMs, endDateMs, maxPasses = 50, collectStats = false) {
     const pool = this.getPool();
     if (!pool || !this.enabled) {
       throw new Error("SGP4 WorkerPool not available");
     }
-    return pool.computePassesSwath(tle, groundStationPosition, swathKm, startDateMs, endDateMs, maxPasses);
+    return pool.computePassesSwath(tle, groundStationPosition, swathKm, startDateMs, endDateMs, maxPasses, collectStats);
   }
 
   /**
