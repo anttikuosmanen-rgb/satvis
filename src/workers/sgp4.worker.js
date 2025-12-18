@@ -123,6 +123,7 @@ function computePassesElevation(tle, groundStationPosition, startDateMs, endDate
   while (date < endDate) {
     // Propagate satellite position
     const positionResult = satellitejs.propagate(satrec, date);
+
     if (!positionResult || !positionResult.position) {
       date.setMinutes(date.getMinutes() + 1);
       continue;
@@ -223,6 +224,7 @@ function computePassesSwath(tle, groundStationPosition, swathKm, startDateMs, en
 
   while (date < endDate) {
     const positionResult = satellitejs.propagate(satrec, date);
+
     if (!positionResult || !positionResult.position) {
       date.setMinutes(date.getMinutes() + 1);
       continue;

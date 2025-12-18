@@ -1466,10 +1466,12 @@ export class CesiumController {
         // Number keys 0-9 for time acceleration
         // 1 = 1x, 2 = 2x, 3 = 8x (2^3), 4 = 16x (2^4), ... 0 = 1024x (2^10)
         // Shift+number = negative (reverse time)
-        const digitMatch = event.key.match(/^[0-9]$/);
-        if (digitMatch) {
+        // Use event.code (physical key) instead of event.key (character produced)
+        // because Shift+1 produces "!" on US keyboards, not "1"
+        const digitCodeMatch = event.code.match(/^Digit([0-9])$/);
+        if (digitCodeMatch) {
           event.preventDefault();
-          const digit = parseInt(event.key, 10);
+          const digit = parseInt(digitCodeMatch[1], 10);
           // digit 0 -> 2^10 = 1024, digit 1 -> 2^0 = 1, digit 2 -> 2^1 = 2, etc.
           const exponent = digit === 0 ? 10 : digit - 1;
           let multiplier = Math.pow(2, exponent);
