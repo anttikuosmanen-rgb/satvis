@@ -144,7 +144,7 @@ export class WorkerPool {
   /**
    * Compute satellite passes using elevation angle
    */
-  async computePassesElevation(tle, groundStationPosition, startDateMs, endDateMs, minElevation = 5, maxPasses = 50, collectStats = false) {
+  async computePassesElevation(tle, groundStationPosition, startDateMs, endDateMs, minElevation = 5, maxPasses = 50) {
     return this.execute("COMPUTE_PASSES_ELEVATION", {
       tle,
       groundStationPosition,
@@ -152,14 +152,13 @@ export class WorkerPool {
       endDateMs,
       minElevation,
       maxPasses,
-      collectStats,
     });
   }
 
   /**
    * Compute satellite passes using swath width
    */
-  async computePassesSwath(tle, groundStationPosition, swathKm, startDateMs, endDateMs, maxPasses = 50, collectStats = false) {
+  async computePassesSwath(tle, groundStationPosition, swathKm, startDateMs, endDateMs, maxPasses = 50) {
     return this.execute("COMPUTE_PASSES_SWATH", {
       tle,
       groundStationPosition,
@@ -167,7 +166,6 @@ export class WorkerPool {
       startDateMs,
       endDateMs,
       maxPasses,
-      collectStats,
     });
   }
 

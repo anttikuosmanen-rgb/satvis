@@ -333,37 +333,12 @@ export default class Orbit {
     return this.computePassesElevationSync(groundStationPosition, startDate, endDate, minElevation, maxPasses);
   }
 
-  computePassesElevationSync(
-    groundStationPosition,
-    startDate = dayjs().toDate(),
-    endDate = dayjs(startDate).add(7, "day").toDate(),
-    minElevation = 5,
-    maxPasses = 50,
-    collectStats = false,
-  ) {
-    // Performance instrumentation
-    const stats = collectStats
-      ? {
-          totalTime: 0,
-          propagationTime: 0,
-          propagationCalls: 0,
-          lookAnglesTime: 0,
-          eclipseTime: 0,
-          eclipseCalls: 0,
-          darknessTime: 0,
-          darknessCalls: 0,
-          transitionTime: 0,
-          iterations: 0,
-          passesFound: 0,
-        }
-      : null;
-    const totalStart = collectStats ? performance.now() : 0;
-
+  computePassesElevationSync(groundStationPosition, startDate = dayjs().toDate(), endDate = dayjs(startDate).add(7, "day").toDate(), minElevation = 5, maxPasses = 50) {
     // Skip pass calculation for satellites with very long orbital periods
     // (e.g., geostationary satellites at ~1436 minutes)
     // These satellites stay continuously visible and don't have traditional "passes"
     if (this.orbitalPeriod > 600) {
-      return collectStats ? { passes: [], stats } : [];
+      return [];
     }
 
     // For satellites with future epochs, ensure we don't try to calculate before the epoch
@@ -400,49 +375,26 @@ export default class Orbit {
 
     // Main calculation loop - step through time until end date
     while (timestamp < endTime) {
-      if (collectStats) stats.iterations++;
-
       // Create Date object only when needed for position calculation
       const date = new Date(timestamp);
 
       // Calculate satellite position and look angles from ground station
-      let propStart;
-      if (collectStats) propStart = performance.now();
       const positionEcf = this.positionECF(date);
-      if (collectStats) {
-        stats.propagationTime += performance.now() - propStart;
-        stats.propagationCalls++;
-      }
 
       if (!positionEcf) {
         timestamp += MS_PER_MIN;
         continue;
       }
 
-      let lookStart;
-      if (collectStats) lookStart = performance.now();
       const lookAngles = ecfToLookAnglesFast(gsPrecomputed, positionEcf);
-      if (collectStats) stats.lookAnglesTime += performance.now() - lookStart;
-
       const elevation = lookAngles.elevation / deg2rad; // Convert to degrees
 
       if (elevation > minElevation) {
         // Satellite is visible above minimum elevation threshold
         if (!ongoingPass) {
           // Start of new pass - record initial conditions
-          let darkStart, eclipseStart;
-          if (collectStats) darkStart = performance.now();
           const isDarkAtStart = GroundStationConditions.isInDarkness(originalGroundStation, date);
-          if (collectStats) {
-            stats.darknessTime += performance.now() - darkStart;
-            stats.darknessCalls++;
-            eclipseStart = performance.now();
-          }
           const isEclipsedAtStart = this.isInEclipse(date);
-          if (collectStats) {
-            stats.eclipseTime += performance.now() - eclipseStart;
-            stats.eclipseCalls++;
-          }
 
           pass = {
             start: timestamp,
@@ -468,24 +420,11 @@ export default class Orbit {
         pass.duration = pass.end - pass.start;
         pass.azimuthEnd = lookAngles.azimuth;
 
-        let darkStart, eclipseStart, transitionStart;
-        if (collectStats) darkStart = performance.now();
         pass.groundStationDarkAtEnd = GroundStationConditions.isInDarkness(originalGroundStation, date);
-        if (collectStats) {
-          stats.darknessTime += performance.now() - darkStart;
-          stats.darknessCalls++;
-          eclipseStart = performance.now();
-        }
         pass.satelliteEclipsedAtEnd = this.isInEclipse(date);
-        if (collectStats) {
-          stats.eclipseTime += performance.now() - eclipseStart;
-          stats.eclipseCalls++;
-          transitionStart = performance.now();
-        }
 
         // Find eclipse transitions during the pass
         pass.eclipseTransitions = this.findEclipseTransitions(pass.start, pass.end, 30);
-        if (collectStats) stats.transitionTime += performance.now() - transitionStart;
 
         // Convert azimuth angles from radians to degrees
         pass.azimuthStart /= deg2rad;
@@ -527,23 +466,6 @@ export default class Orbit {
       }
     }
 
-    if (collectStats) {
-      stats.totalTime = performance.now() - totalStart;
-      stats.passesFound = passes.length;
-      console.log(
-        `Pass calculation stats (elevation):\n` +
-          `  Total time: ${stats.totalTime.toFixed(1)}ms\n` +
-          `  Iterations: ${stats.iterations}\n` +
-          `  Propagation: ${stats.propagationTime.toFixed(1)}ms (${((stats.propagationTime / stats.totalTime) * 100).toFixed(1)}%) - ${stats.propagationCalls} calls @ ${(stats.propagationTime / stats.propagationCalls).toFixed(3)}ms avg\n` +
-          `  Look angles: ${stats.lookAnglesTime.toFixed(1)}ms (${((stats.lookAnglesTime / stats.totalTime) * 100).toFixed(1)}%)\n` +
-          `  Eclipse: ${stats.eclipseTime.toFixed(1)}ms (${((stats.eclipseTime / stats.totalTime) * 100).toFixed(1)}%) - ${stats.eclipseCalls} calls\n` +
-          `  Transitions: ${stats.transitionTime.toFixed(1)}ms (${((stats.transitionTime / stats.totalTime) * 100).toFixed(1)}%)\n` +
-          `  Darkness: ${stats.darknessTime.toFixed(1)}ms (${((stats.darknessTime / stats.totalTime) * 100).toFixed(1)}%) - ${stats.darknessCalls} calls\n` +
-          `  Passes found: ${stats.passesFound}`,
-      );
-      return { passes, stats };
-    }
-
     return passes;
   }
 
@@ -574,25 +496,7 @@ export default class Orbit {
     return this.computePassesSwathSync(groundStationPosition, swathKm, startDate, endDate, maxPasses);
   }
 
-  computePassesSwathSync(groundStationPosition, swathKm, startDate = dayjs().toDate(), endDate = dayjs(startDate).add(7, "day").toDate(), maxPasses = 50, collectStats = false) {
-    // Performance instrumentation
-    const stats = collectStats
-      ? {
-          totalTime: 0,
-          propagationTime: 0,
-          propagationCalls: 0,
-          distanceCalcTime: 0,
-          eclipseTime: 0,
-          eclipseCalls: 0,
-          darknessTime: 0,
-          darknessCalls: 0,
-          transitionTime: 0,
-          iterations: 0,
-          passesFound: 0,
-        }
-      : null;
-    const totalStart = collectStats ? performance.now() : 0;
-
+  computePassesSwathSync(groundStationPosition, swathKm, startDate = dayjs().toDate(), endDate = dayjs(startDate).add(7, "day").toDate(), maxPasses = 50) {
     // For satellites with future epochs, ensure we don't try to calculate before the epoch
     // SGP4 propagation is unreliable before the TLE epoch time
     // Allow calculation from 1 hour before epoch to show pre-launch position
@@ -625,18 +529,10 @@ export default class Orbit {
     const halfSwath = swathKm / 2;
 
     while (timestamp < endTime) {
-      if (collectStats) stats.iterations++;
-
       // Create Date object only when needed for position calculation
       const date = new Date(timestamp);
 
-      let propStart;
-      if (collectStats) propStart = performance.now();
       const positionGeodetic = this.positionGeodetic(date);
-      if (collectStats) {
-        stats.propagationTime += performance.now() - propStart;
-        stats.propagationCalls++;
-      }
 
       if (!positionGeodetic) {
         timestamp += MS_PER_MIN;
@@ -648,15 +544,12 @@ export default class Orbit {
       const satLon = positionGeodetic.longitude * deg2rad;
 
       // Calculate great circle distance between satellite and ground station
-      let distStart;
-      if (collectStats) distStart = performance.now();
       const deltaLat = satLat - groundStation.latitude;
       const deltaLon = satLon - groundStation.longitude;
       const a = Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) + cosGsLat * Math.cos(satLat) * Math.sin(deltaLon / 2) * Math.sin(deltaLon / 2);
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
       const earthRadius = 6371; // Earth radius in km
       const distanceKm = earthRadius * c;
-      if (collectStats) stats.distanceCalcTime += performance.now() - distStart;
 
       // Check if ground station is within swath
       const withinSwath = distanceKm <= halfSwath;
@@ -664,19 +557,8 @@ export default class Orbit {
       if (withinSwath) {
         if (!ongoingPass) {
           // Start of new pass - record initial conditions
-          let darkStart, eclipseStart;
-          if (collectStats) darkStart = performance.now();
           const isDarkAtStart = GroundStationConditions.isInDarkness(originalGroundStation, date);
-          if (collectStats) {
-            stats.darknessTime += performance.now() - darkStart;
-            stats.darknessCalls++;
-            eclipseStart = performance.now();
-          }
           const isEclipsedAtStart = this.isInEclipse(date);
-          if (collectStats) {
-            stats.eclipseTime += performance.now() - eclipseStart;
-            stats.eclipseCalls++;
-          }
 
           pass = {
             name: this.name,
@@ -702,24 +584,11 @@ export default class Orbit {
         pass.end = timestamp;
         pass.duration = pass.end - pass.start;
 
-        let darkStart, eclipseStart, transitionStart;
-        if (collectStats) darkStart = performance.now();
         pass.groundStationDarkAtEnd = GroundStationConditions.isInDarkness(originalGroundStation, date);
-        if (collectStats) {
-          stats.darknessTime += performance.now() - darkStart;
-          stats.darknessCalls++;
-          eclipseStart = performance.now();
-        }
         pass.satelliteEclipsedAtEnd = this.isInEclipse(date);
-        if (collectStats) {
-          stats.eclipseTime += performance.now() - eclipseStart;
-          stats.eclipseCalls++;
-          transitionStart = performance.now();
-        }
 
         // Find eclipse transitions during the pass
         pass.eclipseTransitions = this.findEclipseTransitions(pass.start, pass.end, 30);
-        if (collectStats) stats.transitionTime += performance.now() - transitionStart;
 
         passes.push(pass);
         if (passes.length >= maxPasses) {
@@ -751,23 +620,6 @@ export default class Orbit {
           timestamp += 15 * MS_PER_SEC;
         }
       }
-    }
-
-    if (collectStats) {
-      stats.totalTime = performance.now() - totalStart;
-      stats.passesFound = passes.length;
-      console.log(
-        `Pass calculation stats (swath):\n` +
-          `  Total time: ${stats.totalTime.toFixed(1)}ms\n` +
-          `  Iterations: ${stats.iterations}\n` +
-          `  Propagation: ${stats.propagationTime.toFixed(1)}ms (${((stats.propagationTime / stats.totalTime) * 100).toFixed(1)}%) - ${stats.propagationCalls} calls @ ${(stats.propagationTime / stats.propagationCalls).toFixed(3)}ms avg\n` +
-          `  Distance calc: ${stats.distanceCalcTime.toFixed(1)}ms (${((stats.distanceCalcTime / stats.totalTime) * 100).toFixed(1)}%)\n` +
-          `  Eclipse: ${stats.eclipseTime.toFixed(1)}ms (${((stats.eclipseTime / stats.totalTime) * 100).toFixed(1)}%) - ${stats.eclipseCalls} calls\n` +
-          `  Transitions: ${stats.transitionTime.toFixed(1)}ms (${((stats.transitionTime / stats.totalTime) * 100).toFixed(1)}%)\n` +
-          `  Darkness: ${stats.darknessTime.toFixed(1)}ms (${((stats.darknessTime / stats.totalTime) * 100).toFixed(1)}%) - ${stats.darknessCalls} calls\n` +
-          `  Passes found: ${stats.passesFound}`,
-      );
-      return { passes, stats };
     }
 
     return passes;

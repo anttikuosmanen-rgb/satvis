@@ -89,21 +89,7 @@ function propagateGeodetic(tle, timestamp) {
 /**
  * Calculate satellite passes over a ground station using elevation angle
  */
-function computePassesElevation(tle, groundStationPosition, startDateMs, endDateMs, minElevation = 5, maxPasses = 50, collectStats = false) {
-  // Performance instrumentation
-  const stats = collectStats
-    ? {
-        totalTime: 0,
-        propagationTime: 0,
-        propagationCalls: 0,
-        coordConversionTime: 0,
-        lookAnglesTime: 0,
-        iterations: 0,
-        passesFound: 0,
-      }
-    : null;
-  const totalStart = collectStats ? performance.now() : 0;
-
+function computePassesElevation(tle, groundStationPosition, startDateMs, endDateMs, minElevation = 5, maxPasses = 50) {
   const satrec = getSatrec(tle);
 
   // Get orbital period
@@ -112,7 +98,7 @@ function computePassesElevation(tle, groundStationPosition, startDateMs, endDate
 
   // Skip pass calculation for satellites with very long orbital periods
   if (orbitalPeriod > 600) {
-    return collectStats ? { passes: [], stats } : [];
+    return [];
   }
 
   // For satellites with future epochs, ensure we don't calculate before epoch
@@ -135,33 +121,17 @@ function computePassesElevation(tle, groundStationPosition, startDateMs, endDate
   let lastElevation = 0;
 
   while (date < endDate) {
-    if (collectStats) stats.iterations++;
-
     // Propagate satellite position
-    let propStart;
-    if (collectStats) propStart = performance.now();
     const positionResult = satellitejs.propagate(satrec, date);
-    if (collectStats) {
-      stats.propagationTime += performance.now() - propStart;
-      stats.propagationCalls++;
-    }
 
     if (!positionResult || !positionResult.position) {
       date.setMinutes(date.getMinutes() + 1);
       continue;
     }
 
-    let convStart;
-    if (collectStats) convStart = performance.now();
     const gmst = satellitejs.gstime(date);
     const positionEcf = satellitejs.eciToEcf(positionResult.position, gmst);
-    if (collectStats) stats.coordConversionTime += performance.now() - convStart;
-
-    let lookStart;
-    if (collectStats) lookStart = performance.now();
     const lookAngles = satellitejs.ecfToLookAngles(groundStation, positionEcf);
-    if (collectStats) stats.lookAnglesTime += performance.now() - lookStart;
-
     const elevation = lookAngles.elevation / deg2rad;
 
     if (elevation > minElevation) {
@@ -221,33 +191,13 @@ function computePassesElevation(tle, groundStationPosition, startDateMs, endDate
     }
   }
 
-  if (collectStats) {
-    stats.totalTime = performance.now() - totalStart;
-    stats.passesFound = passes.length;
-    return { passes, stats };
-  }
-
   return passes;
 }
 
 /**
  * Calculate satellite passes over a ground station using swath width
  */
-function computePassesSwath(tle, groundStationPosition, swathKm, startDateMs, endDateMs, maxPasses = 50, collectStats = false) {
-  // Performance instrumentation
-  const stats = collectStats
-    ? {
-        totalTime: 0,
-        propagationTime: 0,
-        propagationCalls: 0,
-        coordConversionTime: 0,
-        distanceCalcTime: 0,
-        iterations: 0,
-        passesFound: 0,
-      }
-    : null;
-  const totalStart = collectStats ? performance.now() : 0;
-
+function computePassesSwath(tle, groundStationPosition, swathKm, startDateMs, endDateMs, maxPasses = 50) {
   const satrec = getSatrec(tle);
 
   // For satellites with future epochs
@@ -273,40 +223,26 @@ function computePassesSwath(tle, groundStationPosition, swathKm, startDateMs, en
   const orbitalPeriod = (2 * Math.PI) / meanMotionRad;
 
   while (date < endDate) {
-    if (collectStats) stats.iterations++;
-
-    let propStart;
-    if (collectStats) propStart = performance.now();
     const positionResult = satellitejs.propagate(satrec, date);
-    if (collectStats) {
-      stats.propagationTime += performance.now() - propStart;
-      stats.propagationCalls++;
-    }
 
     if (!positionResult || !positionResult.position) {
       date.setMinutes(date.getMinutes() + 1);
       continue;
     }
 
-    let convStart;
-    if (collectStats) convStart = performance.now();
     const gmst = satellitejs.gstime(date);
     const positionGd = satellitejs.eciToGeodetic(positionResult.position, gmst);
-    if (collectStats) stats.coordConversionTime += performance.now() - convStart;
 
     const satLat = positionGd.latitude;
     const satLon = positionGd.longitude;
 
     // Calculate great circle distance
-    let distStart;
-    if (collectStats) distStart = performance.now();
     const deltaLat = satLat - groundStation.latitude;
     const deltaLon = satLon - groundStation.longitude;
     const a = Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) + Math.cos(groundStation.latitude) * Math.cos(satLat) * Math.sin(deltaLon / 2) * Math.sin(deltaLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     const earthRadius = 6371;
     const distanceKm = earthRadius * c;
-    if (collectStats) stats.distanceCalcTime += performance.now() - distStart;
 
     const halfSwath = swathKm / 2;
     const withinSwath = distanceKm <= halfSwath;
@@ -357,12 +293,6 @@ function computePassesSwath(tle, groundStationPosition, swathKm, startDateMs, en
     }
   }
 
-  if (collectStats) {
-    stats.totalTime = performance.now() - totalStart;
-    stats.passesFound = passes.length;
-    return { passes, stats };
-  }
-
   return passes;
 }
 
@@ -383,11 +313,11 @@ self.onmessage = function (event) {
         break;
 
       case "COMPUTE_PASSES_ELEVATION":
-        result = computePassesElevation(data.tle, data.groundStationPosition, data.startDateMs, data.endDateMs, data.minElevation, data.maxPasses, data.collectStats);
+        result = computePassesElevation(data.tle, data.groundStationPosition, data.startDateMs, data.endDateMs, data.minElevation, data.maxPasses);
         break;
 
       case "COMPUTE_PASSES_SWATH":
-        result = computePassesSwath(data.tle, data.groundStationPosition, data.swathKm, data.startDateMs, data.endDateMs, data.maxPasses, data.collectStats);
+        result = computePassesSwath(data.tle, data.groundStationPosition, data.swathKm, data.startDateMs, data.endDateMs, data.maxPasses);
         break;
 
       case "CLEAR_CACHE":
