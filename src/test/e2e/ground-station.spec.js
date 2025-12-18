@@ -617,9 +617,9 @@ test.describe("Ground Station", () => {
         return { found: false, error: "Missing viewer or satellites" };
       }
 
-      const issSat = sats.find((s) => s.props?.name === "ISS (ZARYA)");
+      const issSat = sats.find((s) => s.props?.name?.includes("ISS (ZARYA)"));
       if (!issSat || !issSat.props?.passes || issSat.props.passes.length === 0) {
-        return { found: false, error: "No passes found" };
+        return { found: false, error: "No passes found for " + (issSat?.props?.name || "ISS not found") };
       }
 
       const passes = issSat.props.passes;
@@ -681,7 +681,7 @@ test.describe("Ground Station", () => {
     // Get initial state and calculate highlight click position in a single evaluate call
     const stateAndHighlight = await page.evaluate(() => {
       const viewer = window.cc?.viewer;
-      const issSat = window.cc?.sats?.satellites?.find((s) => s.props?.name === "ISS (ZARYA)");
+      const issSat = window.cc?.sats?.satellites?.find((s) => s.props?.name?.includes("ISS (ZARYA)"));
 
       // Get initial state
       const currentTime = viewer?.clock?.currentTime;
@@ -778,7 +778,7 @@ test.describe("Ground Station", () => {
     // Verify time changed and passes were recalculated
     const newState = await page.evaluate(() => {
       const currentTime = window.cc?.viewer?.clock?.currentTime;
-      const issSat = window.cc?.sats?.satellites?.find((s) => s.props?.name === "ISS (ZARYA)");
+      const issSat = window.cc?.sats?.satellites?.find((s) => s.props?.name?.includes("ISS (ZARYA)"));
       const highlightRanges = window.cc?.viewer?.timeline?._highlightRanges || [];
       // Filter for pass highlights only (priority 0, _base = 0)
       const passHighlights = highlightRanges.filter((h) => h._base === 0);
@@ -844,7 +844,7 @@ test.describe("Ground Station", () => {
 
     // Verify highlights match passes in the pass list
     const passAndHighlightMatch = await page.evaluate(() => {
-      const issSat = window.cc?.sats?.satellites?.find((s) => s.props?.name === "ISS (ZARYA)");
+      const issSat = window.cc?.sats?.satellites?.find((s) => s.props?.name?.includes("ISS (ZARYA)"));
       const highlightRanges = window.cc?.viewer?.timeline?._highlightRanges || [];
       const passHighlights = highlightRanges.filter((h) => h._base === 0);
       const viewer = window.cc?.viewer;
@@ -1230,7 +1230,7 @@ test.describe("Ground Station", () => {
 
     // Verify highlights match passes in the pass list
     const passAndHighlightMatch = await page.evaluate(() => {
-      const issSat = window.cc?.sats?.satellites?.find((s) => s.props?.name === "ISS (ZARYA)");
+      const issSat = window.cc?.sats?.satellites?.find((s) => s.props?.name?.includes("ISS (ZARYA)"));
       const highlightRanges = window.cc?.viewer?.timeline?._highlightRanges || [];
       const passHighlights = highlightRanges.filter((h) => h._base === 0);
       const viewer = window.cc?.viewer;

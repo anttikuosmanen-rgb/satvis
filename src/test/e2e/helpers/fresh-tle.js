@@ -68,7 +68,7 @@ export const FRESH_STARLINK_TLE = generateFreshStarlinkTle();
  */
 export function buildFreshIssUrl(options = {}) {
   const tle = encodeURIComponent(generateFreshIssTle());
-  let url = `/?tle=${tle}`;
+  let url = `/?sat=${tle}`;
 
   if (options.gs) {
     url += `&gs=${options.gs}`;
