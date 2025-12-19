@@ -439,3 +439,107 @@ describe("Orbit - Eclipse Transitions", () => {
     expect(Array.isArray(transitions)).toBe(true);
   });
 });
+
+describe("Orbit - TLE Staleness Validation", () => {
+  it("should detect high-drag LEO satellite", () => {
+    // High-drag TLE with significant ndot and bstar
+    const highDragTle = `HIGH-DRAG SAT
+1 45110U 20007A   23232.80903846 0.00110000  00000-0  32750-2 0    04
+2 45110  69.9913 111.5649 0009740 159.9373 200.0626 15.34502222    06`;
+
+    const orbit = new Orbit("HIGH-DRAG SAT", highDragTle);
+
+    expect(orbit.isHighDrag).toBe(true);
+    expect(orbit.dragCoefficient).toBeGreaterThan(0.0001);
+    expect(orbit.bstar).toBeGreaterThan(0.0001);
+  });
+
+  it("should not flag low-drag GEO satellite as high-drag", () => {
+    const orbit = new Orbit("GOES-16", GEO_SATELLITE_TLE);
+
+    expect(orbit.isHighDrag).toBe(false);
+  });
+
+  it("should calculate epoch age correctly", () => {
+    const orbit = new Orbit("ISS", ISS_TLE);
+
+    // ISS TLE epoch is 2018 (TEST_DATES.ISS_EPOCH), which is years old
+    expect(orbit.epochAgeDays).toBeGreaterThan(365);
+    expect(orbit.epochDate).toBeInstanceOf(Date);
+  });
+
+  it("should flag very old TLE as stale", () => {
+    // The ISS_TLE fixture is from 2018, which is > 1 year old
+    const orbit = new Orbit("ISS", ISS_TLE);
+    const stalenessCheck = orbit.checkTLEStaleness();
+
+    expect(stalenessCheck.isStale).toBe(true);
+    expect(stalenessCheck.reason).toContain("days old");
+  });
+
+  it("should estimate decay time for high-drag satellites", () => {
+    const highDragTle = `HIGH-DRAG SAT
+1 45110U 20007A   23232.80903846 0.00110000  00000-0  32750-2 0    04
+2 45110  69.9913 111.5649 0009740 159.9373 200.0626 15.34502222    06`;
+
+    const orbit = new Orbit("HIGH-DRAG SAT", highDragTle);
+
+    expect(orbit.estimatedDaysUntilDecay).toBeDefined();
+    expect(orbit.estimatedDaysUntilDecay).toBeGreaterThan(0);
+    expect(orbit.estimatedDaysUntilDecay).toBeLessThan(365);
+  });
+
+  it("should return null decay estimate for low-drag satellites", () => {
+    const orbit = new Orbit("GOES-16", GEO_SATELLITE_TLE);
+
+    expect(orbit.estimatedDaysUntilDecay).toBeNull();
+  });
+});
+
+describe("Orbit - Position Validation", () => {
+  let orbit;
+
+  beforeEach(() => {
+    orbit = new Orbit("ISS", ISS_TLE);
+  });
+
+  it("should validate reasonable LEO position", () => {
+    // Valid LEO position at ~400km altitude
+    const position = { x: 4000, y: 4000, z: 3000 }; // ~6670 km from center, ~290km altitude
+
+    expect(orbit.validatePosition(position)).toBe(true);
+  });
+
+  it("should reject position with too high altitude for LEO", () => {
+    // Position at 28,000 km altitude (garbage SGP4 result)
+    const position = { x: 20000, y: 20000, z: 15000 }; // ~32,000 km from center
+
+    expect(orbit.validatePosition(position)).toBe(false);
+  });
+
+  it("should reject underground position", () => {
+    // Position inside Earth
+    const position = { x: 1000, y: 1000, z: 1000 }; // ~1700 km from center
+
+    expect(orbit.validatePosition(position)).toBe(false);
+  });
+
+  it("should reject null position", () => {
+    expect(orbit.validatePosition(null)).toBe(false);
+    expect(orbit.validatePosition(undefined)).toBe(false);
+  });
+
+  it("should reject position with invalid coordinates", () => {
+    expect(orbit.validatePosition({ x: NaN, y: 4000, z: 3000 })).toBe(false);
+    expect(orbit.validatePosition({ y: 4000, z: 3000 })).toBe(false); // missing x
+  });
+
+  it("should accept valid GEO position for GEO satellite", () => {
+    const geoOrbit = new Orbit("GOES-16", GEO_SATELLITE_TLE);
+
+    // GEO position at ~36,000 km altitude
+    const position = { x: 30000, y: 25000, z: 5000 }; // ~39,000 km from center
+
+    expect(geoOrbit.validatePosition(position)).toBe(true);
+  });
+});

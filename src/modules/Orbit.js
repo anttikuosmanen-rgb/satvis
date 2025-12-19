@@ -7,6 +7,71 @@ import { GroundStationConditions } from "./util/GroundStationConditions";
 const deg2rad = Math.PI / 180;
 const rad2deg = 180 / Math.PI;
 
+/**
+ * Pre-compute ground station data for optimized look angles calculation.
+ * This avoids repeated trig calculations since the ground station is constant.
+ * @param {Object} observerGeodetic - {latitude, longitude, height} in radians and km
+ * @returns {Object} Pre-computed values for fast look angles
+ */
+function precomputeGroundStationData(observerGeodetic) {
+  const { latitude, longitude, height } = observerGeodetic;
+
+  // Pre-compute trig values
+  const sinLat = Math.sin(latitude);
+  const cosLat = Math.cos(latitude);
+  const sinLon = Math.sin(longitude);
+  const cosLon = Math.cos(longitude);
+
+  // Pre-compute observer ECF position (from satellite.js geodeticToEcf)
+  const a = 6378.137;
+  const b = 6356.7523142;
+  const f = (a - b) / a;
+  const e2 = 2 * f - f * f;
+  const normal = a / Math.sqrt(1 - e2 * sinLat * sinLat);
+
+  const observerEcf = {
+    x: (normal + height) * cosLat * cosLon,
+    y: (normal + height) * cosLat * sinLon,
+    z: (normal * (1 - e2) + height) * sinLat,
+  };
+
+  return {
+    sinLat,
+    cosLat,
+    sinLon,
+    cosLon,
+    observerEcf,
+  };
+}
+
+/**
+ * Fast look angles calculation using pre-computed ground station data.
+ * Avoids repeated trig calculations and ECF conversion.
+ * @param {Object} precomputed - Pre-computed ground station data from precomputeGroundStationData
+ * @param {Object} satelliteEcf - Satellite position in ECF {x, y, z}
+ * @returns {Object} {azimuth, elevation, rangeSat}
+ */
+function ecfToLookAnglesFast(precomputed, satelliteEcf) {
+  const { sinLat, cosLat, sinLon, cosLon, observerEcf } = precomputed;
+
+  // Calculate range vector
+  const rx = satelliteEcf.x - observerEcf.x;
+  const ry = satelliteEcf.y - observerEcf.y;
+  const rz = satelliteEcf.z - observerEcf.z;
+
+  // Topocentric coordinates (South, East, Zenith)
+  const topS = sinLat * cosLon * rx + sinLat * sinLon * ry - cosLat * rz;
+  const topE = -sinLon * rx + cosLon * ry;
+  const topZ = cosLat * cosLon * rx + cosLat * sinLon * ry + sinLat * rz;
+
+  // Look angles
+  const rangeSat = Math.sqrt(topS * topS + topE * topE + topZ * topZ);
+  const elevation = Math.asin(topZ / rangeSat);
+  const azimuth = Math.atan2(-topE, topS) + Math.PI;
+
+  return { azimuth, elevation, rangeSat };
+}
+
 export default class Orbit {
   // Eclipse calculation cache - stores results keyed by time bucket
   // Time bucket size: 30 seconds (30000ms) provides good balance between cache hits and accuracy
@@ -36,6 +101,179 @@ export default class Orbit {
     const meanMotionRad = this.satrec.no;
     const period = (2 * Math.PI) / meanMotionRad;
     return period;
+  }
+
+  /**
+   * Get the TLE epoch as a JavaScript Date
+   * @returns {Date} The epoch date
+   */
+  get epochDate() {
+    // Convert Julian date to JavaScript Date
+    // Julian day 2440587.5 = Unix epoch (Jan 1, 1970)
+    return new Date((this.julianDate - 2440587.5) * 86400000);
+  }
+
+  /**
+   * Get the age of the TLE epoch in days
+   * @returns {number} Days since epoch (negative if epoch is in future)
+   */
+  get epochAgeDays() {
+    const now = new Date();
+    return (now - this.epochDate) / (86400 * 1000);
+  }
+
+  /**
+   * Get the drag coefficient (ndot - first derivative of mean motion)
+   * satellite.js stores ndot directly from TLE (which is ndot/2 in rev/day^2)
+   * @returns {number} ndot value from satrec (TLE format: ndot/2)
+   */
+  get dragCoefficient() {
+    return this.satrec.ndot;
+  }
+
+  /**
+   * Get the B* drag term
+   * @returns {number} B* in 1/earth-radii
+   */
+  get bstar() {
+    return this.satrec.bstar;
+  }
+
+  /**
+   * Check if this is a high-drag satellite (LEO with significant decay)
+   * @returns {boolean} True if satellite has high drag
+   */
+  get isHighDrag() {
+    // High drag thresholds (using TLE format values):
+    // - ndot > 0.0001 (TLE format, actual ndot/2 in rev/day^2) - significant orbital decay
+    // - or B* > 0.0001 (drag term in 1/earth-radii)
+    // - and mean motion > 10 rev/day (LEO satellite)
+    const meanMotionRevDay = (this.satrec.no * 1440) / (2 * Math.PI);
+    const isLEO = meanMotionRevDay > 10;
+    const hasHighNdot = Math.abs(this.dragCoefficient) > 0.0001;
+    const hasHighBstar = Math.abs(this.bstar) > 0.0001;
+
+    return isLEO && (hasHighNdot || hasHighBstar);
+  }
+
+  /**
+   * Estimate when the satellite will/did decay based on drag
+   * Returns estimated days until decay from epoch (can be negative if already decayed)
+   * @returns {number|null} Days until decay, or null if not applicable
+   */
+  get estimatedDaysUntilDecay() {
+    if (!this.isHighDrag) {
+      return null;
+    }
+
+    // The TLE ndot value is ndot/2 in rev/day^2
+    // Actual ndot = 2 * dragCoefficient
+    // If actual ndot = 0.002 rev/day^2, mean motion increases by 0.002 rev/day each day
+    // LEO satellite decays roughly when it gains ~1 rev/day (from ~15 to ~16+ rev/day)
+    // This is a simplification; actual decay is non-linear and accelerates
+    const actualNdot = Math.abs(this.dragCoefficient) * 2;
+    if (actualNdot < 0.00001) {
+      return null; // Too low to estimate
+    }
+
+    // Rough estimate: time to decay ≈ 1 / (ndot * factor)
+    // For ndot = 0.002, decay happens in roughly 200-300 days
+    // Using factor of 5 gives reasonable estimates
+    return Math.min(365, 1 / (actualNdot * 5));
+  }
+
+  /**
+   * Check if the TLE is likely stale (too old for reliable propagation)
+   * For high-drag satellites, SGP4 produces garbage after ~2x the decay time
+   * @returns {{isStale: boolean, reason: string|null, epochAgeDays: number}}
+   */
+  checkTLEStaleness() {
+    const epochAgeDays = this.epochAgeDays;
+
+    // If epoch is in the future, it's not stale
+    if (epochAgeDays < 0) {
+      return { isStale: false, reason: null, epochAgeDays };
+    }
+
+    // For high-drag satellites, check if we're past the reliable propagation window
+    if (this.isHighDrag) {
+      const estimatedDecay = this.estimatedDaysUntilDecay;
+      if (estimatedDecay !== null) {
+        // SGP4 returns null for a while after decay, then garbage
+        // The garbage zone starts at roughly 3-4x the decay time
+        const maxReliableDays = estimatedDecay * 3;
+
+        if (epochAgeDays > maxReliableDays) {
+          return {
+            isStale: true,
+            reason: `High-drag satellite with TLE ${Math.round(epochAgeDays)} days old (max reliable: ~${Math.round(maxReliableDays)} days)`,
+            epochAgeDays,
+            estimatedDecayDays: estimatedDecay,
+          };
+        }
+      }
+
+      // General rule for high-drag: warn if TLE is > 60 days old
+      if (epochAgeDays > 60) {
+        return {
+          isStale: true,
+          reason: `High-drag LEO satellite with TLE ${Math.round(epochAgeDays)} days old`,
+          epochAgeDays,
+        };
+      }
+    }
+
+    // For all satellites, TLEs > 365 days are considered stale
+    if (epochAgeDays > 365) {
+      return {
+        isStale: true,
+        reason: `TLE is ${Math.round(epochAgeDays)} days old (>1 year)`,
+        epochAgeDays,
+      };
+    }
+
+    return { isStale: false, reason: null, epochAgeDays };
+  }
+
+  /**
+   * Validate a propagated position to check for SGP4 garbage results
+   * @param {Object} position - Position object with x, y, z in km
+   * @returns {boolean} True if position appears valid
+   */
+  validatePosition(position) {
+    if (!position || typeof position.x !== "number" || typeof position.y !== "number" || typeof position.z !== "number") {
+      return false;
+    }
+
+    // Check for NaN values
+    if (Number.isNaN(position.x) || Number.isNaN(position.y) || Number.isNaN(position.z)) {
+      return false;
+    }
+
+    const magnitude = Math.sqrt(position.x * position.x + position.y * position.y + position.z * position.z);
+    const altitude = magnitude - 6378; // Earth radius in km
+
+    // Sanity checks for position validity
+    // - Altitude should be between -100 km (slight underground is ok for edge cases) and 100,000 km
+    // - For LEO satellites (mean motion > 10 rev/day), max altitude should be ~3000 km
+    const meanMotionRevDay = (this.satrec.no * 1440) / (2 * Math.PI);
+    const isLEO = meanMotionRevDay > 10;
+
+    if (altitude < -100) {
+      return false; // Underground
+    }
+
+    if (isLEO && altitude > 5000) {
+      // LEO satellite shouldn't be above 5000 km
+      return false;
+    }
+
+    if (altitude > 100000) {
+      // Nothing should be above 100,000 km (beyond GEO by far)
+      return false;
+    }
+
+    return true;
   }
 
   positionECI(time) {
@@ -119,51 +357,69 @@ export default class Orbit {
     groundStation.longitude *= deg2rad;
     groundStation.height /= 1000; // Convert meters to kilometers
 
-    // Initialize tracking variables
-    const date = new Date(effectiveStartDate);
+    // Pre-compute ground station data for fast look angles calculation
+    const gsPrecomputed = precomputeGroundStationData(groundStation);
+
+    // Initialize tracking variables - use numeric timestamps for efficiency
+    let timestamp = effectiveStartDate.getTime();
+    const endTime = endDate.getTime();
     const passes = [];
     let pass = false;
     let ongoingPass = false;
     let lastElevation = 0;
 
+    // Pre-compute time step constants in milliseconds
+    const MS_PER_SEC = 1000;
+    const MS_PER_MIN = 60000;
+    const halfOrbitMs = this.orbitalPeriod * 0.5 * MS_PER_MIN;
+
     // Main calculation loop - step through time until end date
-    while (date < endDate) {
+    while (timestamp < endTime) {
+      // Create Date object only when needed for position calculation
+      const date = new Date(timestamp);
+
       // Calculate satellite position and look angles from ground station
       const positionEcf = this.positionECF(date);
+
       if (!positionEcf) {
-        date.setMinutes(date.getMinutes() + 1);
+        timestamp += MS_PER_MIN;
         continue;
       }
-      const lookAngles = satellitejs.ecfToLookAngles(groundStation, positionEcf);
+
+      const lookAngles = ecfToLookAnglesFast(gsPrecomputed, positionEcf);
       const elevation = lookAngles.elevation / deg2rad; // Convert to degrees
 
       if (elevation > minElevation) {
         // Satellite is visible above minimum elevation threshold
         if (!ongoingPass) {
           // Start of new pass - record initial conditions
+          const isDarkAtStart = GroundStationConditions.isInDarkness(originalGroundStation, date);
+          const isEclipsedAtStart = this.isInEclipse(date);
+
           pass = {
-            start: date.getTime(),
+            start: timestamp,
             azimuthStart: lookAngles.azimuth,
             maxElevation: elevation,
             azimuthApex: lookAngles.azimuth,
-            groundStationDarkAtStart: GroundStationConditions.isInDarkness(originalGroundStation, date),
-            satelliteEclipsedAtStart: this.isInEclipse(date),
+            groundStationDarkAtStart: isDarkAtStart,
+            satelliteEclipsedAtStart: isEclipsedAtStart,
             name: this.name,
           };
           ongoingPass = true;
         } else if (elevation > pass.maxElevation) {
           // Update peak conditions during ongoing pass
           pass.maxElevation = elevation;
-          pass.apex = date.getTime();
+          pass.apex = timestamp;
           pass.azimuthApex = lookAngles.azimuth;
         }
         // Small time step during visible pass for accuracy
-        date.setSeconds(date.getSeconds() + 5);
+        timestamp += 5 * MS_PER_SEC;
       } else if (ongoingPass) {
         // End of pass - finalize pass data and add to results
-        pass.end = date.getTime();
+        pass.end = timestamp;
         pass.duration = pass.end - pass.start;
         pass.azimuthEnd = lookAngles.azimuth;
+
         pass.groundStationDarkAtEnd = GroundStationConditions.isInDarkness(originalGroundStation, date);
         pass.satelliteEclipsedAtEnd = this.isInEclipse(date);
 
@@ -184,7 +440,7 @@ export default class Orbit {
         ongoingPass = false;
         lastElevation = -180;
         // Skip ahead roughly half an orbital period to next potential pass
-        date.setMinutes(date.getMinutes() + this.orbitalPeriod * 0.5);
+        timestamp += halfOrbitMs;
       } else {
         // Satellite not visible - use adaptive time stepping for efficiency
         const deltaElevation = elevation - lastElevation;
@@ -192,23 +448,24 @@ export default class Orbit {
 
         if (deltaElevation < 0) {
           // Satellite moving away from horizon - skip ahead half orbit
-          date.setMinutes(date.getMinutes() + this.orbitalPeriod * 0.5);
+          timestamp += halfOrbitMs;
           lastElevation = -180;
         } else if (elevation < -20) {
           // Very far below horizon - large time steps
-          date.setMinutes(date.getMinutes() + 5);
+          timestamp += 5 * MS_PER_MIN;
         } else if (elevation < -5) {
           // Moderately below horizon - medium time steps
-          date.setMinutes(date.getMinutes() + 1);
+          timestamp += MS_PER_MIN;
         } else if (elevation < -1) {
           // Close to horizon - smaller time steps
-          date.setSeconds(date.getSeconds() + 5);
+          timestamp += 5 * MS_PER_SEC;
         } else {
           // Very close to horizon - finest time steps for accuracy
-          date.setSeconds(date.getSeconds() + 2);
+          timestamp += 2 * MS_PER_SEC;
         }
       }
     }
+
     return passes;
   }
 
@@ -255,16 +512,30 @@ export default class Orbit {
     groundStation.longitude *= deg2rad;
     groundStation.height /= 1000;
 
-    const date = new Date(effectiveStartDate);
+    // Pre-compute ground station trig values for great circle distance
+    const cosGsLat = Math.cos(groundStation.latitude);
+
+    // Initialize tracking variables - use numeric timestamps for efficiency
+    let timestamp = effectiveStartDate.getTime();
+    const endTime = endDate.getTime();
     const passes = [];
     let pass = false;
     let ongoingPass = false;
     let lastDistance = Number.MAX_VALUE;
 
-    while (date < endDate) {
+    // Pre-compute time step constants in milliseconds
+    const MS_PER_SEC = 1000;
+    const MS_PER_MIN = 60000;
+    const halfSwath = swathKm / 2;
+
+    while (timestamp < endTime) {
+      // Create Date object only when needed for position calculation
+      const date = new Date(timestamp);
+
       const positionGeodetic = this.positionGeodetic(date);
+
       if (!positionGeodetic) {
-        date.setMinutes(date.getMinutes() + 1);
+        timestamp += MS_PER_MIN;
         continue;
       }
 
@@ -275,26 +546,28 @@ export default class Orbit {
       // Calculate great circle distance between satellite and ground station
       const deltaLat = satLat - groundStation.latitude;
       const deltaLon = satLon - groundStation.longitude;
-      const a = Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) + Math.cos(groundStation.latitude) * Math.cos(satLat) * Math.sin(deltaLon / 2) * Math.sin(deltaLon / 2);
+      const a = Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) + cosGsLat * Math.cos(satLat) * Math.sin(deltaLon / 2) * Math.sin(deltaLon / 2);
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
       const earthRadius = 6371; // Earth radius in km
       const distanceKm = earthRadius * c;
 
       // Check if ground station is within swath
-      const halfSwath = swathKm / 2;
       const withinSwath = distanceKm <= halfSwath;
 
       if (withinSwath) {
         if (!ongoingPass) {
           // Start of new pass - record initial conditions
+          const isDarkAtStart = GroundStationConditions.isInDarkness(originalGroundStation, date);
+          const isEclipsedAtStart = this.isInEclipse(date);
+
           pass = {
             name: this.name,
-            start: date.getTime(),
+            start: timestamp,
             minDistance: distanceKm,
-            minDistanceTime: date.getTime(),
+            minDistanceTime: timestamp,
             swathWidth: swathKm,
-            groundStationDarkAtStart: GroundStationConditions.isInDarkness(originalGroundStation, date),
-            satelliteEclipsedAtStart: this.isInEclipse(date),
+            groundStationDarkAtStart: isDarkAtStart,
+            satelliteEclipsedAtStart: isEclipsedAtStart,
             // Add placeholder values for card rendering compatibility
             maxElevation: 0, // Not applicable for swath mode
             azimuthApex: 0, // Not applicable for swath mode
@@ -303,13 +576,14 @@ export default class Orbit {
         } else if (distanceKm < pass.minDistance) {
           // Update minimum distance (closest approach)
           pass.minDistance = distanceKm;
-          pass.minDistanceTime = date.getTime();
+          pass.minDistanceTime = timestamp;
         }
-        date.setSeconds(date.getSeconds() + 30); // 30 second steps during pass
+        timestamp += 30 * MS_PER_SEC; // 30 second steps during pass
       } else if (ongoingPass) {
         // End of pass - finalize pass data
-        pass.end = date.getTime();
+        pass.end = timestamp;
         pass.duration = pass.end - pass.start;
+
         pass.groundStationDarkAtEnd = GroundStationConditions.isInDarkness(originalGroundStation, date);
         pass.satelliteEclipsedAtEnd = this.isInEclipse(date);
 
@@ -323,7 +597,7 @@ export default class Orbit {
         ongoingPass = false;
         lastDistance = Number.MAX_VALUE;
         // Skip ahead to avoid immediate re-entry
-        date.setMinutes(date.getMinutes() + Math.max(5, this.orbitalPeriod * 0.1));
+        timestamp += Math.max(5, this.orbitalPeriod * 0.1) * MS_PER_MIN;
       } else {
         // Not in pass, adjust time step based on distance and previous distance
         const deltaDistance = distanceKm - lastDistance;
@@ -331,24 +605,66 @@ export default class Orbit {
 
         if (deltaDistance > 0 && distanceKm > halfSwath * 4) {
           // Moving away and far from swath, skip ahead more
-          date.setMinutes(date.getMinutes() + Math.max(10, this.orbitalPeriod * 0.2));
+          timestamp += Math.max(10, this.orbitalPeriod * 0.2) * MS_PER_MIN;
         } else if (distanceKm > halfSwath * 3) {
           // Far from swath
-          date.setMinutes(date.getMinutes() + 5);
+          timestamp += 5 * MS_PER_MIN;
         } else if (distanceKm > halfSwath * 2) {
           // Moderately far from swath
-          date.setMinutes(date.getMinutes() + 2);
+          timestamp += 2 * MS_PER_MIN;
         } else if (distanceKm > halfSwath * 1.2) {
           // Getting closer to swath
-          date.setMinutes(date.getMinutes() + 1);
+          timestamp += MS_PER_MIN;
         } else {
           // Very close to swath threshold, use fine time steps
-          date.setSeconds(date.getSeconds() + 15);
+          timestamp += 15 * MS_PER_SEC;
         }
       }
     }
 
     return passes;
+  }
+
+  /**
+   * Get Sun position in ECI coordinates (km)
+   * Sun moves slowly (~1 degree per hour), so this can be cached for short durations
+   * @param {number} timestamp - Time in milliseconds
+   * @returns {Object} Sun position {x, y, z} in km
+   */
+  static getSunPositionECI(timestamp) {
+    const date = new Date(timestamp);
+    const astroTime = new Astronomy.AstroTime(date);
+    const sunGeoVector = Astronomy.GeoVector(Astronomy.Body.Sun, astroTime, false);
+
+    const auToKm = 149597870.7;
+    return {
+      x: sunGeoVector.x * auToKm,
+      y: sunGeoVector.y * auToKm,
+      z: sunGeoVector.z * auToKm,
+    };
+  }
+
+  /**
+   * Fast eclipse check using pre-computed sun position
+   * Avoids repeated astronomy-engine calls within a pass
+   * @param {number} timestamp - Time in milliseconds
+   * @param {Object} sunPos - Pre-computed sun position {x, y, z} in km
+   * @returns {boolean} True if satellite is in Earth's shadow
+   */
+  isInEclipseFast(timestamp, sunPos) {
+    try {
+      const date = new Date(timestamp);
+      const satEcf = this.positionECF(date);
+      if (!satEcf) return false;
+
+      const gmst = satellitejs.gstime(date);
+      const satEci = satellitejs.ecfToEci(satEcf, gmst);
+
+      const satPos = { x: satEci.x, y: satEci.y, z: satEci.z };
+      return this.calculateEarthShadow(satPos, sunPos, 6378.137);
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -382,21 +698,8 @@ export default class Orbit {
         z: satEci.z,
       };
 
-      // Get Sun's position using astronomy-engine in proper geocentric coordinates
-      const astroTime = new Astronomy.AstroTime(date);
-
-      // Use GeoVector to get Sun position in geocentric equatorial coordinates
-      // This gives us the Sun's position relative to Earth's center in the same
-      // coordinate system as our satellite ECI coordinates
-      const sunGeoVector = Astronomy.GeoVector(Astronomy.Body.Sun, astroTime, false);
-
-      // Convert to km (astronomy-engine uses AU)
-      const auToKm = 149597870.7;
-      const sunPos = {
-        x: sunGeoVector.x * auToKm,
-        y: sunGeoVector.y * auToKm,
-        z: sunGeoVector.z * auToKm,
-      };
+      // Get Sun's position
+      const sunPos = Orbit.getSunPositionECI(timestamp);
 
       // Earth radius in km
       const earthRadius = 6378.137;
@@ -466,35 +769,99 @@ export default class Orbit {
   }
 
   /**
-   * Find eclipse transition times during a satellite pass
+   * Find eclipse transition times during a satellite pass using binary search
+   * Optimized: Uses cached sun position and binary search for fast detection
    * @param {number} startTime - Pass start time in milliseconds
    * @param {number} endTime - Pass end time in milliseconds
-   * @param {number} timeStep - Time step in seconds for searching
+   * @param {number} precision - Precision in seconds for transition time (default 5s)
    * @returns {Array} Array of transition times {time, fromShadow: boolean}
    */
-  findEclipseTransitions(startTime, endTime, timeStep = 10) {
+  findEclipseTransitions(startTime, endTime, precision = 5) {
     const transitions = [];
-    const startDate = new Date(startTime);
-    const endDate = new Date(endTime);
+    const duration = endTime - startTime;
 
-    const currentDate = new Date(startDate);
-    let wasInEclipse = this.isInEclipse(currentDate);
+    // Cache sun position at midpoint of pass - sun moves <0.01 degrees during a typical 15-min pass
+    const midTime = Math.floor((startTime + endTime) / 2);
+    const sunPos = Orbit.getSunPositionECI(midTime);
 
-    while (currentDate < endDate) {
-      currentDate.setSeconds(currentDate.getSeconds() + timeStep);
-      const isInEclipse = this.isInEclipse(currentDate);
-
-      if (isInEclipse !== wasInEclipse) {
-        // Eclipse state changed - record transition
+    // For very short passes, just check start and end
+    if (duration < 30000) {
+      // < 30 seconds
+      const startEclipse = this.isInEclipseFast(startTime, sunPos);
+      const endEclipse = this.isInEclipseFast(endTime, sunPos);
+      if (startEclipse !== endEclipse) {
+        const transitionTime = this.binarySearchEclipseTransitionFast(startTime, endTime, precision * 1000, sunPos);
         transitions.push({
-          time: currentDate.getTime(),
-          fromShadow: wasInEclipse, // true if transitioning from shadow to sunlight
-          toShadow: isInEclipse, // true if transitioning from sunlight to shadow
+          time: transitionTime,
+          fromShadow: startEclipse,
+          toShadow: endEclipse,
         });
-        wasInEclipse = isInEclipse;
+      }
+      return transitions;
+    }
+
+    // Use coarse sampling to detect potential transitions
+    // For typical LEO passes (5-15 min), use ~1-2 minute steps for initial scan
+    const coarseStep = Math.min(120000, duration / 4); // Max 2 min, or duration/4
+    const samplePoints = [];
+
+    // Sample at coarse intervals using fast eclipse check
+    for (let t = startTime; t <= endTime; t += coarseStep) {
+      samplePoints.push({
+        time: t,
+        inEclipse: this.isInEclipseFast(t, sunPos),
+      });
+    }
+    // Ensure we include the end point
+    if (samplePoints[samplePoints.length - 1].time < endTime) {
+      samplePoints.push({
+        time: endTime,
+        inEclipse: this.isInEclipseFast(endTime, sunPos),
+      });
+    }
+
+    // Find transitions between sample points using binary search
+    for (let i = 0; i < samplePoints.length - 1; i++) {
+      const current = samplePoints[i];
+      const next = samplePoints[i + 1];
+
+      if (current.inEclipse !== next.inEclipse) {
+        const transitionTime = this.binarySearchEclipseTransitionFast(current.time, next.time, precision * 1000, sunPos);
+        transitions.push({
+          time: transitionTime,
+          fromShadow: current.inEclipse,
+          toShadow: next.inEclipse,
+        });
       }
     }
 
     return transitions;
+  }
+
+  /**
+   * Binary search to find the exact eclipse transition time (fast version with cached sun)
+   * @param {number} startTime - Start of search range (ms)
+   * @param {number} endTime - End of search range (ms)
+   * @param {number} precision - Desired precision in milliseconds
+   * @param {Object} sunPos - Pre-computed sun position
+   * @returns {number} Transition time in milliseconds
+   */
+  binarySearchEclipseTransitionFast(startTime, endTime, precision, sunPos) {
+    let low = startTime;
+    let high = endTime;
+    const startEclipse = this.isInEclipseFast(low, sunPos);
+
+    while (high - low > precision) {
+      const midTime = Math.floor((low + high) / 2);
+      const midEclipse = this.isInEclipseFast(midTime, sunPos);
+
+      if (midEclipse === startEclipse) {
+        low = midTime;
+      } else {
+        high = midTime;
+      }
+    }
+
+    return Math.floor((low + high) / 2);
   }
 }

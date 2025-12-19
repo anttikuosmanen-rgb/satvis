@@ -28,6 +28,9 @@
         @open="onDropdownOpen"
         @close="onDropdownClose"
       >
+        <template #option="{ option }">
+          <span class="satellite-option" :data-satellite-name="option">{{ option }}</span>
+        </template>
         <template #noResult> No matching satellites </template>
         <template #afterList>
           <div v-if="hasMoreOptions" class="multiselect__loading-more">Scroll for more...</div>
@@ -61,6 +64,7 @@ export default {
       scrollListener: null,
       satelliteKeydownListener: null,
       groupsKeydownListener: null,
+      contextMenuListener: null,
     };
   },
   computed: {
@@ -177,6 +181,22 @@ export default {
         if (dropdownList) {
           this.scrollListener = this.onScroll.bind(this);
           dropdownList.addEventListener("scroll", this.scrollListener);
+
+          // Add contextmenu listener for right-click to track (event delegation)
+          this.contextMenuListener = (event) => {
+            // Find the option element that was right-clicked
+            const optionEl = event.target.closest(".multiselect__option");
+            if (optionEl) {
+              // Find the satellite name from our data attribute
+              const satelliteSpan = optionEl.querySelector(".satellite-option[data-satellite-name]");
+              if (satelliteSpan) {
+                event.preventDefault();
+                const satelliteName = satelliteSpan.dataset.satelliteName;
+                this.onSatelliteRightClick(satelliteName);
+              }
+            }
+          };
+          dropdownList.addEventListener("contextmenu", this.contextMenuListener);
         }
 
         // Add keydown listener to handle navigation to groups dropdown
@@ -206,9 +226,15 @@ export default {
     onDropdownClose() {
       // Clean up scroll listener when dropdown closes
       const dropdownList = this.$refs.satelliteMultiselect?.$el?.querySelector(".multiselect__content-wrapper");
-      if (dropdownList && this.scrollListener) {
-        dropdownList.removeEventListener("scroll", this.scrollListener);
-        this.scrollListener = null;
+      if (dropdownList) {
+        if (this.scrollListener) {
+          dropdownList.removeEventListener("scroll", this.scrollListener);
+          this.scrollListener = null;
+        }
+        if (this.contextMenuListener) {
+          dropdownList.removeEventListener("contextmenu", this.contextMenuListener);
+          this.contextMenuListener = null;
+        }
       }
       // Clean up keydown listener
       const el = this.$refs.satelliteMultiselect?.$el;
@@ -235,6 +261,27 @@ export default {
       // Increase the limit by the increment amount
       const newLimit = this.currentOptionsLimit + this.optionsLimitIncrement;
       this.currentOptionsLimit = Math.min(newLimit, this.totalAvailableOptions);
+    },
+    onSatelliteRightClick(satelliteName) {
+      // Enable satellite if not already enabled
+      if (!this.allEnabledSatellites.includes(satelliteName)) {
+        // Add to enabled satellites list
+        const newEnabledSatellites = [...(this.enabledSatellites ?? []), satelliteName];
+        cc.sats.enabledSatellites = newEnabledSatellites;
+      }
+
+      // Close the dropdown
+      this.$refs.satelliteMultiselect?.deactivate();
+
+      // Track the satellite after a short delay to allow it to be created
+      this.$nextTick(() => {
+        setTimeout(() => {
+          const sat = cc.sats.getSatellite(satelliteName);
+          if (sat) {
+            sat.track();
+          }
+        }, 100);
+      });
     },
   },
 };
@@ -266,5 +313,11 @@ export default {
   color: #666;
   background: #f8f8f8;
   border-top: 1px solid #e8e8e8;
+}
+
+/* Make satellite option span full width for right-click target */
+.satellite-option {
+  display: block;
+  width: 100%;
 }
 </style>

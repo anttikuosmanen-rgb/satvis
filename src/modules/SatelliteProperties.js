@@ -35,6 +35,13 @@ export class SatelliteProperties {
       this.name = `${this.name} *`;
     }
 
+    // Check for stale TLE (high-drag satellites with old epochs)
+    this.stalenessInfo = this.orbit.checkTLEStaleness();
+    this.isStale = this.stalenessInfo.isStale;
+    if (this.isStale) {
+      console.warn(`Stale TLE for ${this.name}: ${this.stalenessInfo.reason}`);
+    }
+
     this.groundStations = [];
     this.passes = [];
     this.passInterval = undefined;
@@ -214,10 +221,23 @@ export class SatelliteProperties {
 
   computePositionInertialTEME(time) {
     const eci = this.orbit.positionECI(JulianDate.toDate(time));
-    if (this.orbit.error) {
+
+    // Check for SGP4 errors or null results
+    if (this.orbit.error || !eci) {
       this.sampledPosition.valid = false;
       return Cartesian3.ZERO;
     }
+
+    // Validate position to catch SGP4 garbage results (e.g., from stale high-drag TLEs)
+    if (!this.orbit.validatePosition(eci)) {
+      if (!this._invalidPositionWarned) {
+        console.warn(`Invalid SGP4 position for ${this.name} - satellite may have decayed or TLE is too stale`);
+        this._invalidPositionWarned = true;
+      }
+      this.sampledPosition.valid = false;
+      return Cartesian3.ZERO;
+    }
+
     return new Cartesian3(eci.x * 1000, eci.y * 1000, eci.z * 1000);
   }
 

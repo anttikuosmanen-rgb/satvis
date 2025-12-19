@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { FRESH_ISS_TLE, FRESH_CUSTOM_TLE } from "./helpers/fresh-tle.js";
 
 /**
  * E2E Test: Custom Satellite Workflow
@@ -13,14 +14,9 @@ import { test, expect } from "@playwright/test";
  * - Orbit visualization for custom satellites
  */
 
-// Sample valid TLE for testing
-const VALID_TLE = `CUSTOM TEST SAT
-1 99999U 24001A   24001.50000000  .00001000  00000-0  10000-4 0  9999
-2 99999  98.0000 180.0000 0010000 100.0000 260.0000 14.50000000100000`;
-
-const ISS_TLE = `ISS (ZARYA)
-1 25544U 98067A   24001.50000000  .00016717  00000-0  10270-3 0  9991
-2 25544  51.6416 247.4627 0006703  85.5961 274.6009 15.49478733123456`;
+// Use fresh TLEs from helper to avoid staleness issues
+const VALID_TLE = FRESH_CUSTOM_TLE;
+const ISS_TLE = FRESH_ISS_TLE;
 
 test.describe("Custom Satellite Input", () => {
   test("should load satellite from TLE URL parameter @critical", async ({ page }) => {

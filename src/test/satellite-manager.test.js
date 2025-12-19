@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SatelliteManager } from "../modules/SatelliteManager";
-import { ISS_TLE, ISS_TLE_UPDATED, STARLINK_TLE } from "./fixtures/tle-data";
+import { ISS_TLE, ISS_TLE_FRESH, ISS_TLE_UPDATED, STARLINK_TLE } from "./fixtures/tle-data";
 
 // Mock Cesium viewer
 const createMockViewer = () => ({
@@ -165,12 +165,26 @@ describe("SatelliteManager - TLE Parsing and Loading", () => {
   });
 
   it("should build satellite-by-tag index correctly", () => {
-    manager.addFromTle(ISS_TLE, ["Space Stations"], false);
+    // Use fresh TLE to avoid staleness filtering
+    manager.addFromTle(ISS_TLE_FRESH, ["Space Stations"], false);
     manager.addFromTle(STARLINK_TLE, ["Communications"], false);
 
     const taglist = manager.taglist;
 
     expect(taglist["Space Stations"]).toContain("ISS (ZARYA)");
+    expect(taglist.Communications).toContain("STARLINK-1007");
+  });
+
+  it("should filter stale satellites from taglist", () => {
+    // ISS_TLE has epoch from 2018 - should be flagged as stale (>1 year old)
+    manager.addFromTle(ISS_TLE, ["Space Stations"], false);
+    manager.addFromTle(STARLINK_TLE, ["Communications"], false);
+
+    const taglist = manager.taglist;
+
+    // Stale ISS should not appear in taglist
+    expect(taglist["Space Stations"]).toBeUndefined();
+    // Fresh Starlink should still appear
     expect(taglist.Communications).toContain("STARLINK-1007");
   });
 });
