@@ -28,10 +28,10 @@ registerPWA();
 
 // Setup Vue app
 const app = createApp(App);
-const cc = new CesiumController();
-app.config.globalProperties.cc = cc;
 
 // Setup Pinia with customConfig from preset
+// Pinia must be activated before CesiumController is created
+// since CesiumController accesses the sat store in its constructor
 const pinia = createPinia();
 pinia.use(({ store }) => {
   store.router = markRaw(router);
@@ -39,6 +39,10 @@ pinia.use(({ store }) => {
 });
 pinia.use(piniaUrlSync);
 app.use(pinia);
+
+// Create CesiumController after Pinia is activated
+const cc = new CesiumController();
+app.config.globalProperties.cc = cc;
 
 // Setup router guards to handle configuration changes on route changes
 setupRouterGuards(router, cc);

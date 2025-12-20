@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { setActivePinia, createPinia } from "pinia";
 import { useSatStore, satStoreUrlSyncConfig } from "../stores/sat";
-import { ISS_TLE_NO_NAME, STARLINK_TLE, ONEWEB_TLE, TWO_SATS_CONCATENATED, FIVE_SATS_CONCATENATED } from "./fixtures/tle-data";
+import { ISS_TLE_NO_NAME, STARLINK_TLE, ONEWEB_TLE, TWO_SATS_CONCATENATED, FIVE_SATS_CONCATENATED, SPACE_PADDED_NORAD_TLE } from "./fixtures/tle-data";
 
 // Get the custom satellites config from the exported config
 const customSatellitesConfig = satStoreUrlSyncConfig.find((c) => c.name === "customSatellites");
@@ -279,6 +279,19 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
     const result = config.deserialize("");
 
     expect(result).toEqual([]);
+  });
+
+  it("should deserialize TLE with space-padded NORAD ID (old satellites)", () => {
+    const store = useSatStore();
+    const config = customSatellitesConfig;
+
+    // NORAD ID 694 has only 3 digits, formatted with leading spaces: "1   694U"
+    const result = config.deserialize(SPACE_PADDED_NORAD_TLE);
+
+    expect(result).toHaveLength(1);
+    // Should contain the space-padded NORAD ID
+    expect(result[0]).toContain("1   694U");
+    expect(result[0]).toContain("2   694");
   });
 
   it("should parse 2 satellites back-to-back without separator", () => {

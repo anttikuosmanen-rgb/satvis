@@ -123,6 +123,11 @@ export const INVALID_TLE_TOO_SHORT = `TEST SAT
 1 12345U 12345A
 2 12345  45.0000`;
 
+// TLE with space-padded NORAD ID (old satellites with catalog numbers < 10000)
+// NORAD ID 694 is OV1-2 (launched 1963)
+export const SPACE_PADDED_NORAD_TLE = `1   694U 63047A   ${generateFreshEpoch()}  .00001631  00000-0  18952-3 0  9996
+2   694  30.3532 279.6750 0548805 100.0696 266.2251 14.11792095120382`;
+
 // ============================================================================
 // Expected values and test data
 // ============================================================================

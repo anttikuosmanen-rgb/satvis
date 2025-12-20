@@ -18,13 +18,15 @@
       <vue-multiselect
         ref="satelliteMultiselect"
         v-model="allEnabledSatellites"
-        :options="availableSatellites"
+        :options="filteredSatellites"
         :multiple="true"
-        placeholder="Type to search"
+        placeholder="Type to search (name or NORAD ID)"
         :close-on-select="false"
         :limit="0"
         :limit-text="(count) => `${count} satellite${count > 1 ? 's' : ''} selected`"
         :options-limit="currentOptionsLimit"
+        :internal-search="false"
+        @search-change="onSearchChange"
         @open="onDropdownOpen"
         @close="onDropdownClose"
       >
@@ -65,6 +67,7 @@ export default {
       satelliteKeydownListener: null,
       groupsKeydownListener: null,
       contextMenuListener: null,
+      searchQuery: "", // Current search query for satellite filtering
     };
   },
   computed: {
@@ -77,11 +80,37 @@ export default {
       });
       return [...allSats].sort((a, b) => a.localeCompare(b));
     },
+    satelliteNoradMap() {
+      // Get NORAD ID map from SatelliteManager (cc.sats)
+      return window.cc?.sats?.satelliteNoradMap || {};
+    },
+    filteredSatellites() {
+      // If no search query, return all satellites
+      if (!this.searchQuery || this.searchQuery.trim() === "") {
+        return this.availableSatellites;
+      }
+
+      const query = this.searchQuery.toLowerCase().trim();
+      const noradMap = this.satelliteNoradMap;
+
+      return this.availableSatellites.filter((satName) => {
+        // Match by satellite name (case-insensitive)
+        if (satName.toLowerCase().includes(query)) {
+          return true;
+        }
+        // Match by NORAD ID
+        const noradId = noradMap[satName];
+        if (noradId && noradId.toString().includes(query)) {
+          return true;
+        }
+        return false;
+      });
+    },
     satellitesEnabledByTag() {
       return this.getSatellitesFromTags(this.enabledTags);
     },
     totalAvailableOptions() {
-      return this.availableSatellites.length;
+      return this.filteredSatellites.length;
     },
     hasMoreOptions() {
       return this.currentOptionsLimit < this.totalAvailableOptions;
@@ -122,6 +151,12 @@ export default {
   methods: {
     getSatellitesFromTags(taglist) {
       return taglist.map((tag) => this.availableSatellitesByTag[tag] || []).flat();
+    },
+    onSearchChange(query) {
+      // Update search query for custom filtering (searches both name and NORAD ID)
+      this.searchQuery = query;
+      // Reset options limit when search changes to show results from the beginning
+      this.currentOptionsLimit = 100;
     },
     activateFocusedItem(index) {
       // Focus and activate the multiselect at the given index
@@ -242,6 +277,8 @@ export default {
         el.removeEventListener("keydown", this.satelliteKeydownListener, true);
         this.satelliteKeydownListener = null;
       }
+      // Clear search query when dropdown closes
+      this.searchQuery = "";
       // Emit event to re-enable menu navigation
       this.$emit("dropdown-closed");
     },

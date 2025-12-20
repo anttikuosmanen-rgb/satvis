@@ -649,6 +649,21 @@ export class SatelliteManager {
     return sortedTaglist;
   }
 
+  /**
+   * Returns a map of satellite name to NORAD catalog number
+   * Used for searching satellites by NORAD ID
+   * @returns {Object} Map of satellite name to satnum (NORAD ID)
+   */
+  get satelliteNoradMap() {
+    const noradMap = {};
+    this.satellites.forEach((sat) => {
+      if (!sat.props.isStale) {
+        noradMap[sat.props.name] = sat.props.satnum;
+      }
+    });
+    return noradMap;
+  }
+
   get selectedSatellite() {
     const satellite = this.satellites.find((sat) => sat.isSelected);
     return satellite ? satellite.props.name : "";

@@ -94,16 +94,18 @@ export const satStoreUrlSyncConfig = [
 
       // Parse TLEs by detecting line boundaries
       // TLE lines have fixed structure:
-      // - Line 1 starts with "1 " (69 chars)
-      // - Line 2 starts with "2 " (69 chars)
+      // - Line 1 starts with "1 " followed by space-padded 5-char NORAD ID (69 chars total)
+      // - Line 2 starts with "2 " followed by space-padded 5-char NORAD ID (69 chars total)
       // - Name line (optional, variable length, doesn't start with "1 " or "2 ")
+      // Note: NORAD IDs can be 1-5 digits, right-justified with leading spaces (e.g., "  694" for ID 694)
 
       const tles = [];
       let buffer = v.trim();
 
       while (buffer.length > 0) {
         // Find next "1 " that starts a TLE line 1
-        const line1Index = buffer.search(/1 \d{5}/);
+        // NORAD ID field is 5 chars, can be space-padded (e.g., "1 00694" or "1   694")
+        const line1Index = buffer.search(/1 [ 0-9]{5}/);
 
         if (line1Index === -1) break; // No more TLEs found
 
@@ -116,7 +118,8 @@ export const satStoreUrlSyncConfig = [
         const line1 = buffer.substring(line1Start, line1End);
 
         // Find line 2 (should be right after line 1, starts with "2 ")
-        const line2Start = buffer.substring(line1End).search(/2 \d{5}/);
+        // NORAD ID field is 5 chars, can be space-padded
+        const line2Start = buffer.substring(line1End).search(/2 [ 0-9]{5}/);
 
         if (line2Start === -1) break; // Invalid TLE, missing line 2
 

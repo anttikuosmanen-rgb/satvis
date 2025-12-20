@@ -268,8 +268,8 @@ export default class Orbit {
       return false;
     }
 
-    if (altitude > 100000) {
-      // Nothing should be above 100,000 km (beyond GEO by far)
+    if (altitude > 1000000) {
+      // Nothing should be above 1,000,000 km (FALCON 9 R/B 2015-007B at 641287 km apogee)
       return false;
     }
 

@@ -227,6 +227,33 @@ describe("SatelliteManager - Satellite Lookup", () => {
     expect(spaceStations).toHaveLength(1);
     expect(spaceStations[0].props.name).toBe("ISS (ZARYA)");
   });
+
+  it("should return NORAD ID map for all non-stale satellites", () => {
+    // Add a fresh satellite that won't be stale
+    manager.addFromTle(ISS_TLE_FRESH, ["Fresh Sats"], false);
+
+    const noradMap = manager.satelliteNoradMap;
+
+    // Should include fresh ISS with its NORAD ID (25544)
+    // satnum is a string from satellite.js
+    expect(noradMap["ISS (ZARYA)"]).toBe("25544");
+    // Should include Starlink with its NORAD ID (44713)
+    expect(noradMap["STARLINK-1007"]).toBe("44713");
+  });
+
+  it("should allow searching by NORAD ID using the map", () => {
+    manager.addFromTle(ISS_TLE_FRESH, ["Fresh Sats"], false);
+
+    const noradMap = manager.satelliteNoradMap;
+    const searchQuery = "25544";
+
+    // Find satellites by NORAD ID
+    const matches = Object.entries(noradMap)
+      .filter(([, satnum]) => satnum.toString().includes(searchQuery))
+      .map(([name]) => name);
+
+    expect(matches).toContain("ISS (ZARYA)");
+  });
 });
 
 describe("SatelliteManager - Satellite Counting", () => {

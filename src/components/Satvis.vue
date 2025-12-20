@@ -874,8 +874,14 @@ export default {
         let originalName = line0;
         if (!originalName) {
           // Extract satellite number from line 1 and use as name
-          const satNumMatch = line1.match(/^1 (\d{5})/);
-          originalName = satNumMatch ? `NORAD ${satNumMatch[1]}` : "Custom Satellite";
+          // NORAD ID is 5 chars after "1 ", can be space-padded (e.g., "1   694U" for ID 694)
+          const satNumMatch = line1.match(/^1 ([ 0-9]{5})/);
+          if (satNumMatch) {
+            const noradId = satNumMatch[1].trim();
+            originalName = `NORAD ${noradId}`;
+          } else {
+            originalName = "Custom Satellite";
+          }
         }
 
         // Check if custom satellite with this name already exists
