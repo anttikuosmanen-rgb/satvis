@@ -394,6 +394,7 @@ export class SatelliteProperties {
       } else {
         passes = await this.orbit.computePassesElevation(groundStation.position, JulianDate.toDate(this.passInterval.start), JulianDate.toDate(this.passInterval.stopPrediction));
       }
+
       passes.forEach((pass) => {
         pass.groundStationName = groundStation.name;
         pass.epochInFuture = epochInFuture;

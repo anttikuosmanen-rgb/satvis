@@ -680,8 +680,8 @@ export default {
         if (this.cc.viewer.trackedEntity) {
           this.cc.viewer.trackedEntity = undefined;
           this.cc.viewer.selectedEntity = undefined;
-          // Fly to default globe view
-          this.cc.viewer.camera.flyHome(1.5);
+          // Fly to app's default globe view (Helsinki-centered)
+          this.cc.flyToDefaultView(1.5);
           return;
         }
       }

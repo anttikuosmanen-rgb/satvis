@@ -4,6 +4,9 @@ import { useSatStore } from "../stores/sat";
 import { CesiumComponentCollection } from "./util/CesiumComponentCollection";
 import { DescriptionHelper } from "./util/DescriptionHelper";
 import { filterAndSortPasses } from "./util/PassFilter";
+import { GroundStationConditions } from "./util/GroundStationConditions";
+
+const deg2rad = Math.PI / 180;
 
 export class GroundStationEntity extends CesiumComponentCollection {
   constructor(viewer, sats, position, givenName = "") {
@@ -18,6 +21,20 @@ export class GroundStationEntity extends CesiumComponentCollection {
     this._passesCacheCesiumTime = null; // Cesium time when cache was created
     this._cachedFilterState = null;
     this._cacheIsValid = false; // Quick validity check flag
+
+    // State for bright passes search feature
+    this._brightPassesState = {
+      isSearching: false,
+      progress: { current: 0, total: 0, currentSatName: "" },
+      brightnessCalculated: false, // Whether brightness has been calculated for passes
+      filters: { minMagnitude: 4.0, includeAll: false, showOnlyBright: false },
+      darknessWindow: null,
+      abortRequested: false,
+    };
+
+    // Cache for brightness data - persists across pass recalculations
+    // Key: `${satelliteName}_${passStartTime}`, Value: { peakMagnitude, peakBrightnessTime, isInShadow }
+    this._brightnessCache = new Map();
 
     this.createEntities();
   }
@@ -59,7 +76,15 @@ export class GroundStationEntity extends CesiumComponentCollection {
   createDescription() {
     this.description = DescriptionHelper.cachedCallbackProperty((time) => {
       const passes = this.passes(time);
-      const content = DescriptionHelper.renderGroundstationDescription(time, this.name, this.position, passes, this.sats.overpassMode);
+      const content = DescriptionHelper.renderGroundstationDescription(
+        time,
+        this.name,
+        this.position,
+        passes,
+        this.sats.overpassMode,
+        this._brightPassesState,
+        this._brightnessCache,
+      );
       return content;
     });
   }
@@ -102,21 +127,23 @@ export class GroundStationEntity extends CesiumComponentCollection {
     if (this._passesCache && this._passesCacheTime && this._passesCacheCesiumTime) {
       const currentTimeMs = JulianDate.toDate(time).getTime();
       // Adjust cache validity based on clock multiplier to prevent excessive invalidation
-      // At 1x speed: cache valid for 60s real time
-      // At 100x speed: cache valid for 6000s real time (100 minutes)
       const clockMultiplier = Math.abs(this.viewer.clock.multiplier || 1.0);
-      const clampedMultiplier = Math.max(0.1, Math.min(1000, clockMultiplier));
+      const clampedMultiplier = Math.max(0.1, Math.min(2000, clockMultiplier));
+
+      // At 1x speed: cache valid for 60s of simulation time
+      // At 1000x speed: cache valid for 60,000s of simulation time (keeps cache valid for ~60s real time)
       const baseCacheValidityMs = 60 * 1000;
       const cacheValidityMs = baseCacheValidityMs * clampedMultiplier;
-      const cacheValidityHours = 1; // Cache valid if Cesium time hasn't jumped more than 1 hour
 
-      const realTimeCacheAge = currentTimeMs - this._passesCacheTime;
+      // Scale the hours threshold too - at high speeds, normal progression shouldn't invalidate
+      // At 1x: 1 hour jump invalidates; at 1000x: 1000 hour jump invalidates
+      const cacheValidityHours = Math.max(1, clampedMultiplier);
+
+      const simTimeDiffMs = currentTimeMs - this._passesCacheTime;
       const cesiumTimeDiff = Math.abs(JulianDate.secondsDifference(time, this._passesCacheCesiumTime)) / 3600; // Hours
 
-      // Cache is valid if:
-      // 1. Real-world time hasn't passed more than 60 seconds, AND
-      // 2. Cesium simulated time hasn't jumped more than 1 hour
-      if (realTimeCacheAge < cacheValidityMs && cesiumTimeDiff < cacheValidityHours) {
+      // Cache is valid if simulation time hasn't advanced too much
+      if (simTimeDiffMs < cacheValidityMs && cesiumTimeDiff < cacheValidityHours) {
         this._cacheIsValid = true; // Mark as valid for next quick check
         return filterAndSortPasses(this._passesCache, time, deltaHours);
       }
@@ -198,21 +225,23 @@ export class GroundStationEntity extends CesiumComponentCollection {
     if (this._passesCache && this._passesCacheTime && this._passesCacheCesiumTime) {
       const currentTimeMs = JulianDate.toDate(time).getTime();
       // Adjust cache validity based on clock multiplier to prevent excessive invalidation
-      // At 1x speed: cache valid for 60s real time
-      // At 100x speed: cache valid for 6000s real time (100 minutes)
       const clockMultiplier = Math.abs(this.viewer.clock.multiplier || 1.0);
-      const clampedMultiplier = Math.max(0.1, Math.min(1000, clockMultiplier));
+      const clampedMultiplier = Math.max(0.1, Math.min(2000, clockMultiplier));
+
+      // At 1x speed: cache valid for 60s of simulation time
+      // At 1000x speed: cache valid for 60,000s of simulation time (keeps cache valid for ~60s real time)
       const baseCacheValidityMs = 60 * 1000;
       const cacheValidityMs = baseCacheValidityMs * clampedMultiplier;
-      const cacheValidityHours = 1; // Cache valid if Cesium time hasn't jumped more than 1 hour
 
-      const realTimeCacheAge = currentTimeMs - this._passesCacheTime;
+      // Scale the hours threshold too - at high speeds, normal progression shouldn't invalidate
+      // At 1x: 1 hour jump invalidates; at 1000x: 1000 hour jump invalidates
+      const cacheValidityHours = Math.max(1, clampedMultiplier);
+
+      const simTimeDiffMs = currentTimeMs - this._passesCacheTime;
       const cesiumTimeDiff = Math.abs(JulianDate.secondsDifference(time, this._passesCacheCesiumTime)) / 3600; // Hours
 
-      // Cache is valid if:
-      // 1. Real-world time hasn't passed more than 60 seconds, AND
-      // 2. Cesium simulated time hasn't jumped more than 1 hour
-      if (realTimeCacheAge < cacheValidityMs && cesiumTimeDiff < cacheValidityHours) {
+      // Cache is valid if simulation time hasn't advanced too much
+      if (simTimeDiffMs < cacheValidityMs && cesiumTimeDiff < cacheValidityHours) {
         this._cacheIsValid = true; // Mark as valid for next quick check
         return filterAndSortPasses(this._passesCache, time, deltaHours);
       }
@@ -243,5 +272,157 @@ export class GroundStationEntity extends CesiumComponentCollection {
 
     // Filter and return
     return filterAndSortPasses(passes, time, deltaHours);
+  }
+
+  /**
+   * Calculate brightness for passes during the next darkness window using web workers.
+   * Updates existing passes with peakMagnitude, peakBrightnessTime, and isInShadow.
+   * Enables satellites with bright passes if includeAll mode is used.
+   */
+  async calculateBrightness() {
+    const state = this._brightPassesState;
+    state.isSearching = true;
+    state.abortRequested = false;
+    state.brightnessCalculated = false;
+    this.refreshDescription();
+
+    // Get darkness window
+    state.darknessWindow = GroundStationConditions.getNextDarknessWindow(this.position, new Date());
+
+    if (!state.darknessWindow) {
+      // Polar day - no darkness window
+      state.isSearching = false;
+      this.refreshDescription();
+      return;
+    }
+
+    // Get satellites to check
+    const satellites = state.filters.includeAll ? this.sats.satellites : this.sats.activeSatellites;
+    const validSatellites = satellites.filter((sat) => !sat.props.isStale);
+
+    state.progress.total = validSatellites.length;
+    state.progress.current = 0;
+
+    // Position for pass calculation (degrees, meters)
+    const groundStationPosition = {
+      latitude: this.position.latitude,
+      longitude: this.position.longitude,
+      height: this.position.height || 0,
+    };
+
+    // Position for brightness calculations (radians, km)
+    const observerGeodetic = {
+      latitude: this.position.latitude * deg2rad,
+      longitude: this.position.longitude * deg2rad,
+      height: (this.position.height || 0) / 1000,
+    };
+
+    let completed = 0;
+    const brightSatellites = new Set(); // Track satellites with bright passes
+
+    // Process each satellite - use workers to calculate passes, then brightness on main thread
+    const passPromises = validSatellites.map(async (sat) => {
+      if (state.abortRequested) return null;
+
+      try {
+        // Calculate passes using web workers
+        const passes = await sat.props.orbit.computePassesElevation(
+          groundStationPosition,
+          state.darknessWindow.start,
+          state.darknessWindow.end,
+          5, // min elevation
+          20, // max passes
+        );
+
+        // Update progress
+        completed++;
+        state.progress.current = completed;
+        state.progress.currentSatName = sat.props.name;
+
+        // Update UI periodically
+        if (completed % 10 === 0 || completed === validSatellites.length) {
+          this.refreshDescription();
+        }
+
+        let hasBrightPasses = false;
+
+        // Calculate brightness for each pass (main thread - needs astronomy-engine)
+        for (const pass of passes) {
+          if (state.abortRequested) break;
+
+          try {
+            const brightness = sat.props.orbit.estimatePeakBrightness(pass, observerGeodetic);
+            if (brightness) {
+              // Store in brightness cache using satellite name + pass start time as key
+              // Ensure pass.start is converted to a timestamp for consistent key format
+              const passStartMs = typeof pass.start === "number" ? pass.start : new Date(pass.start).getTime();
+              const cacheKey = `${sat.props.name}_${passStartMs}`;
+              this._brightnessCache.set(cacheKey, {
+                peakMagnitude: brightness.magnitude,
+                peakBrightnessTime: brightness.time,
+                isInShadow: brightness.isInShadow,
+              });
+
+              // Check if this is a bright pass (meets magnitude filter)
+              if (!brightness.isInShadow && brightness.magnitude <= state.filters.minMagnitude) {
+                hasBrightPasses = true;
+              }
+            }
+          } catch {
+            // Brightness estimation failed
+          }
+        }
+
+        return { sat, hasBrightPasses };
+      } catch (error) {
+        console.warn(`Pass calc failed for ${sat.props.name}:`, error);
+        return null;
+      }
+    });
+
+    // Wait for all calculations
+    const results = await Promise.allSettled(passPromises);
+
+    // Track satellites with bright passes
+    for (const result of results) {
+      if (result.status !== "fulfilled" || !result.value) continue;
+
+      const { sat, hasBrightPasses } = result.value;
+
+      if (hasBrightPasses) {
+        brightSatellites.add(sat.props.name);
+      }
+    }
+
+    // Enable satellites with bright passes if includeAll mode
+    if (state.filters.includeAll && brightSatellites.size > 0) {
+      const enabledSet = new Set(this.sats.enabledSatellites);
+      const toEnable = [...brightSatellites].filter((name) => !enabledSet.has(name));
+
+      if (toEnable.length > 0) {
+        console.log(`[Brightness] Enabling ${toEnable.length} satellites with bright passes:`, toEnable);
+        this.sats.enabledSatellites = [...this.sats.enabledSatellites, ...toEnable];
+      }
+    }
+
+    console.log(`[Brightness] Calculation complete. Cache size: ${this._brightnessCache.size}`);
+
+    state.isSearching = false;
+    state.brightnessCalculated = true;
+    this.invalidatePassCache(); // Force refresh to show brightness in cards
+    this.refreshDescription();
+
+    if (this.viewer?.scene) {
+      this.viewer.scene.requestRender();
+    }
+  }
+
+  /**
+   * Cancel an ongoing brightness calculation.
+   */
+  cancelBrightnessCalculation() {
+    this._brightPassesState.abortRequested = true;
+    this._brightPassesState.isSearching = false;
+    this.refreshDescription();
   }
 }

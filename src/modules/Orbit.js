@@ -79,6 +79,75 @@ export default class Orbit {
   static eclipseCache = new Map(); // key: `${satnum}_${timeBucket}`, value: boolean
   static eclipseCacheMaxSize = 10000; // Limit cache size to prevent memory bloat
 
+  /**
+   * Known standard magnitudes for satellites at 1000km range, 50% illumination.
+   * Used for brightness estimation when intrinsic magnitude is not provided.
+   * Sources: Heavens-Above, SeeSat-L mailing list, peer-reviewed observations.
+   *
+   * Keys can be:
+   * - NORAD catalog number (number) for specific satellites
+   * - Name pattern (string) for satellite constellations
+   *
+   * Values are standard magnitudes (lower = brighter)
+   */
+  static STANDARD_MAGNITUDES = {
+    // Space stations
+    25544: -1.8, // ISS - International Space Station
+    48274: -0.5, // Tiangong - Chinese Space Station (CSS)
+
+    // Famous satellites
+    20580: 1.5, // Hubble Space Telescope (HST)
+
+    // Crewed vehicles (typical when docked or free-flying)
+    // Dragon, Soyuz, Progress vary significantly
+
+    // Patterns for constellation matching (checked by name)
+    STARLINK: 6.0, // Starlink average (Gen1: 5.5-6.5, VisorSat: 6.5-7.0, Gen2: 6.0-7.0)
+    "STARLINK VISORSAT": 6.8, // Starlink with sun visor
+    ONEWEB: 7.5, // OneWeb constellation
+    IRIDIUM: 6.0, // Iridium (non-flare, flares can reach -8)
+    GLOBALSTAR: 6.5, // Globalstar constellation
+    GPS: 8.5, // GPS Block III (MEO orbit)
+    COSMOS: 5.5, // Generic Cosmos satellites (varies widely)
+    DRAGON: 2.5, // SpaceX Dragon
+    PROGRESS: 3.0, // Progress cargo spacecraft
+    SOYUZ: 3.0, // Soyuz crewed spacecraft
+    CYGNUS: 3.5, // Northrop Grumman Cygnus
+    "HTV-": 3.0, // Japanese HTV/Kounotori
+    CREW: 2.5, // Crew Dragon
+  };
+
+  // Default standard magnitude when satellite is not in known list
+  static DEFAULT_STANDARD_MAGNITUDE = 4.0;
+
+  /**
+   * Get the standard magnitude for a satellite based on its NORAD ID or name.
+   * @param {number} satnum - NORAD catalog number
+   * @param {string} name - Satellite name
+   * @returns {number} Standard magnitude (intrinsic brightness)
+   */
+  static getStandardMagnitude(satnum, name) {
+    // First check by NORAD ID (exact match)
+    if (satnum && Orbit.STANDARD_MAGNITUDES[satnum] !== undefined) {
+      return Orbit.STANDARD_MAGNITUDES[satnum];
+    }
+
+    // Then check by name patterns
+    if (name) {
+      const upperName = name.toUpperCase();
+      for (const [pattern, mag] of Object.entries(Orbit.STANDARD_MAGNITUDES)) {
+        // Skip numeric keys (NORAD IDs)
+        if (typeof pattern === "string" && isNaN(pattern)) {
+          if (upperName.includes(pattern)) {
+            return mag;
+          }
+        }
+      }
+    }
+
+    return Orbit.DEFAULT_STANDARD_MAGNITUDE;
+  }
+
   constructor(name, tle) {
     this.name = name;
     this.tle = tle.split("\n");
@@ -863,5 +932,230 @@ export default class Orbit {
     }
 
     return Math.floor((low + high) / 2);
+  }
+
+  // ============================================================================
+  // Satellite Brightness Estimation
+  // ============================================================================
+
+  /**
+   * Convert observer geodetic position to ECI coordinates
+   * @param {Object} observerGeodetic - {latitude, longitude, height} in radians and km
+   * @param {Date} date - Time for coordinate conversion
+   * @returns {Object} Observer position {x, y, z} in km (ECI frame)
+   */
+  static getObserverECI(observerGeodetic, date) {
+    // Convert geodetic to ECF
+    const observerEcf = satellitejs.geodeticToEcf(observerGeodetic);
+
+    // Convert ECF to ECI
+    const gmst = satellitejs.gstime(date);
+    const observerEci = satellitejs.ecfToEci(observerEcf, gmst);
+
+    return {
+      x: observerEci.x,
+      y: observerEci.y,
+      z: observerEci.z,
+    };
+  }
+
+  /**
+   * Calculate the phase angle between Sun-Satellite-Observer
+   * The phase angle determines how much of the satellite's illuminated side is visible
+   * @param {Object} satEci - Satellite position {x, y, z} in km (ECI frame)
+   * @param {Object} observerEci - Observer position {x, y, z} in km (ECI frame)
+   * @param {Object} sunEci - Sun position {x, y, z} in km (ECI frame)
+   * @returns {number} Phase angle in radians (0 = fully lit, π = fully shadowed)
+   */
+  static calculatePhaseAngle(satEci, observerEci, sunEci) {
+    // Vector from satellite to sun
+    const satToSun = {
+      x: sunEci.x - satEci.x,
+      y: sunEci.y - satEci.y,
+      z: sunEci.z - satEci.z,
+    };
+
+    // Vector from satellite to observer
+    const satToObs = {
+      x: observerEci.x - satEci.x,
+      y: observerEci.y - satEci.y,
+      z: observerEci.z - satEci.z,
+    };
+
+    // Calculate magnitudes
+    const magSatToSun = Math.sqrt(satToSun.x * satToSun.x + satToSun.y * satToSun.y + satToSun.z * satToSun.z);
+    const magSatToObs = Math.sqrt(satToObs.x * satToObs.x + satToObs.y * satToObs.y + satToObs.z * satToObs.z);
+
+    // Dot product
+    const dotProduct = satToSun.x * satToObs.x + satToSun.y * satToObs.y + satToSun.z * satToObs.z;
+
+    // Calculate phase angle (angle between sun-satellite and observer-satellite vectors)
+    const cosPhase = dotProduct / (magSatToSun * magSatToObs);
+
+    // Clamp to [-1, 1] to handle floating point errors
+    return Math.acos(Math.max(-1, Math.min(1, cosPhase)));
+  }
+
+  /**
+   * Calculate distance from observer to satellite
+   * @param {Object} satEci - Satellite position {x, y, z} in km
+   * @param {Object} observerEci - Observer position {x, y, z} in km
+   * @returns {number} Range in km
+   */
+  static calculateRange(satEci, observerEci) {
+    const dx = satEci.x - observerEci.x;
+    const dy = satEci.y - observerEci.y;
+    const dz = satEci.z - observerEci.z;
+    return Math.sqrt(dx * dx + dy * dy + dz * dz);
+  }
+
+  /**
+   * Calculate the phase function for diffuse reflection (Lambertian sphere approximation)
+   * This models how brightness varies with phase angle
+   * @param {number} phaseAngle - Phase angle in radians
+   * @returns {number} Phase function value (0-1, where 1 is fully lit)
+   */
+  static phaseFunction(phaseAngle) {
+    // Lambertian sphere phase function: (sin(β) + (π-β)*cos(β)) / π
+    // This gives the fraction of reflected light visible at phase angle β
+    const beta = phaseAngle;
+    return (Math.sin(beta) + (Math.PI - beta) * Math.cos(beta)) / Math.PI;
+  }
+
+  /**
+   * Estimate visual magnitude of satellite as seen from a ground station
+   *
+   * Uses the standard satellite magnitude formula:
+   * m = m_std - 15 + 5*log10(range) - 2.5*log10(phaseFunction(β))
+   *
+   * Where:
+   * - m_std is the intrinsic magnitude (standard magnitude at 1000km, 90° phase)
+   * - range is distance from observer in km
+   * - β is the phase angle (sun-satellite-observer angle)
+   *
+   * Typical intrinsic magnitudes:
+   * - ISS: -1.8 (very bright, large)
+   * - Starlink (visor-equipped): 5.5-6.5 (dim)
+   * - Typical satellite: 2-4
+   * - Small cubesat: 6-8
+   *
+   * @param {Date} date - Time for calculation
+   * @param {Object} observerGeodetic - Ground station {latitude, longitude, height} in radians and km
+   * @param {number|null} intrinsicMag - Intrinsic magnitude. If null/undefined, looks up from STANDARD_MAGNITUDES
+   * @returns {Object|null} Brightness data or null if satellite not visible
+   *   - magnitude: Visual magnitude (lower = brighter, negative = very bright)
+   *   - range: Distance from observer in km
+   *   - phaseAngle: Phase angle in degrees
+   *   - isInShadow: Whether satellite is in Earth's shadow
+   *   - phaseFunction: Phase function value (0-1)
+   *   - standardMag: The standard magnitude used for calculation
+   */
+  estimateVisualMagnitude(date, observerGeodetic, intrinsicMag = null) {
+    // Look up standard magnitude if not provided
+    const stdMag = intrinsicMag ?? Orbit.getStandardMagnitude(this.satnum, this.name);
+    try {
+      // Get satellite position in ECI
+      const satEcf = this.positionECF(date);
+      if (!satEcf) return null;
+
+      const gmst = satellitejs.gstime(date);
+      const satEci = satellitejs.ecfToEci(satEcf, gmst);
+
+      // Get observer position in ECI
+      const observerEci = Orbit.getObserverECI(observerGeodetic, date);
+
+      // Get sun position in ECI
+      const sunEci = Orbit.getSunPositionECI(date.getTime());
+
+      // Check if satellite is in Earth's shadow
+      const isInShadow = this.isInEclipse(date);
+
+      // Calculate range from observer to satellite
+      const range = Orbit.calculateRange(satEci, observerEci);
+
+      // Calculate phase angle
+      const phaseAngle = Orbit.calculatePhaseAngle(satEci, observerEci, sunEci);
+      const phaseAngleDeg = phaseAngle * rad2deg;
+
+      // Calculate phase function
+      const phaseFn = Orbit.phaseFunction(phaseAngle);
+
+      // If in shadow, satellite is not illuminated (effectively infinite magnitude)
+      if (isInShadow) {
+        return {
+          magnitude: Infinity,
+          range,
+          phaseAngle: phaseAngleDeg,
+          isInShadow: true,
+          phaseFunction: phaseFn,
+          standardMag: stdMag,
+        };
+      }
+
+      // Calculate visual magnitude using standard formula
+      // m = m_std - 15 + 5*log10(range) - 2.5*log10(phaseFunction)
+      // The -15 term normalizes for 1000km standard distance (5*log10(1000) = 15)
+      let magnitude;
+      if (phaseFn > 0) {
+        magnitude = stdMag - 15 + 5 * Math.log10(range) - 2.5 * Math.log10(phaseFn);
+      } else {
+        // Phase function is 0 at phase angle = π (satellite between observer and sun)
+        magnitude = Infinity;
+      }
+
+      return {
+        magnitude,
+        range,
+        phaseAngle: phaseAngleDeg,
+        isInShadow: false,
+        phaseFunction: phaseFn,
+        standardMag: stdMag,
+      };
+    } catch (error) {
+      console.warn("Failed to estimate visual magnitude:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Estimate peak brightness during a pass
+   * Finds the minimum magnitude (brightest point) during a pass
+   * @param {Object} pass - Pass object with start, end, maxElevation times
+   * @param {Object} observerGeodetic - Ground station position
+   * @param {number|null} intrinsicMag - Intrinsic magnitude. If null, uses STANDARD_MAGNITUDES lookup
+   * @param {number} samples - Number of samples to check (default 10)
+   * @returns {Object|null} Peak brightness data with time, or null if not calculable
+   */
+  estimatePeakBrightness(pass, observerGeodetic, intrinsicMag = null, samples = 10) {
+    if (!pass || !pass.start || !pass.end) return null;
+
+    // Handle both Date objects and timestamps (numbers)
+    const startTime = typeof pass.start === "number" ? pass.start : pass.start.getTime();
+    const endTime = typeof pass.end === "number" ? pass.end : pass.end.getTime();
+    const step = (endTime - startTime) / samples;
+
+    let peakData = null;
+    let peakTime = null;
+
+    for (let t = startTime; t <= endTime; t += step) {
+      const date = new Date(t);
+      const brightness = this.estimateVisualMagnitude(date, observerGeodetic, intrinsicMag);
+
+      if (brightness && !brightness.isInShadow) {
+        if (!peakData || brightness.magnitude < peakData.magnitude) {
+          peakData = brightness;
+          peakTime = date;
+        }
+      }
+    }
+
+    if (peakData && peakTime) {
+      return {
+        ...peakData,
+        time: peakTime,
+      };
+    }
+
+    return null;
   }
 }

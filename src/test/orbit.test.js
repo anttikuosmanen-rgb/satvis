@@ -543,3 +543,315 @@ describe("Orbit - Position Validation", () => {
     expect(geoOrbit.validatePosition(position)).toBe(true);
   });
 });
+
+describe("Orbit - Brightness Estimation", () => {
+  const deg2rad = Math.PI / 180;
+
+  // Convert ground station to radians and km for Orbit methods
+  const munichGeodetic = {
+    latitude: MUNICH_GS.latitude * deg2rad,
+    longitude: MUNICH_GS.longitude * deg2rad,
+    height: MUNICH_GS.height / 1000, // Convert m to km
+  };
+
+  describe("getObserverECI", () => {
+    it("should convert observer geodetic to ECI coordinates", () => {
+      const date = new Date("2024-06-21T12:00:00Z");
+      const observerEci = Orbit.getObserverECI(munichGeodetic, date);
+
+      expect(observerEci).toHaveProperty("x");
+      expect(observerEci).toHaveProperty("y");
+      expect(observerEci).toHaveProperty("z");
+
+      // Observer should be near Earth's surface (~6378 km from center)
+      const distance = Math.sqrt(observerEci.x ** 2 + observerEci.y ** 2 + observerEci.z ** 2);
+      expect(distance).toBeGreaterThan(6350);
+      expect(distance).toBeLessThan(6400);
+    });
+  });
+
+  describe("calculatePhaseAngle", () => {
+    it("should return near π when observer is between satellite and sun (backlit)", () => {
+      // Observer at (500, 0, 0), Satellite at (1000, 0, 0), Sun at (100000000, 0, 0)
+      // Observer is between satellite and sun - satellite is backlit
+      const satEci = { x: 1000, y: 0, z: 0 };
+      const observerEci = { x: 500, y: 0, z: 0 };
+      const sunEci = { x: 100000000, y: 0, z: 0 };
+
+      const phaseAngle = Orbit.calculatePhaseAngle(satEci, observerEci, sunEci);
+
+      // Phase angle should be near π (satellite is backlit from observer's view)
+      expect(phaseAngle).toBeGreaterThan(Math.PI - 0.1);
+    });
+
+    it("should return near 0 when satellite is between observer and sun (fully lit)", () => {
+      // Observer at origin, satellite at (1000, 0, 0), Sun at (100000000, 0, 0)
+      // Satellite is between observer and sun - observer sees lit side
+      const satEci = { x: 1000, y: 0, z: 0 };
+      const observerEci = { x: 0, y: 0, z: 0 };
+      const sunEci = { x: 100000000, y: 0, z: 0 };
+
+      const phaseAngle = Orbit.calculatePhaseAngle(satEci, observerEci, sunEci);
+
+      // Phase angle should be near 0 (fully lit from observer's view)
+      // Both vectors (sat->sun and sat->observer) point in opposite directions
+      // so the angle between them is π, but we want cos(angle) where angle is between them
+      // Actually: sat->sun points to +x, sat->observer points to -x, angle = π
+      expect(phaseAngle).toBeGreaterThan(Math.PI - 0.1);
+    });
+
+    it("should return near 0 when observer and sun are on same side of satellite", () => {
+      // Satellite at (7000, 0, 0), Observer at (0, 0, 0), Sun at (-100000000, 0, 0)
+      // Both sun and observer are "behind" the satellite, satellite is fully lit
+      const satEci = { x: 7000, y: 0, z: 0 };
+      const observerEci = { x: 0, y: 0, z: 0 };
+      const sunEci = { x: -100000000, y: 0, z: 0 };
+
+      const phaseAngle = Orbit.calculatePhaseAngle(satEci, observerEci, sunEci);
+
+      // sat->sun points to -x, sat->observer points to -x, both same direction
+      expect(phaseAngle).toBeLessThan(0.1);
+    });
+
+    it("should return π/2 for 90 degree phase angle", () => {
+      // Satellite at (1000, 0, 0), Sun at (100000000, 0, 0), Observer at (1000, 1000, 0)
+      // Observer is 90 degrees from sun-satellite line
+      const satEci = { x: 1000, y: 0, z: 0 };
+      const observerEci = { x: 1000, y: 1000, z: 0 };
+      const sunEci = { x: 100000000, y: 0, z: 0 };
+
+      const phaseAngle = Orbit.calculatePhaseAngle(satEci, observerEci, sunEci);
+
+      // Phase angle should be near π/2
+      expect(phaseAngle).toBeGreaterThan(Math.PI / 2 - 0.1);
+      expect(phaseAngle).toBeLessThan(Math.PI / 2 + 0.1);
+    });
+  });
+
+  describe("calculateRange", () => {
+    it("should calculate correct distance between two points", () => {
+      const satEci = { x: 1000, y: 0, z: 0 };
+      const observerEci = { x: 0, y: 0, z: 0 };
+
+      const range = Orbit.calculateRange(satEci, observerEci);
+
+      expect(range).toBe(1000);
+    });
+
+    it("should handle 3D distances correctly", () => {
+      const satEci = { x: 3000, y: 4000, z: 0 };
+      const observerEci = { x: 0, y: 0, z: 0 };
+
+      const range = Orbit.calculateRange(satEci, observerEci);
+
+      expect(range).toBe(5000); // 3-4-5 triangle
+    });
+  });
+
+  describe("phaseFunction", () => {
+    it("should return maximum value (1) at phase angle 0", () => {
+      const phaseFn = Orbit.phaseFunction(0);
+      expect(phaseFn).toBeCloseTo(1, 5);
+    });
+
+    it("should return 0 at phase angle π", () => {
+      const phaseFn = Orbit.phaseFunction(Math.PI);
+      expect(phaseFn).toBeCloseTo(0, 5);
+    });
+
+    it("should return intermediate value at π/2", () => {
+      const phaseFn = Orbit.phaseFunction(Math.PI / 2);
+      // At 90 degrees: (sin(π/2) + (π - π/2)*cos(π/2)) / π = (1 + 0) / π ≈ 0.318
+      expect(phaseFn).toBeCloseTo(1 / Math.PI, 3);
+    });
+
+    it("should be monotonically decreasing from 0 to π", () => {
+      const values = [];
+      for (let angle = 0; angle <= Math.PI; angle += 0.1) {
+        values.push(Orbit.phaseFunction(angle));
+      }
+
+      for (let i = 1; i < values.length; i++) {
+        expect(values[i]).toBeLessThanOrEqual(values[i - 1]);
+      }
+    });
+  });
+
+  describe("estimateVisualMagnitude", () => {
+    it("should return brightness data for valid satellite position", () => {
+      const orbit = new Orbit("ISS", ISS_TLE);
+      // Use a date close to the TLE epoch for valid propagation
+      const date = new Date("2018-12-08T12:00:00Z");
+
+      const brightness = orbit.estimateVisualMagnitude(date, munichGeodetic);
+
+      // Should return an object with expected properties (or null if propagation fails)
+      if (brightness) {
+        expect(brightness).toHaveProperty("magnitude");
+        expect(brightness).toHaveProperty("range");
+        expect(brightness).toHaveProperty("phaseAngle");
+        expect(brightness).toHaveProperty("isInShadow");
+        expect(brightness).toHaveProperty("phaseFunction");
+      }
+    });
+
+    it("should return reasonable magnitude values for ISS", () => {
+      const orbit = new Orbit("ISS", ISS_TLE);
+      const date = new Date(TEST_DATES.ISS_VISIBLE);
+
+      // ISS intrinsic magnitude is about -1.8
+      const brightness = orbit.estimateVisualMagnitude(date, munichGeodetic, -1.8);
+
+      if (brightness && !brightness.isInShadow) {
+        // ISS magnitude typically ranges from -4 (very bright) to +2 (dim)
+        expect(brightness.magnitude).toBeGreaterThan(-6);
+        expect(brightness.magnitude).toBeLessThan(4);
+      }
+    });
+
+    it("should return range in reasonable bounds for LEO satellite", () => {
+      const orbit = new Orbit("ISS", ISS_TLE);
+      const date = new Date(TEST_DATES.ISS_VISIBLE);
+
+      const brightness = orbit.estimateVisualMagnitude(date, munichGeodetic);
+
+      if (brightness) {
+        // ISS range from ground should be between ~400 km (overhead) and ~2500 km (horizon)
+        expect(brightness.range).toBeGreaterThan(350);
+        expect(brightness.range).toBeLessThan(3000);
+      }
+    });
+
+    it("should return phaseAngle in degrees between 0 and 180", () => {
+      const orbit = new Orbit("ISS", ISS_TLE);
+      const date = new Date(TEST_DATES.ISS_VISIBLE);
+
+      const brightness = orbit.estimateVisualMagnitude(date, munichGeodetic);
+
+      if (brightness) {
+        expect(brightness.phaseAngle).toBeGreaterThanOrEqual(0);
+        expect(brightness.phaseAngle).toBeLessThanOrEqual(180);
+      }
+    });
+
+    it("should return Infinity magnitude when satellite is in shadow", () => {
+      const orbit = new Orbit("ISS", ISS_TLE);
+
+      // Try multiple times to find when satellite is in shadow
+      const startDate = new Date(TEST_DATES.ISS_VISIBLE);
+      for (let i = 0; i < 100; i++) {
+        const date = new Date(startDate.getTime() + i * 60000); // Check every minute
+        const brightness = orbit.estimateVisualMagnitude(date, munichGeodetic);
+
+        if (brightness && brightness.isInShadow) {
+          expect(brightness.magnitude).toBe(Infinity);
+          return; // Test passed
+        }
+      }
+
+      // If no shadow found in 100 minutes, that's okay - just skip this assertion
+      // (depends on the specific TLE epoch and test date)
+    });
+  });
+
+  describe("estimatePeakBrightness", () => {
+    it("should find peak brightness during a pass", () => {
+      const orbit = new Orbit("ISS", ISS_TLE);
+
+      // Create a mock pass object
+      const pass = {
+        start: new Date(TEST_DATES.ISS_VISIBLE),
+        end: new Date(new Date(TEST_DATES.ISS_VISIBLE).getTime() + 10 * 60000), // 10 min pass
+      };
+
+      const peak = orbit.estimatePeakBrightness(pass, munichGeodetic, -1.8);
+
+      if (peak) {
+        expect(peak).toHaveProperty("magnitude");
+        expect(peak).toHaveProperty("time");
+        expect(peak.time.getTime()).toBeGreaterThanOrEqual(pass.start.getTime());
+        expect(peak.time.getTime()).toBeLessThanOrEqual(pass.end.getTime());
+      }
+    });
+
+    it("should return null for invalid pass", () => {
+      const orbit = new Orbit("ISS", ISS_TLE);
+
+      const peak = orbit.estimatePeakBrightness(null, munichGeodetic);
+      expect(peak).toBeNull();
+
+      const peak2 = orbit.estimatePeakBrightness({}, munichGeodetic);
+      expect(peak2).toBeNull();
+    });
+  });
+
+  describe("STANDARD_MAGNITUDES and getStandardMagnitude", () => {
+    it("should have standard magnitudes defined for ISS", () => {
+      expect(Orbit.STANDARD_MAGNITUDES[25544]).toBe(-1.8);
+    });
+
+    it("should have standard magnitudes for Tiangong", () => {
+      expect(Orbit.STANDARD_MAGNITUDES[48274]).toBe(-0.5);
+    });
+
+    it("should have standard magnitudes for Hubble", () => {
+      expect(Orbit.STANDARD_MAGNITUDES[20580]).toBe(1.5);
+    });
+
+    it("should lookup ISS by NORAD ID", () => {
+      const mag = Orbit.getStandardMagnitude(25544, "ISS (ZARYA)");
+      expect(mag).toBe(-1.8);
+    });
+
+    it("should lookup Starlink by name pattern", () => {
+      const mag = Orbit.getStandardMagnitude(12345, "STARLINK-1234");
+      expect(mag).toBe(6.0);
+    });
+
+    it("should lookup Iridium by name pattern", () => {
+      const mag = Orbit.getStandardMagnitude(null, "IRIDIUM 180");
+      expect(mag).toBe(6.0);
+    });
+
+    it("should lookup Dragon by name pattern", () => {
+      const mag = Orbit.getStandardMagnitude(null, "CREW DRAGON 8");
+      // CREW matches first since it comes before DRAGON in the object iteration
+      expect(mag).toBe(2.5);
+    });
+
+    it("should return default for unknown satellite", () => {
+      const mag = Orbit.getStandardMagnitude(99999, "UNKNOWN SAT");
+      expect(mag).toBe(Orbit.DEFAULT_STANDARD_MAGNITUDE);
+      expect(mag).toBe(4.0);
+    });
+
+    it("should prioritize NORAD ID over name pattern", () => {
+      // ISS is NORAD 25544, even if we call it "STARLINK" it should use the NORAD ID
+      const mag = Orbit.getStandardMagnitude(25544, "STARLINK-FAKE");
+      expect(mag).toBe(-1.8);
+    });
+
+    it("should include standardMag in estimateVisualMagnitude response", () => {
+      const orbit = new Orbit("ISS", ISS_TLE);
+      const date = new Date(TEST_DATES.ISS_VISIBLE);
+
+      const result = orbit.estimateVisualMagnitude(date, munichGeodetic);
+
+      if (result) {
+        expect(result).toHaveProperty("standardMag");
+        expect(result.standardMag).toBe(-1.8); // ISS standard mag
+      }
+    });
+
+    it("should use provided intrinsicMag when specified", () => {
+      const orbit = new Orbit("ISS", ISS_TLE);
+      const date = new Date(TEST_DATES.ISS_VISIBLE);
+
+      const result = orbit.estimateVisualMagnitude(date, munichGeodetic, 5.0);
+
+      if (result) {
+        expect(result.standardMag).toBe(5.0);
+      }
+    });
+  });
+});

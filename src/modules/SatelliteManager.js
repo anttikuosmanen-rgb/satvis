@@ -589,6 +589,38 @@ export class SatelliteManager {
       this.satellitesByName.delete(newSat.props.name);
 
       // Continue to add the new satellite with updated TLE data below
+    } else if (existingSat && existingSat.props.satnum !== newSat.props.satnum) {
+      // Duplicate name with different NORAD ID - disambiguate both satellites
+      // This handles cases like multiple "StarSh" satellites in classified catalogs
+
+      // Rename the existing satellite if it doesn't already have NORAD ID appended
+      const existingName = existingSat.props.name;
+      if (!existingName.includes(`[${existingSat.props.satnum}]`)) {
+        const newExistingName = `${existingSat.props.baseName} [${existingSat.props.satnum}]`;
+        this.satellitesByName.delete(existingName);
+        existingSat.props.name = newExistingName;
+        existingSat.props.orbit.name = newExistingName; // Update orbit name for pass calculations
+        this.satellitesByName.set(newExistingName, existingSat);
+
+        // Update entity name if it exists (satellite is currently shown)
+        if (existingSat.components?.Point) {
+          existingSat.components.Point.name = newExistingName;
+        }
+      }
+
+      // Rename the new satellite to include its NORAD ID
+      newSat.props.name = `${newSat.props.baseName} [${newSat.props.satnum}]`;
+      newSat.props.orbit.name = newSat.props.name; // Update orbit name for pass calculations
+    } else if (!existingSat) {
+      // Check if there are other satellites with the same baseName (already renamed)
+      // This handles the case when 3rd+ satellite with same name is added
+      const baseName = newSat.props.baseName;
+      const hasRenamedDuplicate = this.satellites.some((sat) => sat.props.baseName === baseName && sat.props.name !== baseName);
+      if (hasRenamedDuplicate) {
+        // Another satellite with this baseName was already renamed, so rename this one too
+        newSat.props.name = `${baseName} [${newSat.props.satnum}]`;
+        newSat.props.orbit.name = newSat.props.name; // Update orbit name for pass calculations
+      }
     }
     if (this.groundStationAvailable) {
       newSat.groundStations = this.#groundStations;

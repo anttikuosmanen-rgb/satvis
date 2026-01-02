@@ -507,6 +507,14 @@ export class CesiumController {
     };
   }
 
+  // Fly to the app's default view (Helsinki-centered globe view)
+  flyToDefaultView(duration = 1.5) {
+    this.viewer.camera.flyTo({
+      destination: Cartesian3.fromDegrees(24.94, 20, 20000000), // Helsinki longitude, looking at Earth from space
+      duration,
+    });
+  }
+
   // Helper: Capture camera offset relative to currently tracked entity
   // Returns the viewFrom Cartesian3 that can be used to restore camera position
   captureTrackedEntityCameraOffset() {
@@ -1985,6 +1993,32 @@ export class CesiumController {
               }
             }
           }
+        }
+        return;
+      }
+
+      // Handle brightness calculation actions
+      if (data.action === "calculateBrightness") {
+        const gs = this.sats?.groundStations?.[0];
+        if (gs) {
+          gs.calculateBrightness();
+        }
+        return;
+      }
+
+      if (data.action === "cancelBrightnessCalculation") {
+        const gs = this.sats?.groundStations?.[0];
+        if (gs) {
+          gs.cancelBrightnessCalculation();
+        }
+        return;
+      }
+
+      if (data.action === "brightnessFilterChange") {
+        const gs = this.sats?.groundStations?.[0];
+        if (gs && gs._brightPassesState) {
+          gs._brightPassesState.filters[data.filter] = data.value;
+          gs.refreshDescription();
         }
         return;
       }

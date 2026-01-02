@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SatelliteManager } from "../modules/SatelliteManager";
-import { ISS_TLE, ISS_TLE_FRESH, ISS_TLE_UPDATED, STARLINK_TLE } from "./fixtures/tle-data";
+import { ISS_TLE, ISS_TLE_FRESH, ISS_TLE_UPDATED, STARLINK_TLE, DUPLICATE_NAME_SAT1, DUPLICATE_NAME_SAT2, DUPLICATE_NAME_SAT3 } from "./fixtures/tle-data";
 
 // Mock Cesium viewer
 const createMockViewer = () => ({
@@ -137,6 +137,40 @@ describe("SatelliteManager - TLE Parsing and Loading", () => {
     expect(updatedMeanMotion).toBeDefined();
     expect(originalMeanMotion).toBeDefined();
     expect(updatedMeanMotion).not.toBe(originalMeanMotion);
+  });
+
+  it("should disambiguate satellites with same name but different NORAD IDs", () => {
+    // Add first satellite named "StarSh" with NORAD 55001
+    manager.addFromTle(DUPLICATE_NAME_SAT1, ["Classified"], false);
+    expect(manager.satellites.length).toBe(1);
+    expect(manager.satellites[0].props.name).toBe("StarSh"); // First one keeps original name
+
+    // Add second satellite also named "StarSh" but with NORAD 55002
+    manager.addFromTle(DUPLICATE_NAME_SAT2, ["Classified"], false);
+    expect(manager.satellites.length).toBe(2);
+
+    // Both satellites should now have NORAD IDs appended to distinguish them
+    const names = manager.satellites.map((s) => s.props.name);
+    expect(names).toContain("StarSh [55001]");
+    expect(names).toContain("StarSh [55002]");
+
+    // satellitesByName should have both satellites indexed correctly
+    expect(manager.satellitesByName.get("StarSh [55001]")).toBeDefined();
+    expect(manager.satellitesByName.get("StarSh [55002]")).toBeDefined();
+
+    // Add third satellite also named "StarSh" with NORAD 55003
+    manager.addFromTle(DUPLICATE_NAME_SAT3, ["Classified"], false);
+    expect(manager.satellites.length).toBe(3);
+
+    const allNames = manager.satellites.map((s) => s.props.name);
+    expect(allNames).toContain("StarSh [55001]");
+    expect(allNames).toContain("StarSh [55002]");
+    expect(allNames).toContain("StarSh [55003]");
+
+    // Verify orbit.name matches props.name (critical for brightness cache matching)
+    manager.satellites.forEach((sat) => {
+      expect(sat.props.orbit.name).toBe(sat.props.name);
+    });
   });
 
   it("should create satellite with correct name", () => {

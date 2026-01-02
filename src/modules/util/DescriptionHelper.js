@@ -140,6 +140,11 @@ export class DescriptionHelper {
             text-overflow: ellipsis;
             max-width: 60%;
           }
+          .pass-mag {
+            font-size: 13px;
+            margin-right: 6px;
+            font-weight: bold;
+          }
         </style>
         <h3>Position</h3>
         <table class="ibt">
@@ -171,10 +176,16 @@ export class DescriptionHelper {
     return description;
   }
 
-  static renderGroundstationDescription(time, name, position, passes, overpassMode = null) {
+  static renderGroundstationDescription(time, name, position, passes, overpassMode = null, brightPassesState = null, brightnessCache = null) {
     // Get current lighting conditions
     const currentTime = JulianDate.toDate(time);
     const lightingCondition = GroundStationConditions.getLightingConditionWithEmoji(position, currentTime);
+
+    // Render brightness calculation controls
+    const brightnessControlsHtml = brightPassesState ? this.renderBrightnessControls(brightPassesState) : "";
+
+    // Store brightness cache for use in renderPassCard (only if it has entries)
+    this._currentBrightnessCache = brightnessCache?.size > 0 ? brightnessCache : null;
 
     const description = `
       <div class="ib">
@@ -221,6 +232,78 @@ export class DescriptionHelper {
             text-overflow: ellipsis;
             max-width: 60%;
           }
+          .pass-mag {
+            font-size: 13px;
+            margin-right: 6px;
+            font-weight: bold;
+          }
+          .brightness-controls {
+            margin-top: 10px;
+            padding: 8px;
+            background: rgba(0, 0, 0, 0.1);
+            border-radius: 4px;
+          }
+          .brightness-filters {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 8px;
+            align-items: center;
+          }
+          .brightness-filters label {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 13px;
+          }
+          .brightness-filters input[type="number"] {
+            width: 50px;
+            padding: 2px 4px;
+            background: #333;
+            border: 1px solid #555;
+            color: #fff;
+            border-radius: 3px;
+          }
+          .brightness-filters input[type="checkbox"] {
+            margin-right: 4px;
+          }
+          .brightness-btn {
+            width: 100%;
+            padding: 8px;
+            background: #303336;
+            border: 1px solid #444;
+            color: #fff;
+            cursor: pointer;
+            border-radius: 4px;
+          }
+          .brightness-btn:hover {
+            background: #404346;
+          }
+          .brightness-btn.cancel {
+            background: #663333;
+            border-color: #884444;
+          }
+          .brightness-progress {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 8px;
+            color: #aaa;
+            font-size: 13px;
+          }
+          .brightness-spinner {
+            width: 18px;
+            height: 18px;
+            animation: brightness-spin 1s linear infinite;
+          }
+          @keyframes brightness-spin {
+            to { transform: rotate(360deg); }
+          }
+          .brightness-info {
+            font-size: 12px;
+            color: #888;
+            margin-top: 6px;
+          }
         </style>
         <h3>Position</h3>
         <table class="ibt">
@@ -241,13 +324,86 @@ export class DescriptionHelper {
             </tr>
           </tbody>
         </table>
-        ${this.renderPasses(passes, time, true, overpassMode, false, 0, false, name)}
+        ${brightnessControlsHtml}
+        ${this.renderPasses(passes, time, true, overpassMode, false, 0, false, name, brightPassesState)}
       </div>
     `;
     return description;
   }
 
-  static renderPasses(passes, time, isGroundStation, overpassMode, epochInFuture = false, orbitalPeriod = 0, groundStationAvailable = false, entityId = "default") {
+  /**
+   * Render brightness calculation controls (button + progress + filters).
+   */
+  static renderBrightnessControls(state) {
+    const { isSearching, progress, brightnessCalculated, darknessWindow, filters } = state;
+
+    // Progress indicator
+    if (isSearching) {
+      return `
+        <div class="brightness-controls">
+          <button class="brightness-btn cancel" onclick="parent.postMessage({action:'cancelBrightnessCalculation'},'*')">Cancel</button>
+          <div class="brightness-progress">
+            <svg class="brightness-spinner" viewBox="0 0 50 50">
+              <circle cx="25" cy="25" r="20" fill="none" stroke="#4CAF50" stroke-width="4" stroke-dasharray="80 40"/>
+            </svg>
+            <span>Checking ${progress.currentSatName || "..."} (${progress.current}/${progress.total})</span>
+          </div>
+        </div>`;
+    }
+
+    // Filter controls
+    const filtersHtml = `
+      <div class="brightness-filters">
+        <label>
+          Max Mag:
+          <input type="number" value="${filters.minMagnitude}" step="0.5" min="-2" max="10"
+            onchange="parent.postMessage({action:'brightnessFilterChange',filter:'minMagnitude',value:parseFloat(this.value)},'*')">
+        </label>
+        <label>
+          <input type="checkbox" ${filters.includeAll ? "checked" : ""}
+            onchange="parent.postMessage({action:'brightnessFilterChange',filter:'includeAll',value:this.checked},'*')">
+          All satellites
+        </label>
+        ${
+          brightnessCalculated
+            ? `<label>
+          <input type="checkbox" ${filters.showOnlyBright ? "checked" : ""}
+            onchange="parent.postMessage({action:'brightnessFilterChange',filter:'showOnlyBright',value:this.checked},'*')">
+          Show only bright
+        </label>`
+            : ""
+        }
+      </div>`;
+
+    // Show info if brightness was calculated
+    let infoHtml = "";
+    if (brightnessCalculated && darknessWindow) {
+      const start = darknessWindow.start.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+      const end = darknessWindow.end.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+      infoHtml = `<div class="brightness-info">★ Brightness shown for passes ${darknessWindow.isOngoing ? "until" : "from " + start + " to"} ${end}</div>`;
+    }
+
+    return `
+      <div class="brightness-controls">
+        ${filtersHtml}
+        <button class="brightness-btn" onclick="parent.postMessage({action:'calculateBrightness'},'*')">
+          ${brightnessCalculated ? "Recalculate Brightness" : "Calculate Brightness"}
+        </button>
+        ${infoHtml}
+      </div>`;
+  }
+
+  static renderPasses(
+    passes,
+    time,
+    isGroundStation,
+    overpassMode,
+    epochInFuture = false,
+    orbitalPeriod = 0,
+    groundStationAvailable = false,
+    entityId = "default",
+    brightPassesState = null,
+  ) {
     const epochNote = epochInFuture ? " (* Epoch in future)" : "";
     if (passes.length === 0) {
       if (isGroundStation) {
@@ -300,8 +456,64 @@ export class DescriptionHelper {
       );
     }
 
+    // Apply brightness filtering if enabled (show only bright passes, sorted by magnitude)
+    const showOnlyBright = brightPassesState?.filters?.showOnlyBright && brightPassesState?.brightnessCalculated;
+    const brightnessCache = this._currentBrightnessCache;
+
+    if (showOnlyBright && brightnessCache?.size > 0) {
+      const maxMag = brightPassesState.filters.minMagnitude;
+
+      // Filter to only passes with brightness data that are bright enough and not in shadow
+      filteredPasses = filteredPasses.filter((pass) => {
+        const satName = pass.name || pass.satelliteName;
+        if (!satName) return false;
+
+        const passStart = typeof pass.start === "number" ? pass.start : new Date(pass.start).getTime();
+        let brightness = brightnessCache.get(`${satName}_${passStart}`);
+
+        // Try fuzzy match if exact match failed
+        if (!brightness) {
+          const prefix = satName + "_";
+          for (const [key, value] of brightnessCache) {
+            if (key.startsWith(prefix) && Math.abs(parseInt(key.substring(prefix.length), 10) - passStart) < 120000) {
+              brightness = value;
+              break;
+            }
+          }
+        }
+
+        return brightness && !brightness.isInShadow && brightness.peakMagnitude <= maxMag;
+      });
+
+      // Sort by magnitude (brightest first = lowest magnitude first)
+      filteredPasses.sort((a, b) => {
+        const getMag = (pass) => {
+          const satName = pass.name || pass.satelliteName;
+          const passStart = typeof pass.start === "number" ? pass.start : new Date(pass.start).getTime();
+          let brightness = brightnessCache.get(`${satName}_${passStart}`);
+          if (!brightness) {
+            const prefix = satName + "_";
+            for (const [key, value] of brightnessCache) {
+              if (key.startsWith(prefix) && Math.abs(parseInt(key.substring(prefix.length), 10) - passStart) < 120000) {
+                brightness = value;
+                break;
+              }
+            }
+          }
+          return brightness?.peakMagnitude ?? 99;
+        };
+        return getMag(a) - getMag(b);
+      });
+    }
+
     // Check if any passes remain after filtering
     if (filteredPasses.length === 0) {
+      if (showOnlyBright) {
+        return `
+          <h3>Passes</h3>
+          <div class="ib-text">No bright passes found (mag ≤ ${brightPassesState.filters.minMagnitude})</div>
+          `;
+      }
       if (satStore.hideSunlightPasses) {
         return `
           <h3>Passes</h3>
@@ -334,25 +546,28 @@ export class DescriptionHelper {
     const displayedPasses = upcomingPasses.slice(0, INITIAL_PASSES);
     const passNameField = isGroundStation ? "name" : null;
 
-    // Pre-render ALL passes but hide extras with CSS, show on button click
-    const remainingPasses = upcomingPasses.slice(INITIAL_PASSES);
-    const remainingRendered = remainingPasses.map((pass) => this.renderPassCard(start, pass, passNameField));
-
     // Get how many batches have been loaded for this entity (persists across re-renders)
     const loadedBatchCount = this.getLoadedBatches(entityId);
 
-    // Render passes in batches - show already-loaded batches, hide the rest
+    // Only render passes that will actually be displayed (initial + loaded batches)
+    // This is a key performance optimization - don't pre-render hidden passes
+    const remainingPasses = upcomingPasses.slice(INITIAL_PASSES);
+    const passesToRender = remainingPasses.slice(0, loadedBatchCount * LOAD_MORE_COUNT);
+
+    // Render only the visible extra batches
     let batchesHtml = "";
-    const totalBatches = Math.ceil(remainingRendered.length / LOAD_MORE_COUNT);
-    for (let batch = 0; batch < totalBatches; batch++) {
-      const batchPasses = remainingRendered.slice(batch * LOAD_MORE_COUNT, (batch + 1) * LOAD_MORE_COUNT);
-      const isVisible = batch < loadedBatchCount;
-      batchesHtml += `<div class="passes-batch" data-batch="${batch + 1}" style="display: ${isVisible ? "block" : "none"};">${batchPasses.join("")}</div>`;
+    if (passesToRender.length > 0) {
+      const totalBatches = Math.ceil(passesToRender.length / LOAD_MORE_COUNT);
+      for (let batch = 0; batch < totalBatches; batch++) {
+        const batchStart = batch * LOAD_MORE_COUNT;
+        const batchEnd = Math.min(batchStart + LOAD_MORE_COUNT, passesToRender.length);
+        const batchPasses = passesToRender.slice(batchStart, batchEnd);
+        batchesHtml += `<div class="passes-batch" data-batch="${batch + 1}">${batchPasses.map((pass) => this.renderPassCard(start, pass, passNameField)).join("")}</div>`;
+      }
     }
 
-    // Calculate remaining hidden passes
-    const visibleExtraPasses = loadedBatchCount * LOAD_MORE_COUNT;
-    const stillHiddenCount = Math.max(0, remainingRendered.length - visibleExtraPasses);
+    // Calculate remaining hidden passes (not yet rendered)
+    const stillHiddenCount = Math.max(0, remainingPasses.length - passesToRender.length);
 
     // Button uses postMessage to parent which handles showing batches
     const loadMoreButton =
@@ -366,8 +581,9 @@ export class DescriptionHelper {
     `
         : "";
 
+    const modeLabel = showOnlyBright ? "Bright ★" : overpassMode.charAt(0).toUpperCase() + overpassMode.slice(1);
     const html = `
-      <h3>Passes (${overpassMode.charAt(0).toUpperCase() + overpassMode.slice(1)})${epochNote}</h3>
+      <h3>Passes (${modeLabel})${epochNote}</h3>
       <div class="passes-list">
         ${displayedPasses.map((pass) => this.renderPassCard(start, pass, passNameField)).join("")}
         ${batchesHtml}
@@ -491,11 +707,64 @@ export class DescriptionHelper {
       passDetailsText = `Max ${pass.maxElevation.toFixed(0)}° ${pass.azimuthApex.toFixed(0)}° | ${formatDuration(pass.duration)}`;
     }
 
+    // Generate brightness/magnitude display if available from cache
+    // Note: _currentBrightnessCache is null when empty, set in renderGroundstationDescription
+    let brightnessData = null;
+    const cache = this._currentBrightnessCache;
+    if (cache) {
+      const satName = pass.name || pass.satelliteName;
+      if (satName) {
+        const passStart = typeof pass.start === "number" ? pass.start : new Date(pass.start).getTime();
+        brightnessData = cache.get(`${satName}_${passStart}`);
+
+        // Fuzzy match only if exact match failed
+        if (!brightnessData) {
+          const prefix = satName + "_";
+          for (const [key, value] of cache) {
+            if (key.startsWith(prefix) && Math.abs(parseInt(key.substring(prefix.length), 10) - passStart) < 120000) {
+              brightnessData = value;
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    // Fall back to pass object if not in cache
+    if (!brightnessData && pass.peakMagnitude !== undefined && pass.peakMagnitude !== null) {
+      brightnessData = {
+        peakMagnitude: pass.peakMagnitude,
+        isInShadow: pass.isInShadow,
+      };
+    }
+
+    let brightnessHtml = "";
+    if (brightnessData) {
+      // Color code based on brightness: brighter (lower mag) = greener
+      const mag = brightnessData.peakMagnitude;
+      let magColor = "#888"; // default gray for dim objects
+      if (mag <= 0) {
+        magColor = "#4CAF50"; // very bright - green
+      } else if (mag <= 2) {
+        magColor = "#8BC34A"; // bright - light green
+      } else if (mag <= 4) {
+        magColor = "#CDDC39"; // visible - yellow-green
+      } else if (mag <= 6) {
+        magColor = "#FFC107"; // faint - amber
+      }
+      // Show magnitude with star icon, or shadow icon if in eclipse
+      if (brightnessData.isInShadow) {
+        brightnessHtml = `<span class="pass-mag" style="color: #666;" title="Satellite in shadow during pass">🌑</span>`;
+      } else {
+        brightnessHtml = `<span class="pass-mag" style="color: ${magColor};" title="Estimated peak brightness: magnitude ${mag.toFixed(1)}">★${mag.toFixed(1)}</span>`;
+      }
+    }
+
     const html = `
       <div class="pass-card" onclick='parent.postMessage(${JSON.stringify(pass)}, "*")'>
         <div class="pass-line-1">
           <strong>${passName}${formattedPassStart}</strong>
-          <span class="pass-countdown">${countdown}</span>
+          <span class="pass-countdown">${brightnessHtml} ${countdown}</span>
         </div>
         <div class="pass-line-2">
           <span>${passDetailsText}</span>

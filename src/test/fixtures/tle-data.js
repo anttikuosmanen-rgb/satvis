@@ -128,6 +128,20 @@ export const INVALID_TLE_TOO_SHORT = `TEST SAT
 export const SPACE_PADDED_NORAD_TLE = `1   694U 63047A   ${generateFreshEpoch()}  .00001631  00000-0  18952-3 0  9996
 2   694  30.3532 279.6750 0548805 100.0696 266.2251 14.11792095120382`;
 
+// Duplicate name satellites (same name, different NORAD IDs) - for testing disambiguation
+// Simulates classified catalog satellites like "StarSh" that have same name
+export const DUPLICATE_NAME_SAT1 = `StarSh
+1 55001U 23001A   ${generateFreshEpoch()}  .00001234  00000-0  98765-4 0  9998
+2 55001  53.0536 123.4567 0001234  45.6789 314.5432 15.06491234567890`;
+
+export const DUPLICATE_NAME_SAT2 = `StarSh
+1 55002U 23002A   ${generateFreshEpoch()}  .00001234  00000-0  98765-4 0  9998
+2 55002  53.0536 124.4567 0001234  46.6789 315.5432 15.06491234567890`;
+
+export const DUPLICATE_NAME_SAT3 = `StarSh
+1 55003U 23003A   ${generateFreshEpoch()}  .00001234  00000-0  98765-4 0  9998
+2 55003  53.0536 125.4567 0001234  47.6789 316.5432 15.06491234567890`;
+
 // ============================================================================
 // Expected values and test data
 // ============================================================================

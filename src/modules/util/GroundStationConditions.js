@@ -196,4 +196,50 @@ export class GroundStationConditions {
       return {};
     }
   }
+
+  /**
+   * Get next darkness window (civil dusk to civil dawn) for ground station.
+   * Used for bright satellite pass calculations.
+   * @param {Object} position - Ground station position {latitude, longitude, height}
+   * @param {Date} fromDate - Starting date to search from
+   * @returns {Object|null} {start: Date, end: Date, isOngoing: boolean} or null if polar day
+   */
+  static getNextDarknessWindow(position, fromDate) {
+    const isDark = this.isInDarkness(position, fromDate);
+
+    if (isDark) {
+      // Currently dark - find when darkness ends (civil dawn)
+      const twilight = this.getTwilightTimes(position, fromDate);
+      if (twilight.civilDawn) {
+        return { start: fromDate, end: twilight.civilDawn, isOngoing: true };
+      }
+      // Polar night - use 24 hour window
+      return { start: fromDate, end: new Date(fromDate.getTime() + 24 * 60 * 60 * 1000), isOngoing: true };
+    }
+
+    // Currently light - find next civil dusk
+    const twilight = this.getTwilightTimes(position, fromDate);
+
+    if (!twilight.civilDusk) {
+      // Polar day - no darkness
+      return null;
+    }
+
+    // Find civil dawn after civil dusk
+    // If civilDawn is before civilDusk, we need to get next day's dawn
+    let dawnTime = twilight.civilDawn;
+    if (!dawnTime || dawnTime < twilight.civilDusk) {
+      // Get twilight times for next day
+      const nextDay = new Date(fromDate.getTime() + 24 * 60 * 60 * 1000);
+      const nextTwilight = this.getTwilightTimes(position, nextDay);
+      dawnTime = nextTwilight.civilDawn;
+    }
+
+    if (!dawnTime) {
+      // Fallback: 12 hours after dusk
+      dawnTime = new Date(twilight.civilDusk.getTime() + 12 * 60 * 60 * 1000);
+    }
+
+    return { start: twilight.civilDusk, end: dawnTime, isOngoing: false };
+  }
 }
