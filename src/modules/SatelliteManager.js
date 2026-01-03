@@ -552,6 +552,10 @@ export class SatelliteManager {
 
   addFromTle(tle, tags, updateStore = true) {
     const sat = new SatelliteComponentCollection(this.viewer, tle, tags);
+    // Wire launchSiteManager reference to satellite for pre-launch position override
+    if (this.launchSiteManager) {
+      sat.props._launchSiteManager = this.launchSiteManager;
+    }
     this.#add(sat);
     if (updateStore) {
       this.updateStore();

@@ -273,6 +273,12 @@
             Swath
           </label>
         </template>
+        <div class="toolbarTitle">Launch Sites</div>
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 11) }">
+          <input v-model="showLaunchSitesProminent" type="checkbox" />
+          <span class="slider"></span>
+          Prominent launch sites
+        </label>
       </div>
     </div>
     <div id="toolbarRight">
@@ -331,6 +337,7 @@ export default {
       menuFocusIndex: -1, // Currently focused item in menu (-1 = none)
       activeMenuKey: null, // Which menu is open via keyboard shortcut
       dropdownOpen: false, // Track if a dropdown is currently open (disables menu navigation)
+      showLaunchSitesProminent: false, // Toggle for prominent launch site display
     };
   },
   computed: {
@@ -456,6 +463,11 @@ export default {
     },
     background(value) {
       cc.background = value;
+    },
+    showLaunchSitesProminent(value) {
+      if (cc.launchSites) {
+        cc.launchSites.setProminent(value);
+      }
     },
     enabledComponents: {
       handler(newComponents) {
@@ -1003,6 +1015,7 @@ export default {
           { type: "cesium-checkbox", path: "viewer.scene.globe.enableLighting" },
           { type: "cesium-checkbox", path: "viewer.scene.highDynamicRange" },
           { type: "cesium-checkbox", path: "viewer.scene.globe.showGroundAtmosphere" },
+          { type: "checkbox", model: "showLaunchSitesProminent" },
         );
         return items;
       }
