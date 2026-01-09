@@ -321,6 +321,12 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
   updatedSampledPositionForComponents(update = false) {
     const { fixed, inertial } = this.props.sampledPosition;
 
+    // For prelaunch satellites, create a CallbackProperty that uses props.position()
+    // which applies the pre-launch launch site override
+    const isPrelaunch = this.props.hasTag("Prelaunch") && this.props.isEpochInFuture();
+    const props = this.props;
+    const prelaunchPositionProperty = isPrelaunch ? new CallbackProperty((time) => props.position(time), false) : null;
+
     Object.entries(this.components).forEach(([type, component]) => {
       if (type === "Orbit") {
         component.position = inertial;
@@ -330,17 +336,18 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
           this.enableComponent("Orbit");
         }
       } else if (type === "Height stick") {
-        component.position = fixed;
+        component.position = isPrelaunch ? prelaunchPositionProperty : fixed;
       } else if (type === "Sensor cone") {
-        component.position = fixed;
+        component.position = isPrelaunch ? prelaunchPositionProperty : fixed;
         component.orientation = new CallbackProperty((time) => {
           const position = this.props.position(time);
           const hpr = new HeadingPitchRoll(0, CesiumMath.toRadians(180), 0);
           return Transforms.headingPitchRollQuaternion(position, hpr);
         }, false);
       } else {
-        component.position = fixed;
-        component.orientation = new VelocityOrientationProperty(fixed);
+        // For prelaunch satellites, use CallbackProperty that checks for launch site override
+        component.position = isPrelaunch ? prelaunchPositionProperty : fixed;
+        component.orientation = new VelocityOrientationProperty(isPrelaunch ? prelaunchPositionProperty : fixed);
       }
     });
     // Request a single frame after satellite position updates when the clock is paused
@@ -412,6 +419,8 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
   }
 
   createCesiumSatelliteEntity(entityName, entityKey, entityValue) {
+    // Use CallbackProperty to allow pre-launch position override for initial entity creation
+    // Note: updatedSampledPositionForComponents will set the actual position property later
     this.createCesiumEntity(entityName, entityKey, entityValue, this.props.name, this.description, this.props.sampledPosition.fixed, true);
   }
 
@@ -531,10 +540,15 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
   }
 
   createOrbitPolylinePrimitive() {
+    const positions = this.props.getSampledPositionsForNextOrbit(this.viewer.clock.currentTime);
+    // Need at least 2 positions for a polyline (e.g., pre-launch satellites may have no valid positions)
+    if (!positions || positions.length < 2) {
+      return;
+    }
     const primitive = new Primitive({
       geometryInstances: new GeometryInstance({
         geometry: new PolylineGeometry({
-          positions: this.props.getSampledPositionsForNextOrbit(this.viewer.clock.currentTime),
+          positions,
           width: 2,
           arcType: ArcType.NONE,
           // granularity: CesiumMath.RADIANS_PER_DEGREE * 10,
@@ -558,9 +572,14 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
 
   createOrbitPolylineGeometry() {
     // Currently unused
+    const positions = this.props.getSampledPositionsForNextOrbit(this.viewer.clock.currentTime);
+    // Need at least 2 positions for a polyline (e.g., pre-launch satellites may have no valid positions)
+    if (!positions || positions.length < 2) {
+      return;
+    }
     const geometryInstance = new GeometryInstance({
       geometry: new PolylineGeometry({
-        positions: this.props.getSampledPositionsForNextOrbit(this.viewer.clock.currentTime),
+        positions,
         width: 2,
         arcType: ArcType.NONE,
         // granularity: CesiumMath.RADIANS_PER_DEGREE * 10,

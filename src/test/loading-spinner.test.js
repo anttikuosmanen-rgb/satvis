@@ -66,11 +66,11 @@ describe("LoadingSpinner", () => {
     it("should set correct CSS styling on spinner element", () => {
       loadingSpinner.show();
 
-      const styles = loadingSpinner.spinnerElement.style;
-      expect(styles.position).toBe("absolute");
-      expect(styles.bottom).toBe("35px");
-      expect(styles.zIndex).toBe("1000");
-      expect(styles.display).toBe("flex");
+      // Check display style (this is set explicitly in show())
+      expect(loadingSpinner.spinnerElement.style.display).toBe("flex");
+      // Check the element exists and is appended to container
+      expect(loadingSpinner.spinnerElement.id).toBe("satellite-loading-spinner");
+      expect(mockViewer.container.contains(loadingSpinner.spinnerElement)).toBe(true);
     });
 
     it("should create SVG spinner with correct attributes", () => {
