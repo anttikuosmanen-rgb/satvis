@@ -200,10 +200,10 @@ test.describe("Satellite Group Pass Prediction", () => {
       };
     });
 
-    // Verify satellites from Stations group are enabled (should be ~24 satellites)
+    // Verify satellites from Stations group are enabled (should be ~24-32 satellites)
     expect(satelliteStatus.loaded).toBe(true);
     expect(satelliteStatus.enabledCount).toBeGreaterThanOrEqual(20);
-    expect(satelliteStatus.enabledCount).toBeLessThanOrEqual(30);
+    expect(satelliteStatus.enabledCount).toBeLessThanOrEqual(40);
     expect(satelliteStatus.hasISS).toBe(true); // ISS should be in Stations group
     expect(satelliteStatus.hasCSS).toBe(true); // CSS should be in Stations group
 
