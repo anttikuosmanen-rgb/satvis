@@ -540,10 +540,15 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
   }
 
   createOrbitPolylinePrimitive() {
+    const positions = this.props.getSampledPositionsForNextOrbit(this.viewer.clock.currentTime);
+    // Need at least 2 positions for a polyline (e.g., pre-launch satellites may have no valid positions)
+    if (!positions || positions.length < 2) {
+      return;
+    }
     const primitive = new Primitive({
       geometryInstances: new GeometryInstance({
         geometry: new PolylineGeometry({
-          positions: this.props.getSampledPositionsForNextOrbit(this.viewer.clock.currentTime),
+          positions,
           width: 2,
           arcType: ArcType.NONE,
           // granularity: CesiumMath.RADIANS_PER_DEGREE * 10,
@@ -567,9 +572,14 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
 
   createOrbitPolylineGeometry() {
     // Currently unused
+    const positions = this.props.getSampledPositionsForNextOrbit(this.viewer.clock.currentTime);
+    // Need at least 2 positions for a polyline (e.g., pre-launch satellites may have no valid positions)
+    if (!positions || positions.length < 2) {
+      return;
+    }
     const geometryInstance = new GeometryInstance({
       geometry: new PolylineGeometry({
-        positions: this.props.getSampledPositionsForNextOrbit(this.viewer.clock.currentTime),
+        positions,
         width: 2,
         arcType: ArcType.NONE,
         // granularity: CesiumMath.RADIANS_PER_DEGREE * 10,
