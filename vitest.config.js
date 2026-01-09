@@ -5,11 +5,17 @@ import path from "path";
 export default defineConfig({
   plugins: [vue()],
   test: {
-    environment: "happy-dom",
+    environment: "jsdom",
     globals: true,
+    globalSetup: ["./src/test/global-setup.js"],
     setupFiles: ["./src/test/setup.js"],
     // Don't fail on unhandled rejections from Cesium network requests in test environment
     dangerouslyIgnoreUnhandledErrors: true,
+    server: {
+      deps: {
+        inline: ["pinia", "@vue/devtools-kit"],
+      },
+    },
     // Exclude Playwright E2E tests - they should be run separately with Playwright's runner
     exclude: [
       "**/node_modules/**",
@@ -48,6 +54,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@vue/devtools-kit": path.resolve(__dirname, "./src/test/__mocks__/@vue/devtools-kit.js"),
     },
   },
 });

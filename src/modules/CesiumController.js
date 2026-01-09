@@ -46,6 +46,7 @@ import { SatelliteManager } from "./SatelliteManager";
 import { TimeFormatHelper } from "./util/TimeFormatHelper";
 import { PlanetManager } from "./PlanetManager";
 import { EarthManager } from "./EarthManager";
+import { LaunchSiteManager } from "./LaunchSiteManager";
 import { filterAndSortPasses } from "./util/PassFilter";
 import { ClockMonitor } from "./util/ClockMonitor";
 import { DescriptionHelper } from "./util/DescriptionHelper";
@@ -178,6 +179,13 @@ export class CesiumController {
 
     // Create Earth/Moon Manager
     this.earthMoon = new EarthManager(this.viewer);
+
+    // Create Launch Site Manager
+    this.launchSites = new LaunchSiteManager(this.viewer);
+    this.launchSites.initialize();
+
+    // Wire LaunchSiteManager to SatelliteManager for pre-launch satellite positioning
+    this.sats.launchSiteManager = this.launchSites;
 
     // Add event listener for ground station selection
     this.setupGroundStationSelectionListener();

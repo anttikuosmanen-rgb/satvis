@@ -65,7 +65,65 @@ export class SatelliteProperties {
     return JulianDate.compare(tleDate, now) > 0;
   }
 
+  getEpochJulianDate() {
+    const { julianDate } = this.orbit;
+    const julianDayNumber = Math.floor(julianDate);
+    const secondsOfDay = (julianDate - julianDayNumber) * 60 * 60 * 24;
+    return new JulianDate(julianDayNumber, secondsOfDay);
+  }
+
+  /**
+   * Get pre-launch position if satellite should be locked to launch site
+   * Returns position if: hasTag("Prelaunch") AND isEpochInFuture() AND time in [epoch-1h, epoch]
+   * @param {JulianDate} time - Current simulation time
+   * @param {LaunchSiteManager} launchSiteManager - Reference to launch site manager
+   * @returns {Cartesian3|null} Launch site position or null
+   */
+  getPreLaunchPosition(time, launchSiteManager) {
+    // Check if satellite has Prelaunch tag and epoch in future
+    if (!this.hasTag("Prelaunch") || !this.isEpochInFuture()) {
+      return null;
+    }
+
+    if (!launchSiteManager) {
+      return null;
+    }
+
+    const epochJD = this.getEpochJulianDate();
+    const epochMinus1h = JulianDate.addSeconds(epochJD, -3600, new JulianDate());
+    const epochMinus3days = JulianDate.addDays(epochJD, -3, new JulianDate());
+
+    // Don't show prelaunch satellite more than 3 days before epoch
+    if (JulianDate.compare(time, epochMinus3days) < 0) {
+      return "hidden";
+    }
+
+    // Lock to launch site until 1 hour before epoch, then follow orbit
+    if (JulianDate.compare(time, epochMinus1h) < 0) {
+      // Cache nearest launch site on first call
+      if (!this._cachedLaunchSite) {
+        // Use position at epoch minus 1 hour (first orbital position)
+        const firstPos = this.computePosition(epochMinus1h);
+        this._cachedLaunchSite = launchSiteManager.findNearestLaunchSite(firstPos.positionFixed);
+      }
+      return this._cachedLaunchSite?.cartesian;
+    }
+
+    return null;
+  }
+
   position(time) {
+    // Check for pre-launch override
+    if (this._launchSiteManager) {
+      const preLaunchPos = this.getPreLaunchPosition(time, this._launchSiteManager);
+      if (preLaunchPos === "hidden") {
+        // Don't show satellite more than 3 days before epoch
+        return undefined;
+      }
+      if (preLaunchPos) {
+        return preLaunchPos;
+      }
+    }
     return this.sampledPosition.fixed.getValue(time);
   }
 

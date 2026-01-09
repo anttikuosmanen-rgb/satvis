@@ -7,7 +7,7 @@ Satellite orbit visualization and pass prediction with enhanced features for vis
 >
 > **Live Demo:** [https://anttikuosmanen-rgb.github.io/satvis/](https://anttikuosmanen-rgb.github.io/satvis/)
 >
-> **Active Branch:** `merge-upstream-2-ursa-features` contains the latest improvements and is automatically deployed to GitHub Pages.
+> **Active Branch:** `master` contains the latest improvements and is automatically deployed to GitHub Pages.
 
 ![Screenshot](https://anttikuosmanen-rgb.github.io/satvis/data/images/screenshot.png)
 
