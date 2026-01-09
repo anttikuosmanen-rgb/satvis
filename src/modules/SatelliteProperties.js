@@ -129,8 +129,13 @@ export class SatelliteProperties {
 
   getSampledPositionsForNextOrbit(start, reference = "inertial", loop = true) {
     const end = JulianDate.addSeconds(start, this.orbit.orbitalPeriod * 60, new JulianDate());
-    const positions = this.sampledPosition[reference].getRawValues(start, end);
-    if (loop) {
+    const rawPositions = this.sampledPosition[reference].getRawValues(start, end);
+    // Filter out undefined positions (e.g., pre-launch satellites that are hidden)
+    const positions = rawPositions.filter((p) => p !== undefined);
+    if (positions.length === 0) {
+      return [];
+    }
+    if (loop && positions.length > 0) {
       // Readd the first position to the end of the array to close the loop
       return [...positions, positions[0]];
     }
