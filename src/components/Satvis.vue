@@ -891,9 +891,13 @@ export default {
         }
 
         // Check if custom satellite with this name already exists
+        // Note: Future-epoch satellites get " *" suffix, so check both forms
         const customName = `[Custom] ${originalName}`;
         const satStore = useSatStore();
-        const satelliteExists = cc.sats.getSatellite(customName);
+        const satelliteExists = cc.sats.getSatellite(customName) || cc.sats.getSatellite(`${customName} *`);
+
+        // Track the actual satellite name (may have * suffix for future-epoch satellites)
+        let actualSatName = customName;
 
         if (!satelliteExists) {
           // Build TLE with [Custom] prefix to avoid name clashes
@@ -903,28 +907,36 @@ export default {
           // Pass updateStore=false to avoid triggering satellitesLoaded event again
           cc.sats.addFromTle(modifiedTle, ["Custom"], false);
 
-          console.log(`Custom satellite added: ${customName}`);
+          // Get the actual satellite name - it may have * suffix for future-epoch satellites
+          const addedSat = cc.sats.getSatellite(customName) || cc.sats.getSatellite(`${customName} *`);
+          if (addedSat) {
+            actualSatName = addedSat.props.name;
+          }
+
+          console.log(`Custom satellite added: ${actualSatName}`);
 
           // Manually update the store to refresh UI
           satStore.availableTags = cc.sats.tags;
           satStore.availableSatellitesByTag = cc.sats.taglist;
         } else {
-          console.log(`Custom satellite ${customName} already exists, ensuring it's enabled`);
+          // Get the actual name from existing satellite
+          actualSatName = satelliteExists.props.name;
+          console.log(`Custom satellite ${actualSatName} already exists, ensuring it's enabled`);
         }
 
         // Enable the custom satellite automatically after a short delay
         // This allows Cesium's reference frame data to load first
         // Do this whether satellite was just added or already existed
         setTimeout(() => {
-          if (customName) {
+          if (actualSatName) {
             // Add to enabled satellites if not already there
-            if (!satStore.enabledSatellites.includes(customName)) {
-              satStore.enabledSatellites = [...satStore.enabledSatellites, customName];
-              console.log(`Custom satellite enabled: ${customName}`);
+            if (!satStore.enabledSatellites.includes(actualSatName)) {
+              satStore.enabledSatellites = [...satStore.enabledSatellites, actualSatName];
+              console.log(`Custom satellite enabled: ${actualSatName}`);
             } else {
               // Satellite already in enabled list (from URL state)
               // Trigger showEnabledSatellites to actually show it
-              console.log(`Custom satellite already enabled, showing: ${customName}`);
+              console.log(`Custom satellite already enabled, showing: ${actualSatName}`);
               cc.sats.showEnabledSatellites();
             }
           }

@@ -87,10 +87,15 @@ export const satStoreUrlSyncConfig = [
     serialize: (v) => {
       if (!v || v.length === 0) return "";
       // Array of TLE strings - concatenate directly (no separator needed)
-      return v.join("");
+      // IMPORTANT: Replace + with %2B because + is decoded as space in URLs
+      return v.join("").replaceAll("+", "%2B");
     },
     deserialize: (v) => {
       if (!v) return [];
+      // Restore + signs that were encoded as %2B during serialization
+      // Also fix legacy URLs where + was decoded as space in TLE exponent fields
+      // Pattern: 5 digits, space, single digit, then space (should be NNNNN+N or NNNNN-N)
+      const tleString = v.replaceAll("%2B", "+").replace(/(\d{5}) (\d) /g, "$1+$2 ");
 
       // Parse TLEs by detecting line boundaries
       // TLE lines have fixed structure:
@@ -99,7 +104,7 @@ export const satStoreUrlSyncConfig = [
       // - Name line (optional, variable length, doesn't start with "1 " or "2 ")
 
       const tles = [];
-      let buffer = v.trim();
+      let buffer = tleString.trim();
 
       while (buffer.length > 0) {
         // Find next "1 " that starts a TLE line 1
