@@ -58,6 +58,36 @@ export const FRESH_CUSTOM_TLE = generateFreshCustomTle();
 export const FRESH_STARLINK_TLE = generateFreshStarlinkTle();
 
 /**
+ * Generate a TLE epoch string for 30 days in the future
+ * Used to test pre-launch satellite handling (future-epoch satellites)
+ * @returns {string} TLE epoch in standard format
+ */
+export function generateFutureEpoch() {
+  const future = new Date();
+  future.setDate(future.getDate() + 30); // 30 days from now
+  const year = future.getUTCFullYear() % 100;
+  const startOfYear = new Date(Date.UTC(future.getUTCFullYear(), 0, 1));
+  const dayOfYear = Math.floor((future - startOfYear) / (24 * 60 * 60 * 1000)) + 1;
+  const fractionOfDay = (future.getUTCHours() * 3600 + future.getUTCMinutes() * 60 + future.getUTCSeconds()) / 86400;
+  return `${year.toString().padStart(2, "0")}${(dayOfYear + fractionOfDay).toFixed(8).padStart(12, "0")}`;
+}
+
+/**
+ * Generate a pre-launch satellite TLE with future epoch
+ * These satellites get a " *" suffix in their name (see SatelliteProperties.js)
+ * @param {string} name - Satellite name (will have " *" appended by the app)
+ * @returns {string} 3-line TLE string with epoch 30 days in future
+ */
+export function generateFutureEpochTle(name = "PRELAUNCH-SAT") {
+  return `${name}
+1 00083U 58002B   ${generateFutureEpoch()}  .00000000  00000+0  00000-0 0  9999
+2 00083  34.2500 123.4567 0012345  67.8901 292.1234 13.45678901234567`;
+}
+
+// Pre-generated future-epoch TLE for convenience
+export const FRESH_FUTURE_TLE = generateFutureEpochTle();
+
+/**
  * Build a URL with fresh ISS TLE data
  * Use this instead of `sats=ISS~(ZARYA)` to ensure fresh epoch
  * @param {Object} options - URL options
