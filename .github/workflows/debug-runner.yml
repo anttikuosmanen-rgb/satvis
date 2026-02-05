@@ -1,0 +1,272 @@
+# =============================================================================
+# WORKFLOW: Debug Runner with Replay-Like Behavior
+# =============================================================================
+# This workflow demonstrates how to achieve Jenkins Replay-like functionality
+# with GitHub Actions + self-hosted runners.
+#
+# APPROACHES DEMONSTRATED:
+#   1. Arbitrary script execution via workflow inputs
+#   2. Remote script fetching (edit script without committing workflow)
+#   3. Interactive debugging capabilities
+#   4. Workflow parameter overrides
+#
+# SECURITY WARNING:
+#   This workflow allows arbitrary code execution. Only use on:
+#   - Private repositories
+#   - Protected branches with required approvals
+#   - Self-hosted runners you control
+#   - Never on public repos or GitHub-hosted runners!
+# =============================================================================
+
+name: Debug Runner (Replay-Like)
+
+# -----------------------------------------------------------------------------
+# TRIGGERS: Manual only with inputs
+# -----------------------------------------------------------------------------
+on:
+  workflow_dispatch:
+    inputs:
+      # Option 1: Execute arbitrary bash commands
+      custom_commands:
+        description: 'Custom bash commands to execute (like Jenkins Replay)'
+        required: false
+        type: string
+        default: ''
+
+      # Option 2: Fetch and execute script from URL/gist
+      script_url:
+        description: 'URL to script to download and execute'
+        required: false
+        type: string
+        default: ''
+
+      # Option 3: Execute pre-defined debug scenarios
+      debug_scenario:
+        description: 'Pre-defined debug scenario'
+        required: false
+        type: choice
+        options:
+          - none
+          - inspect-environment
+          - check-docker
+          - test-deployment
+          - full-diagnostic
+        default: none
+
+      # Toggle runner type
+      use_self_hosted:
+        description: 'Use self-hosted runner (allows more flexibility)'
+        type: boolean
+        default: false
+
+      # Enable verbose output
+      verbose:
+        description: 'Enable verbose debug output'
+        type: boolean
+        default: true
+
+# -----------------------------------------------------------------------------
+# JOBS
+# -----------------------------------------------------------------------------
+jobs:
+  debug-execution:
+    # Dynamic runner selection based on input
+    runs-on: ${{ inputs.use_self_hosted && 'self-hosted' || 'ubuntu-latest' }}
+
+    # Only on protected branches
+    environment:
+      name: ${{ inputs.use_self_hosted && 'production' || 'staging' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      # APPROACH 1: Execute custom commands (like Jenkins Replay)
+      # -----------------------------------------------------------------
+      # This allows you to paste arbitrary bash code and run it
+      - name: Execute custom commands
+        if: inputs.custom_commands != ''
+        run: |
+          echo "::notice::Executing custom commands"
+          echo "::warning::Security: Running arbitrary code from input"
+
+          # Create script file
+          cat > /tmp/custom-script.sh << 'EOFSCRIPT'
+          ${{ inputs.custom_commands }}
+          EOFSCRIPT
+
+          chmod +x /tmp/custom-script.sh
+
+          # Execute with error handling
+          set +e
+          bash /tmp/custom-script.sh
+          EXIT_CODE=$?
+          set -e
+
+          echo "Exit code: $EXIT_CODE"
+          exit $EXIT_CODE
+
+      # APPROACH 2: Fetch and execute script from URL
+      # -----------------------------------------------------------------
+      # Edit a gist/pastebin, then run it without committing to repo
+      # Example: Create gist at https://gist.github.com
+      - name: Execute script from URL
+        if: inputs.script_url != ''
+        run: |
+          echo "::notice::Fetching script from: ${{ inputs.script_url }}"
+
+          # Fetch script
+          curl -fsSL "${{ inputs.script_url }}" -o /tmp/remote-script.sh
+
+          # Show what we're about to execute (security)
+          echo "::group::Script contents"
+          cat /tmp/remote-script.sh
+          echo "::endgroup::"
+
+          # Execute
+          chmod +x /tmp/remote-script.sh
+          bash /tmp/remote-script.sh
+
+      # APPROACH 3: Pre-defined debug scenarios
+      # -----------------------------------------------------------------
+      - name: Run debug scenario
+        if: inputs.debug_scenario != 'none'
+        run: |
+          case "${{ inputs.debug_scenario }}" in
+            "inspect-environment")
+              echo "=== Environment Inspection ==="
+              echo "Runner: ${{ runner.os }} ${{ runner.arch }}"
+              echo "Working directory: $(pwd)"
+              echo ""
+
+              echo "=== Git Info ==="
+              git log -1 --oneline
+              git status
+              echo ""
+
+              echo "=== Environment Variables ==="
+              env | sort
+              echo ""
+
+              echo "=== Disk Space ==="
+              df -h
+              echo ""
+
+              echo "=== Memory ==="
+              free -h || echo "free command not available"
+              ;;
+
+            "check-docker")
+              echo "=== Docker Information ==="
+              docker version
+              docker info
+              echo ""
+
+              echo "=== Docker Images ==="
+              docker images
+              echo ""
+
+              echo "=== Running Containers ==="
+              docker ps
+              ;;
+
+            "test-deployment")
+              echo "=== Testing Deployment Prerequisites ==="
+
+              # Check if kubectl available (for k8s deployments)
+              if command -v kubectl &> /dev/null; then
+                echo "✓ kubectl available"
+                kubectl version --client
+                kubectl config current-context || echo "No kubeconfig"
+              else
+                echo "✗ kubectl not available"
+              fi
+
+              # Check if docker available
+              if command -v docker &> /dev/null; then
+                echo "✓ Docker available"
+                docker version --format '{{.Server.Version}}'
+              else
+                echo "✗ Docker not available"
+              fi
+
+              # Check if we can access container registry
+              echo ""
+              echo "=== Testing GHCR Access ==="
+              if docker pull ghcr.io/anttikuosmanen-rgb/satvis/web:latest; then
+                echo "✓ Can pull from GHCR"
+              else
+                echo "✗ Cannot pull from GHCR"
+              fi
+              ;;
+
+            "full-diagnostic")
+              echo "=== Full System Diagnostic ==="
+
+              echo "## System Info"
+              uname -a
+              echo ""
+
+              echo "## CPU Info"
+              cat /proc/cpuinfo | grep "model name" | head -1 || echo "N/A"
+              echo ""
+
+              echo "## Memory Info"
+              cat /proc/meminfo | head -5 || echo "N/A"
+              echo ""
+
+              echo "## Disk Usage"
+              df -h
+              echo ""
+
+              echo "## Network Interfaces"
+              ip addr || ifconfig
+              echo ""
+
+              echo "## Installed Software"
+              node --version 2>/dev/null || echo "node: not installed"
+              npm --version 2>/dev/null || echo "npm: not installed"
+              docker --version 2>/dev/null || echo "docker: not installed"
+              kubectl version --client 2>/dev/null || echo "kubectl: not installed"
+              ;;
+          esac
+
+      # Verbose debug output
+      - name: Verbose debug info
+        if: inputs.verbose
+        run: |
+          echo "::group::Workflow Context"
+          echo "Event: ${{ github.event_name }}"
+          echo "Actor: ${{ github.actor }}"
+          echo "Ref: ${{ github.ref }}"
+          echo "SHA: ${{ github.sha }}"
+          echo "Repository: ${{ github.repository }}"
+          echo "Runner OS: ${{ runner.os }}"
+          echo "Runner arch: ${{ runner.arch }}"
+          echo "Self-hosted: ${{ inputs.use_self_hosted }}"
+          echo "::endgroup::"
+
+      # Create workflow summary
+      - name: Create summary
+        if: always()
+        run: |
+          echo "## 🔍 Debug Runner Execution Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Trigger:** Manual workflow dispatch" >> $GITHUB_STEP_SUMMARY
+          echo "**Runner Type:** ${{ inputs.use_self_hosted && 'Self-hosted' || 'GitHub-hosted' }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -n "${{ inputs.custom_commands }}" ]; then
+            echo "**Execution Mode:** Custom commands" >> $GITHUB_STEP_SUMMARY
+          elif [ -n "${{ inputs.script_url }}" ]; then
+            echo "**Execution Mode:** Remote script from URL" >> $GITHUB_STEP_SUMMARY
+            echo "**Script URL:** ${{ inputs.script_url }}" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ inputs.debug_scenario }}" != "none" ]; then
+            echo "**Execution Mode:** Pre-defined scenario (${{ inputs.debug_scenario }})" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Execution Mode:** No execution (dry run)" >> $GITHUB_STEP_SUMMARY
+          fi

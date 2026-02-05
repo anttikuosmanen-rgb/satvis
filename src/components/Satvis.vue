@@ -82,7 +82,7 @@
           <input type="button" :disabled="isInZenithView" @click="removeGroundStation()" />
           Remove ground station
         </label>
-        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('gs', 4) }">
+        <label v-if="canUseLocalTime && sceneMode === '3D'" class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('gs', 4) }">
           <input type="button" @click="toggleZenithView()" />
           {{ isInZenithView ? "Normal view" : "Zenith view" }}
         </label>
@@ -1201,6 +1201,10 @@ export default {
         // Exit zenith view (event will be dispatched by SatelliteManager)
         this.cc.sats.exitZenithView();
       } else {
+        // Only enter zenith view if ground station is set and in 3D mode
+        if (!this.canUseLocalTime || this.sceneMode !== "3D") {
+          return;
+        }
         // Enter zenith view (event will be dispatched by SatelliteManager)
         this.cc.sats.zenithViewFromGroundStation();
       }

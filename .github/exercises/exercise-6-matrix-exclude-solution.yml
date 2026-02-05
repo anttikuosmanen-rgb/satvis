@@ -1,0 +1,152 @@
+# =============================================================================
+# EXERCISE 6: Matrix Include/Exclude (SOLUTION)
+# =============================================================================
+# This is the corrected version with all 4 issues fixed.
+# =============================================================================
+
+name: Exercise 6 - Matrix Include/Exclude
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: [18, 20, 22]
+
+        # FIX 1 & 2: Combine all excludes into ONE exclude block
+        # YAML doesn't merge duplicate keys - the second 'exclude:' overwrites the first!
+        #
+        # Also, exclude requires EXACT matches of ALL specified properties.
+        # Just `- os: windows-latest` doesn't exclude all Windows jobs.
+        # You must list each Windows combination explicitly.
+        #
+        # FIX for "exclude all Windows": List every Windows + Node combination
+        exclude:
+          # Exclude all Windows combinations (must list each one)
+          - os: windows-latest
+            node: 18
+          - os: windows-latest
+            node: 20
+          - os: windows-latest
+            node: 22
+          # Exclude Ubuntu + Node 18
+          # FIX: node value must match type - use integer 18, not string "18"
+          - os: ubuntu-latest
+            node: 18
+
+        # FIX 3: include entries need to match existing combinations
+        # Just `- node: 22` adds experimental to ALL combinations (not what we want)
+        # To add to specific combinations, include more matching properties,
+        # OR list each combination explicitly.
+        #
+        # Since we want experimental: true for ALL Node 22 jobs (any OS),
+        # we need to list each OS + Node 22 combination:
+        include:
+          - os: ubuntu-latest
+            node: 22
+            experimental: true
+          - os: macos-latest
+            node: 22
+            experimental: true
+          # Note: windows-latest + node 22 is excluded, so no need to include it
+
+    # FIX 4: Handle undefined matrix.experimental
+    # For combinations without experimental defined, it will be empty/falsy.
+    # Option A: Use default value with || operator
+    # Option B: Ensure all combinations have experimental defined via include
+    #
+    # Using Option A here - if experimental is undefined/empty, default to false
+    continue-on-error: ${{ matrix.experimental || false }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Show matrix info
+        run: |
+          echo "OS: ${{ matrix.os }}"
+          echo "Node: ${{ matrix.node }}"
+          echo "Experimental: ${{ matrix.experimental }}"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+# =============================================================================
+# SUMMARY OF FIXES:
+# =============================================================================
+#
+# 1. YAML duplicate keys: You can only have ONE 'exclude:' block
+#    Wrong:
+#      exclude:
+#        - os: windows-latest
+#      exclude:                    # This OVERWRITES the previous exclude!
+#        - os: ubuntu-latest
+#          node: 18
+#
+#    Right:
+#      exclude:
+#        - os: windows-latest
+#          node: 18
+#        - os: ubuntu-latest
+#          node: 18
+#
+# 2. Exclude requires EXACT match of ALL specified properties
+#    - `- os: windows-latest` alone does NOT exclude all Windows jobs
+#    - It would only match a combination that has ONLY os and no other properties
+#    - Since our matrix has both os AND node, we must specify both to match
+#
+# 3. Include matching behavior
+#    - `- node: 22` with no os specified adds to ALL existing combinations
+#    - To add properties to specific combinations, match on more properties
+#    - Or list each combination explicitly
+#
+# 4. Undefined matrix variables
+#    - Not all combinations have 'experimental' defined
+#    - Use `|| false` to provide a default value
+#    - Or define experimental: false in include for all non-experimental combos
+#
+# =============================================================================
+# RESULTING MATRIX (after exclude/include):
+# =============================================================================
+#
+# | OS            | Node | Experimental |
+# |---------------|------|--------------|
+# | ubuntu-latest | 20   | (undefined)  |
+# | ubuntu-latest | 22   | true         |
+# | macos-latest  | 18   | (undefined)  |
+# | macos-latest  | 20   | (undefined)  |
+# | macos-latest  | 22   | true         |
+#
+# Excluded:
+# - All windows-latest combinations
+# - ubuntu-latest + node 18
+#
+# =============================================================================
+# ALTERNATIVE: Simpler approach - don't include Windows in the first place
+# =============================================================================
+#
+# If you want to exclude an entire OS, it's simpler to just not include it:
+#
+#   matrix:
+#     os: [ubuntu-latest, macos-latest]  # Just don't list windows
+#     node: [18, 20, 22]
+#     exclude:
+#       - os: ubuntu-latest
+#         node: 18
+#
+# =============================================================================

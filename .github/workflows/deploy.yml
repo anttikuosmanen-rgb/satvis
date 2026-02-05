@@ -1,35 +1,157 @@
+# =============================================================================
+# WORKFLOW: Deploy to GitHub Pages
+# =============================================================================
+# This workflow builds the application and deploys it to GitHub Pages.
+# It demonstrates several important concepts:
+#   1. Conditional execution (build on PRs, deploy only on push to master)
+#   2. GitHub Pages deployment with OIDC authentication
+#   3. Docker-based builds with artifact extraction
+#   4. Job-level permissions (principle of least privilege)
+#   5. Environment URLs for deployment tracking
+#
+# DEPLOYMENT STRATEGY:
+#   - Pull Requests: Build only (verify the PR doesn't break the build)
+#   - Push to master: Build AND deploy to GitHub Pages
+# =============================================================================
+
 name: Deploy to GitHub Pages
 
+# -----------------------------------------------------------------------------
+# TRIGGERS
+# -----------------------------------------------------------------------------
+# This workflow runs on:
+#   1. Push to master (full build + deploy)
+#   2. Pull requests targeting master (build only, no deploy)
+#
+# WHY BOTH?
+# - PRs: Validate the build works before merging
+# - Push: Actually deploy after merge
 on:
   push:
     branches:
       - master
+
   pull_request:
     branches:
       - master
 
+# -----------------------------------------------------------------------------
+# JOBS
+# -----------------------------------------------------------------------------
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
+    # -------------------------------------------------------------------------
+    # DEPLOYMENT ENVIRONMENT
+    # -------------------------------------------------------------------------
+    # The 'environment:' key links this job to a GitHub Environment.
+    # Environments provide:
+    #   - Deployment history and status tracking
+    #   - Protection rules (required reviewers, wait timers)
+    #   - Environment-specific secrets
+    #   - URL display in the GitHub UI
+    #
+    # ENVIRONMENT URL:
+    # The 'url:' shows the deployed URL in the GitHub UI.
+    # Here we use a step output that's set later by deploy-pages action.
+    #
+    # YAML SYNTAX NOTE - Step Outputs:
+    # ${{ steps.deployment.outputs.page_url }} accesses:
+    #   steps       - The 'steps' context
+    #   deployment  - A step with id: deployment (defined below)
+    #   outputs     - That step's outputs object
+    #   page_url    - Specific output named 'page_url'
+    #
+    # NOTE: GitHub Pages environments are typically named 'github-pages'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+
+    # -------------------------------------------------------------------------
+    # PERMISSIONS (Principle of Least Privilege)
+    # -------------------------------------------------------------------------
+    # GitHub Actions uses a GITHUB_TOKEN with configurable permissions.
+    # By default, workflows have broad permissions. Explicitly declaring
+    # permissions restricts the token to ONLY what's needed.
+    #
+    # SECURITY BEST PRACTICE:
+    # Always declare minimal permissions. If you don't need 'issues: write',
+    # don't include it. This limits damage if your workflow is compromised.
+    #
+    # COMMON PERMISSIONS:
+    #   contents: read/write    - Repository contents (code, commits)
+    #   pages: write            - GitHub Pages deployment
+    #   id-token: write         - Request OIDC tokens (for cloud auth)
+    #   packages: write         - Publish to GitHub Packages/Container Registry
+    #   issues: write           - Create/modify issues
+    #   pull-requests: write    - Create/modify PRs and comments
+    #   deployments: write      - Create deployment records
+    #   actions: read/write     - Manage workflow runs
+    #
+    # WHY id-token: write?
+    # GitHub Pages uses OIDC (OpenID Connect) for secure deployment.
+    # The deploy-pages action requests a short-lived token to authenticate
+    # without needing long-lived secrets.
     permissions:
       contents: read
       pages: write
       id-token: write
 
     steps:
+      # STEP 1: Checkout
+      # -----------------------------------------------------------------------
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          # 'true' fetches one level of submodules (not recursive).
+          # Use 'recursive' if submodules have their own submodules.
           submodules: true
 
+      # STEP 2: Build with Docker (Builder Stage)
+      # -----------------------------------------------------------------------
+      # This step builds the application using Docker's multi-stage build.
+      # We target only the 'builder' stage, which compiles the app but doesn't
+      # create the final nginx image.
+      #
+      # YAML MULTI-LINE STRINGS:
+      # The '|' character starts a "literal block scalar". Everything after
+      # (indented) is treated as a multi-line string, preserving newlines.
+      # Alternative: '>' (folded scalar) joins lines with spaces.
+      #
+      # MULTI-LINE STRING STYLES:
+      #   |   - Literal: keeps newlines exactly as written
+      #   |+  - Literal, keep trailing newlines
+      #   |-  - Literal, strip trailing newlines
+      #   >   - Folded: joins lines with spaces (paragraph style)
+      #
+      # Example:
+      #   run: |
+      #     echo "Line 1"
+      #     echo "Line 2"
+      #
+      # Is equivalent to: "echo \"Line 1\"\necho \"Line 2\"\n"
+      #
+      # DOCKER BUILD FLAGS:
+      #   --target builder  - Build only up to the 'builder' stage
+      #   -f Dockerfile.web - Use specific Dockerfile
+      #   -t tag:name       - Tag the image for later reference
+      #
+      # CONTEXT EXPRESSION: ${{ github.sha }}
+      # 'github.sha' is the full commit SHA (40 characters).
+      # Using it as a tag creates unique, traceable images.
       - name: Build with Docker (builder stage)
         run: |
           # Build the builder stage which contains the compiled app in /app/dist
           docker build --target builder -f Dockerfile.web -t satvis-builder:${{ github.sha }} .
 
+      # STEP 3: Extract Build Artifacts from Docker
+      # -----------------------------------------------------------------------
+      # Docker images are isolated - we can't directly access files inside.
+      # This step extracts the built files from the Docker image.
+      #
+      # TECHNIQUE: Create container → Copy files → Remove container
+      # This is a common pattern for extracting artifacts from Docker builds.
       - name: Extract build artifacts from Docker
         run: |
           # Create a container from the builder image
@@ -41,30 +163,81 @@ jobs:
           # Clean up the container
           docker rm satvis-extract
 
+      # STEP 4: Update TLE Data
+      # -----------------------------------------------------------------------
+      # Updates satellite orbital data from external sources.
+      # This runs an npm script that fetches fresh TLE data.
       - name: Update TLE data
         run: npm run update-tle
 
+      # STEP 5: Update Prelaunch Data
+      # -----------------------------------------------------------------------
+      # Updates pre-launch satellite data from external sources.
       - name: Update prelaunch data
         run: |
           cd data/tle
           sh update-prelaunch-data.sh
           mv prelaunch.txt groups/
 
+      # STEP 6: Copy TLE Data to Dist
+      # -----------------------------------------------------------------------
       - name: Copy TLE data to dist
         run: |
           # Copy freshly updated TLE data into the dist folder
           cp -r data/tle/groups dist/data/tle/
 
+      # STEP 7: Setup GitHub Pages (Conditional)
+      # -----------------------------------------------------------------------
+      # CONDITIONAL EXECUTION (if:)
+      # This step only runs when:
+      #   1. Event is 'push' (not 'pull_request')
+      #   2. Branch is 'master' (refs/heads/master)
+      #
+      # EXPRESSION BREAKDOWN:
+      #   github.event_name == 'push'
+      #     - 'github' is a context object with event metadata
+      #     - 'event_name' is 'push', 'pull_request', etc.
+      #
+      #   github.ref == 'refs/heads/master'
+      #     - 'ref' is the full git reference
+      #     - Push to master: 'refs/heads/master'
+      #     - Tag: 'refs/tags/v1.0.0'
+      #     - PR: 'refs/pull/123/merge'
+      #
+      # LOGICAL OPERATORS:
+      #   &&  - AND (both must be true)
+      #   ||  - OR (either can be true)
+      #   !   - NOT (negate)
+      #
+      # WHY THIS CONDITION?
+      # We only want to deploy on push to master, not on PRs.
+      # PRs should only verify the build works.
       - name: Setup Pages
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         uses: actions/configure-pages@v4
 
+      # STEP 8: Upload Pages Artifact (Conditional)
+      # -----------------------------------------------------------------------
+      # Uploads the build output as a GitHub Pages artifact.
+      # This is a special artifact format that deploy-pages expects.
       - name: Upload artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         uses: actions/upload-pages-artifact@v3
         with:
+          # Path to the built static site
           path: './dist'
 
+      # STEP 9: Deploy to GitHub Pages (Conditional)
+      # -----------------------------------------------------------------------
+      # Actually deploys the uploaded artifact to GitHub Pages.
+      #
+      # STEP ID (id:)
+      # The 'id:' key gives this step a name for referencing its outputs.
+      # Here, 'deployment' is used to get the deployed URL:
+      #   ${{ steps.deployment.outputs.page_url }}
+      #
+      # This output is used in the 'environment:' block at the job level
+      # to display the deployment URL in the GitHub UI.
       - name: Deploy to GitHub Pages
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         id: deployment

@@ -43,6 +43,7 @@ import { PushManager } from "./util/PushManager";
 import { CesiumPerformanceStats } from "./util/CesiumPerformanceStats";
 import { CesiumTimelineHelper } from "./util/CesiumTimelineHelper";
 import { SatelliteManager } from "./SatelliteManager";
+import { SatelliteComponentCollection } from "./SatelliteComponentCollection";
 import { TimeFormatHelper } from "./util/TimeFormatHelper";
 import { PlanetManager } from "./PlanetManager";
 import { EarthManager } from "./EarthManager";
@@ -402,25 +403,40 @@ export class CesiumController {
   }
 
   set sceneMode(sceneMode) {
+    // Exit zenith view before switching away from 3D - zenith view only works in 3D
+    if (sceneMode !== "3D" && this.sats.isInZenithView) {
+      this.sats.exitZenithView();
+    }
+
+    // Remove orbit primitives before morphing - Primitive.modelMatrix is only supported in 3D
+    // and crashes during the morph transition. Recreate after morph completes.
+    const hasOrbit = this.sats.enabledComponents.includes("Orbit");
+    if (hasOrbit) {
+      this.sats.disableComponent("Orbit");
+      // Also synchronously remove the shared geometry primitive used for non-tracked orbits.
+      // disableComponent schedules removal asynchronously via recreateGeometryInstancePrimitive,
+      // but the morph starts before that tick callback fires.
+      if (SatelliteComponentCollection.primitive) {
+        this.viewer.scene.primitives.remove(SatelliteComponentCollection.primitive);
+        SatelliteComponentCollection.primitive = undefined;
+      }
+    }
+
     if (sceneMode === "3D") {
       this.viewer.scene.morphTo3D();
-      return;
-    }
-    if (this.sats.enabledComponents.includes("Orbit")) {
-      useToastProxy().add({
-        severity: "warn",
-        summary: "Warning",
-        detail: "Disable the Orbit satellite element for 2D mode",
-        life: 3000,
-      });
-      return;
-    }
-    if (sceneMode === "2D") {
+    } else if (sceneMode === "2D") {
       this.viewer.scene.morphTo2D();
-      return;
-    }
-    if (sceneMode === "Columbus") {
+    } else if (sceneMode === "Columbus") {
       this.viewer.scene.morphToColumbusView();
+    }
+
+    // Recreate orbit components after morph completes so they use the correct
+    // visualization type (PathGraphics for 2D/Columbus, Primitive for 3D)
+    if (hasOrbit) {
+      const removeCallback = this.viewer.scene.morphComplete.addEventListener(() => {
+        removeCallback();
+        this.sats.enableComponent("Orbit");
+      });
     }
   }
 
@@ -1368,8 +1384,8 @@ export class CesiumController {
           if (!this.sats || !this.sats.groundStationAvailable) {
             // No GS: dispatch event to open GS menu with hint
             window.dispatchEvent(new CustomEvent("requestGsPicker"));
-          } else if (isDoubleTap) {
-            // Double tap: Enter zenith view
+          } else if (isDoubleTap && this.viewer.scene.mode === SceneMode.SCENE3D) {
+            // Double tap: Enter zenith view (only in 3D mode)
             this.sats.lastGlobeView = this.captureCurrentView();
             this.sats.zenithViewFromGroundStation();
           } else {
