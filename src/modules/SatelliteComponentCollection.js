@@ -56,16 +56,39 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       time: null, // JulianDate when path was created
       entities: null, // Array of polyline entities
     };
+    // Track user intent to enable components (separate from actual component existence)
+    // This allows orbit components to be "enabled" even when data isn't available
+    this._enabledComponentNames = [];
+  }
+
+  // Override componentNames to return user intent (what should be shown)
+  // rather than just what exists in components object
+  get componentNames() {
+    return this._enabledComponentNames;
   }
 
   enableComponent(name) {
     if (!this.created) {
       this.init();
     }
-    if (!this.props.sampledPosition.valid) {
+
+    // For orbit-related components, skip the valid check entirely
+    // User intent to show orbit is tracked separately from data availability
+    const isOrbitComponent = name === "Orbit" || name === "Orbit track";
+
+    if (!this.props.sampledPosition.valid && !isOrbitComponent) {
       console.error(`No valid position data available for ${this.props.name}`);
       return;
     }
+
+    // Track user intent to enable this component
+    if (!this._enabledComponentNames.includes(name)) {
+      this._enabledComponentNames.push(name);
+    }
+
+    // Create component if it doesn't exist
+    // For orbit components, this may not create anything if data is unavailable
+    // but the component will be auto-created when data becomes available
     if (!(name in this.components)) {
       this.createComponent(name);
       this.updatedSampledPositionForComponents();
@@ -118,6 +141,9 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
   }
 
   disableComponent(name) {
+    // Remove from enabled components list
+    this._enabledComponentNames = this._enabledComponentNames.filter((n) => n !== name);
+
     if (name === "3D model") {
       // Restore old label offset
       if (this.components.Label) {
@@ -327,6 +353,17 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     const props = this.props;
     const prelaunchPositionProperty = isPrelaunch ? new CallbackProperty((time) => props.position(time), false) : null;
 
+    // Event-driven recreation: Check if orbit components are enabled but not created
+    // This handles pre-launch satellites where positions become available after time changes
+    const orbitComponents = ["Orbit", "Orbit track"];
+    for (const componentName of orbitComponents) {
+      // Check if component is enabled (user wants it) but not created (no data was available)
+      if (this.componentNames.includes(componentName) && !(componentName in this.components)) {
+        // Try to create it now that positions may be available
+        this.createComponent(componentName);
+      }
+    }
+
     Object.entries(this.components).forEach(([type, component]) => {
       if (type === "Orbit") {
         component.position = inertial;
@@ -335,6 +372,10 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
           this.disableComponent("Orbit");
           this.enableComponent("Orbit");
         }
+      } else if (type === "Orbit track") {
+        // PathGraphics requires SampledPositionProperty (with getValueInReferenceFrame)
+        // Cannot use CallbackProperty here - it would crash Cesium's PathVisualizer
+        component.position = fixed;
       } else if (type === "Height stick") {
         component.position = isPrelaunch ? prelaunchPositionProperty : fixed;
       } else if (type === "Sensor cone") {
@@ -543,6 +584,8 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     const positions = this.props.getSampledPositionsForNextOrbit(this.viewer.clock.currentTime);
     // Need at least 2 positions for a polyline (e.g., pre-launch satellites may have no valid positions)
     if (!positions || positions.length < 2) {
+      // Don't create component yet - it will be auto-created when positions become available
+      // User intent to show orbit is preserved in componentNames
       return;
     }
     const primitive = new Primitive({
@@ -989,62 +1032,6 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       width: 5,
     });
     this.createCesiumSatelliteEntity("Ground station link", "polyline", polyline);
-  }
-
-  createPassArc() {
-    if (!this.props.groundStationAvailable || !this.isSelected) {
-      return;
-    }
-
-    // Find current pass
-    const getCurrentPass = (time) => {
-      const currentTime = new Date(JulianDate.toDate(time));
-      return this.props.passes.find((pass) => {
-        const passStart = new Date(pass.start);
-        const passEnd = new Date(pass.end);
-        return currentTime >= passStart && currentTime <= passEnd;
-      });
-    };
-
-    // Create dynamic material that changes color based on eclipse status
-    const dynamicMaterial = new CallbackProperty((time) => {
-      try {
-        const isEclipsed = this.props.orbit.isInEclipse(JulianDate.toDate(time));
-        return isEclipsed
-          ? Color.DARKRED.withAlpha(0.8) // Dark red for eclipsed portions
-          : Color.CYAN.withAlpha(0.9); // Bright cyan for sunlit portions during pass
-      } catch {
-        // Fallback to cyan if eclipse calculation fails
-        return Color.CYAN.withAlpha(0.8);
-      }
-    }, false);
-
-    const path = new PathGraphics({
-      leadTime: new CallbackProperty((time) => {
-        const currentPass = getCurrentPass(time);
-        if (!currentPass) return 0;
-
-        const currentTime = JulianDate.toDate(time);
-        const passEnd = new Date(currentPass.end);
-        return Math.max(0, (passEnd.getTime() - currentTime.getTime()) / 1000);
-      }, false),
-      trailTime: new CallbackProperty((time) => {
-        const currentPass = getCurrentPass(time);
-        if (!currentPass) return 0;
-
-        const currentTime = JulianDate.toDate(time);
-        const passStart = new Date(currentPass.start);
-        return Math.max(0, (currentTime.getTime() - passStart.getTime()) / 1000);
-      }, false),
-      material: dynamicMaterial,
-      resolution: 120, // Higher resolution for more detailed pass arc
-      width: 4, // Wider to make it stand out
-      show: new CallbackProperty((time) => {
-        // Only show when satellite is selected and during a pass
-        return this.isSelected && this.props.passIntervals.contains(time);
-      }, false),
-    });
-    this.createCesiumSatelliteEntity("Pass arc", "path", path);
   }
 
   /**

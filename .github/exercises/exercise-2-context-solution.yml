@@ -1,0 +1,120 @@
+# =============================================================================
+# EXERCISE 2: Context and Expression Errors (SOLUTION)
+# =============================================================================
+# This is the corrected version with all 5 errors fixed.
+# Each fix explains the issue and the correct approach.
+# =============================================================================
+
+name: Exercise 2 - Context Errors
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  APP_ENV: production
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # FIX 1: Use 'github.ref_name' instead of 'github.branch'
+      # There is no 'github.branch' context variable!
+      # Common github context variables:
+      #   github.ref       - Full ref: 'refs/heads/main'
+      #   github.ref_name  - Short name: 'main'
+      #   github.head_ref  - PR source branch (only in PR events)
+      #   github.base_ref  - PR target branch (only in PR events)
+      #
+      # Wrong: github.branch (doesn't exist)
+      # Right: github.ref_name (for short branch name)
+      - name: Show branch info
+        run: echo "Running on ${{ github.ref_name }}"
+
+      - name: Run tests
+        run: npm test
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+
+    # FIX 2: Two issues here:
+    # (a) 'main' needs to be quoted - it's a string, not a variable
+    # (b) github.ref is the FULL ref, including 'refs/heads/'
+    #
+    # Wrong: github.ref == main
+    #   - 'main' without quotes is interpreted as a variable (undefined)
+    #   - Even with quotes, github.ref is 'refs/heads/main', not 'main'
+    #
+    # Right approaches:
+    #   github.ref == 'refs/heads/main'           - Full ref comparison
+    #   github.ref_name == 'main'                 - Short name comparison
+    #   startsWith(github.ref, 'refs/heads/main') - Pattern match
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # FIX 3: Use == for comparison, not = (assignment)
+      # The broken version used single = which is assignment in many languages.
+      # GitHub Actions expressions require == for equality comparison.
+      #
+      # Wrong: if: ${{ env.APP_ENV = 'production' }}   (single =)
+      # Right: if: env.APP_ENV == 'production'         (double ==)
+      #
+      # Note: In 'if:' the ${{ }} is optional.
+      - name: Check environment
+        if: env.APP_ENV == 'production'
+        run: echo "Deploying to production"
+
+      # FIX 4: Missing closing braces in expression
+      # Expressions must have matching ${{ and }}
+      #
+      # Wrong: ${{ github.sha
+      # Right: ${{ github.sha }}
+      - name: Show commit info
+        run: echo "Deploying commit ${{ github.sha }}"
+
+      - name: Deploy
+        run: ./deploy.sh
+
+  notify:
+    needs: test
+    runs-on: ubuntu-latest
+
+    # FIX 5: Use 'github.event_name' not 'github.event'
+    # github.event is the entire event PAYLOAD (an object)
+    # github.event_name is the event TYPE (a string)
+    #
+    # Wrong: github.event == 'pull_request'
+    #   - github.event is an object, can't compare to string
+    #
+    # Right: github.event_name == 'pull_request'
+    #   - github.event_name is 'push', 'pull_request', etc.
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Comment on PR
+        run: echo "Tests passed for PR #${{ github.event.pull_request.number }}"
+
+# =============================================================================
+# SUMMARY OF ERRORS:
+# =============================================================================
+# 1. github.branch      → github.ref_name     (nonexistent property)
+# 2. github.ref == main → github.ref == 'refs/heads/main' (quotes + full ref)
+# 3. env.APP_ENV = 'x'  → env.APP_ENV == 'x'  (use == for comparison, not =)
+# 4. ${{ github.sha     → ${{ github.sha }}   (missing closing braces)
+# 5. github.event       → github.event_name   (event payload vs event type)
+#
+# KEY CONTEXT PROPERTIES TO REMEMBER:
+# - github.ref          - Full ref: 'refs/heads/main', 'refs/tags/v1.0'
+# - github.ref_name     - Short: 'main', 'v1.0'
+# - github.event_name   - Event type: 'push', 'pull_request'
+# - github.event        - Full event payload object
+# - github.sha          - Full commit SHA
+# - github.actor        - Username who triggered the workflow
+# =============================================================================

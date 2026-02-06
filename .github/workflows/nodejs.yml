@@ -1,39 +1,202 @@
+# =============================================================================
+# WORKFLOW: Node CI
+# =============================================================================
+# This workflow implements a comprehensive Node.js CI pipeline that:
+#   1. Tests across multiple Node.js versions (matrix strategy)
+#   2. Runs linting, tests, and builds
+#   3. Reports overall status via a dependent job
+#
+# KEY CONCEPTS DEMONSTRATED:
+#   - Matrix builds (parallel testing across Node versions)
+#   - Job dependencies (needs:)
+#   - Minimal trigger configuration
+# =============================================================================
+
 name: Node CI
 
+# -----------------------------------------------------------------------------
+# TRIGGERS: Minimal Configuration
+# -----------------------------------------------------------------------------
+# YAML SYNTAX NOTE:
+# When an event trigger has no filters (like branches or types), you can use
+# one of these equivalent syntaxes:
+#
+#   Approach 1 - Empty mapping:
+#     push: {}
+#
+#   Approach 2 - Null value (used here):
+#     push:
+#     pull_request:
+#
+# Both mean "trigger on ANY push or pull_request" without restrictions.
+# This is different from branches: ['**'] which explicitly says "all branches".
+# The end result is the same, but the null syntax is more concise.
 on:
   push:
   pull_request:
 
+# -----------------------------------------------------------------------------
+# JOBS
+# -----------------------------------------------------------------------------
+# This workflow has TWO jobs:
+#   1. 'test' - Runs tests on multiple Node.js versions (via matrix)
+#   2. 'report-build-status' - Runs AFTER all test jobs complete
+#
+# JOB EXECUTION ORDER:
+# Without dependencies, jobs run in PARALLEL.
+# With 'needs:', jobs wait for specified jobs to complete first.
 jobs:
+  # ===========================================================================
+  # JOB 1: test
+  # ===========================================================================
+  # This job runs the full CI pipeline: lint → test → build
+  # It runs MULTIPLE TIMES in parallel (once per Node.js version).
   test:
     runs-on: ubuntu-latest
+
+    # -------------------------------------------------------------------------
+    # MATRIX STRATEGY (Advanced)
+    # -------------------------------------------------------------------------
+    # Matrix creates multiple job instances with different variable combinations.
+    # With node-version: [20, 22], this job runs TWICE in parallel:
+    #   - test (20) - Tests with Node.js 20
+    #   - test (22) - Tests with Node.js 22
+    #
+    # MATRIX EXPANSION EXAMPLE:
+    # If you had:
+    #   matrix:
+    #     node-version: [20, 22]
+    #     os: [ubuntu-latest, windows-latest]
+    #
+    # This creates 4 jobs (2 versions × 2 OS):
+    #   - test (20, ubuntu-latest)
+    #   - test (20, windows-latest)
+    #   - test (22, ubuntu-latest)
+    #   - test (22, windows-latest)
+    #
+    # ADDITIONAL STRATEGY OPTIONS (not used here, but useful to know):
+    #
+    #   strategy:
+    #     fail-fast: false        # Default: true. If true, cancels all matrix
+    #                             # jobs when any job fails. Set to false to
+    #                             # let all jobs complete.
+    #
+    #     max-parallel: 2         # Limit concurrent matrix jobs (useful for
+    #                             # resource-intensive tests or rate limits)
+    #
+    #     matrix:
+    #       include:              # Add specific combinations
+    #         - node-version: 18
+    #           experimental: true
+    #       exclude:              # Remove specific combinations
+    #         - node-version: 20
+    #           os: windows-latest
     strategy:
       matrix:
+        # YAML LIST SYNTAX (Block Style):
+        # This is a multi-line list (block style), alternative to inline [20, 22].
+        # Both are valid; block style is often clearer for longer lists.
         node-version:
           - 20
           - 22
+
+    # -------------------------------------------------------------------------
+    # STEPS
+    # -------------------------------------------------------------------------
     steps:
+      # STEP 1: Checkout
+      # -----------------------------------------------------------------------
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      # STEP 2: Setup Node.js
+      # -----------------------------------------------------------------------
+      # The 'name' field supports context expressions.
+      # ${{ matrix.node-version }} will show as "Setup Node.js 20" or "22"
+      # in the Actions UI, making it easy to identify which matrix leg is which.
       - name: Setup Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
+          # YAML QUOTING:
+          # "npm" is quoted here. In YAML, quotes are optional for simple strings,
+          # but some editors/linters prefer them for consistency.
+          # These are equivalent:
+          #   cache: npm
+          #   cache: "npm"
+          #   cache: 'npm'
           cache: "npm"
+
+      # STEP 3: Install Dependencies
+      # -----------------------------------------------------------------------
+      # 'npm ci' is the shorthand for 'npm clean-install'.
+      # Either works; 'ci' is commonly used in CI/CD contexts.
       - name: Install dependencies
         run: npm ci
+
+      # STEP 4: Linting
+      # -----------------------------------------------------------------------
+      # Linting checks code style and catches potential errors.
+      # Running lint before tests catches simple issues quickly.
+      # If linting fails, subsequent steps won't run (default behavior).
       - name: Run linting
         run: npm run lint
+
+      # STEP 5: Run Tests
+      # -----------------------------------------------------------------------
+      # The '--' separates npm arguments from arguments passed to the script.
+      # --run makes vitest run once and exit (vs watch mode).
       - name: Run tests
         run: npm test -- --run
+
+      # STEP 6: Build Project
+      # -----------------------------------------------------------------------
+      # Building verifies the project compiles successfully.
+      # This catches TypeScript errors and build configuration issues.
       - name: Build project
         run: npm run build
 
+  # ===========================================================================
+  # JOB 2: report-build-status
+  # ===========================================================================
+  # This job runs AFTER all matrix jobs in 'test' complete.
+  # It's a simple "gate" job that only succeeds if all tests passed.
+  #
+  # WHY USE A REPORTING JOB?
+  # 1. Branch protection: You can require this ONE job instead of all matrix jobs
+  # 2. Cleaner status checks: Shows one green checkmark vs many
+  # 3. Notification target: Send Slack/email alerts based on this job
+  # 4. Future-proof: Adding matrix dimensions doesn't require protection changes
   report-build-status:
     runs-on: ubuntu-latest
+
+    # -------------------------------------------------------------------------
+    # JOB DEPENDENCIES (needs:)
+    # -------------------------------------------------------------------------
+    # 'needs:' specifies which jobs must complete before this job starts.
+    #
+    # IMPORTANT: 'needs: test' waits for ALL matrix instances of 'test'.
+    # If test runs with Node 20 and 22, both must complete before this job runs.
+    #
+    # SYNTAX OPTIONS:
+    #   needs: test                     # Single dependency (string)
+    #   needs: [test, lint, build]      # Multiple dependencies (list)
+    #
+    # BEHAVIOR:
+    # - If ANY needed job fails, this job is skipped (status: "skipped")
+    # - If ANY needed job is cancelled, this job is cancelled
+    # - This job only runs if ALL needed jobs succeed
+    #
+    # ADVANCED: You can access outcomes via needs context:
+    #   if: needs.test.result == 'success'
+    #   if: needs.test.outputs.some_output == 'value'
     needs: test
+
     steps:
       - name: Report build status
+        # Simple echo statement - the fact that this job runs means tests passed.
+        # GITHUB_STEP_SUMMARY could be used here to create a rich summary:
+        #   run: echo "## ✅ All tests passed!" >> $GITHUB_STEP_SUMMARY
         run: echo "All tests and builds completed successfully"

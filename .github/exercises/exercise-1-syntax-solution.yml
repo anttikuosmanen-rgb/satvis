@@ -1,0 +1,72 @@
+# =============================================================================
+# EXERCISE 1: Syntax Errors (SOLUTION)
+# =============================================================================
+# This is the corrected version of the workflow with all 5 errors fixed.
+# Each fix is marked with a comment explaining the issue.
+# =============================================================================
+
+name: Exercise 1 - Syntax Errors
+
+# FIX 1: Added colon after 'on'
+# YAML requires a colon after mapping keys.
+# Wrong: on
+# Right: on:
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    # FIX 2: Added colon after 'runs-on'
+    # Same issue - 'runs-on' is a key and needs a colon before its value.
+    # Wrong: runs-on ubuntu-latest
+    # Right: runs-on: ubuntu-latest
+    runs-on: ubuntu-latest
+
+    steps:
+      # FIX 3: Fixed action name typo
+      # The correct organization is 'actions' (plural), not 'action'.
+      # Wrong: action/checkout@v4
+      # Right: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # FIX 4: Fixed indentation of 'with'
+      # 'with' should be at the same level as 'uses', not indented under it.
+      # In YAML, 'with' is a sibling of 'uses', not a child.
+      # Wrong:
+      #   uses: actions/setup-node@v4
+      #     with:           <- over-indented
+      # Right:
+      #   uses: actions/setup-node@v4
+      #   with:             <- same level as 'uses'
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # FIX 5: Added colon after 'name'
+      # Step keys like 'name' need colons.
+      # Wrong: - name Run tests
+      # Right: - name: Run tests
+      - name: Run tests
+        run: npm test
+
+# =============================================================================
+# SUMMARY OF ERRORS:
+# =============================================================================
+# 1. on     → on:        (missing colon after 'on')
+# 2. runs-on ubuntu     → runs-on: ubuntu    (missing colon)
+# 3. action/checkout    → actions/checkout   (typo: action vs actions)
+# 4. 'with' indentation  → align with 'uses'  (over-indented)
+# 5. name Run tests     → name: Run tests    (missing colon)
+#
+# LESSONS LEARNED:
+# - YAML keys ALWAYS need colons
+# - Indentation matters - siblings should align
+# - Double-check action organization names
+# - Use actionlint to catch these errors quickly
+# =============================================================================

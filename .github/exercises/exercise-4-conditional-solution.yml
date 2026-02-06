@@ -1,0 +1,169 @@
+# =============================================================================
+# EXERCISE 4: Job Dependencies and Artifacts (SOLUTION)
+# =============================================================================
+# This is the corrected version with all issues fixed.
+# =============================================================================
+
+name: Exercise 4 - Artifacts
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    # FIX 1: Add outputs block to expose step outputs to other jobs
+    # Job outputs let you pass data between jobs.
+    #
+    # Structure:
+    #   outputs:
+    #     output-name: ${{ steps.step-id.outputs.output-key }}
+    #
+    # Then access in another job via:
+    #   needs.build.outputs.output-name
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build application
+        run: |
+          mkdir -p dist
+          echo "Built at $(date)" > dist/build-info.txt
+          echo "Version: 1.0.0" >> dist/build-info.txt
+
+      # FIX 2: The upload was actually correct!
+      # But let's document what's important about v4:
+      #
+      # actions/upload-artifact@v4 changes from v3:
+      # - Artifacts are immutable (can't overwrite same name in same run)
+      # - Faster uploads with better compression
+      # - retention-days default changed
+      # - Artifacts no longer automatically have .zip extension in download
+      #
+      # Key points for compatibility:
+      # - upload-artifact@v4 MUST be used with download-artifact@v4
+      # - v3 and v4 are NOT compatible with each other!
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-files
+          path: dist/
+          retention-days: 5  # Optional: set retention
+
+      - name: Set build version
+        id: version
+        run: echo "version=1.0.0" >> $GITHUB_OUTPUT
+
+  test:
+    runs-on: ubuntu-latest
+
+    # FIX 3: Typo in 'needs' (was 'need')
+    # The keyword is 'needs' (plural), not 'need'.
+    # This is a common typo that causes the job to run in parallel
+    # with build instead of after it.
+    #
+    # Wrong: need: build
+    # Right: needs: build
+    needs: build
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download artifact for testing
+        uses: actions/download-artifact@v4
+        with:
+          # FIX 4: Artifact name must match upload
+          # The upload used 'dist-files', download used 'build-dist'
+          #
+          # Wrong: name: build-dist
+          # Right: name: dist-files
+          name: dist-files
+          # Also specify where to download (optional but recommended)
+          path: dist/
+
+      - name: Run tests
+        run: |
+          cat dist/build-info.txt
+          echo "Tests passed!"
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [build, test]
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-files
+          path: ./deploy
+
+      # BONUS: Using job output from build job
+      - name: Show version
+        run: |
+          echo "Deploying version: ${{ needs.build.outputs.version }}"
+
+      - name: Deploy
+        run: |
+          echo "Deploying..."
+          ls -la ./deploy
+          cat ./deploy/build-info.txt
+
+# =============================================================================
+# SUMMARY OF FIXES:
+# =============================================================================
+#
+# 1. Added 'outputs:' block to build job
+#    - Enables passing data between jobs
+#    - Maps step outputs to job outputs
+#    - Access via needs.job-name.outputs.output-name
+#
+# 2. Artifact upload was correct, but noted v3→v4 migration issues
+#    - Must use matching versions (v4 upload with v4 download)
+#    - Artifacts are immutable in v4
+#    - Consider setting retention-days
+#
+# 3. 'need' → 'needs' (typo)
+#    - 'needs' is the correct keyword
+#    - Without it, jobs run in parallel (race condition!)
+#
+# 4. Artifact name mismatch
+#    - 'build-dist' → 'dist-files'
+#    - Names must match exactly (case-sensitive)
+#
+# ARTIFACT BEST PRACTICES:
+#
+# 1. Use descriptive, unique names
+#    name: build-${{ github.sha }}
+#
+# 2. Include the run number for multiple runs
+#    name: test-results-${{ github.run_number }}
+#
+# 3. Set appropriate retention
+#    retention-days: 5  # Don't keep forever
+#
+# 4. Use 'if-no-files-found' for optional artifacts
+#    if-no-files-found: warn  # or 'error' or 'ignore'
+#
+# 5. Compress large artifacts before upload
+#    run: tar -czf dist.tar.gz dist/
+#    then upload dist.tar.gz
+#
+# JOB OUTPUT PATTERN:
+#
+# job1:
+#   outputs:
+#     result: ${{ steps.step1.outputs.value }}
+#   steps:
+#     - id: step1
+#       run: echo "value=hello" >> $GITHUB_OUTPUT
+#
+# job2:
+#   needs: job1
+#   steps:
+#     - run: echo "${{ needs.job1.outputs.result }}"
+# =============================================================================
