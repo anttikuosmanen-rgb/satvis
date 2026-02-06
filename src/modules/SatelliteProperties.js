@@ -252,6 +252,7 @@ export class SatelliteProperties {
     });
     this.sampledPosition.fixed = new SampledPositionProperty();
     this.sampledPosition.fixed.backwardExtrapolationType = ExtrapolationType.HOLD;
+    this.sampledPosition.valid = true; // Initialize as valid
     this.sampledPosition.fixed.forwardExtrapolationType = ExtrapolationType.HOLD;
     this.sampledPosition.fixed.setInterpolationOptions({
       interpolationDegree: 5,
@@ -299,6 +300,13 @@ export class SatelliteProperties {
       }
       this.sampledPosition.valid = false;
       return Cartesian3.ZERO;
+    }
+
+    // Reset valid flag to true when we successfully compute a valid position
+    // This allows orbit components to be recreated after temporary invalidity
+    // (e.g., pre-launch satellites when scrubbing backwards in time before epoch)
+    if (this.sampledPosition.valid === false) {
+      this.sampledPosition.valid = true;
     }
 
     return new Cartesian3(eci.x * 1000, eci.y * 1000, eci.z * 1000);

@@ -1,0 +1,156 @@
+# =============================================================================
+# EXERCISE 3: Matrix Strategy Failures (SOLUTION)
+# =============================================================================
+# This is the corrected version with all issues fixed.
+# =============================================================================
+
+name: Exercise 3 - Matrix Issues
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      # FIX 1: Set fail-fast to false
+      # By default, fail-fast is true, which means:
+      # - If ANY matrix job fails, ALL other matrix jobs are cancelled
+      # - This hides which other versions might also fail
+      #
+      # Setting fail-fast: false means:
+      # - All matrix jobs run to completion
+      # - You can see the full picture of what passes/fails
+      # - Better for identifying version-specific issues
+      fail-fast: false
+
+      matrix:
+        node-version:
+          - 18
+          - 20
+          - 22
+        include:
+          - node-version: 18
+            experimental: false
+          - node-version: 20
+            experimental: false
+          - node-version: 22
+            experimental: true
+
+    # FIX 3: Use matrix value for continue-on-error
+    # This allows experimental versions to fail without failing the workflow
+    #
+    # Before: continue-on-error: false (at bottom, always false)
+    # After: continue-on-error: ${{ matrix.experimental }}
+    #   - Node 18, 20: experimental=false → must pass
+    #   - Node 22: experimental=true → allowed to fail
+    continue-on-error: ${{ matrix.experimental }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      # FIX 2: Handle fetch() compatibility across Node versions
+      # The fetch API was:
+      # - Node 18.0: Available with --experimental-fetch flag
+      # - Node 18.3+: Available globally (no flag needed)
+      # - Node 20+: Fully stable, always available
+      # - Node 22+: Fully stable, always available
+      #
+      # Solution options:
+      # A) Use a polyfill package (node-fetch, undici)
+      # B) Check Node version and conditionally run
+      # C) Use a different HTTP library (axios, got)
+      # D) Ensure minimum Node version that has stable fetch
+      #
+      # Here we use option B: version-aware execution
+      - name: Run API test
+        run: |
+          node -e "
+            // Check Node.js version for fetch support
+            const [major] = process.versions.node.split('.').map(Number);
+
+            async function test() {
+              // For older Node versions, we might need to import fetch
+              // Node 18.0-18.2 needs --experimental-fetch flag
+              // Node 18.3+ and Node 20+ have global fetch
+
+              if (typeof globalThis.fetch === 'undefined') {
+                console.log('fetch not available globally, skipping test');
+                console.log('Node version:', process.version);
+                return;
+              }
+
+              const response = await fetch('https://api.github.com/zen');
+              const text = await response.text();
+              console.log('GitHub says:', text);
+            }
+
+            test().catch(e => {
+              console.error('Test failed:', e.message);
+              // Don't exit with error for fetch issues on older Node
+              // The main tests will catch real problems
+              if (e.message.includes('fetch')) {
+                console.log('Fetch not available, this is expected on older Node');
+                process.exit(0);
+              }
+              process.exit(1);
+            });
+          "
+
+      - name: Run main tests
+        run: npm test
+
+# =============================================================================
+# SUMMARY OF FIXES:
+# =============================================================================
+#
+# 1. fail-fast: false
+#    - Shows all failures, not just the first one
+#    - Essential for debugging matrix issues
+#    - Lets you see the full compatibility picture
+#
+# 2. Version-aware fetch test
+#    - fetch() availability varies by Node version
+#    - Gracefully handles missing fetch
+#    - Doesn't fail the build for expected version differences
+#
+# 3. continue-on-error: ${{ matrix.experimental }}
+#    - Moved from step level to job level
+#    - Uses matrix variable to determine behavior
+#    - Experimental versions can fail without breaking CI
+#
+# MATRIX DEBUGGING TIPS:
+# - Always use fail-fast: false when debugging
+# - Check the GitHub Actions UI to see which matrix leg failed
+# - Use matrix.include to add version-specific flags
+# - Consider using matrix.exclude for known-bad combinations
+#
+# ALTERNATIVE APPROACHES:
+#
+# If you need to support old Node versions with fetch:
+#
+#   - name: Install fetch polyfill
+#     if: matrix.node-version < 18
+#     run: npm install node-fetch
+#
+# Or use conditional execution per version:
+#
+#   - name: Test with fetch
+#     if: matrix.node-version >= 18
+#     run: node fetch-test.js
+#
+#   - name: Test without fetch
+#     if: matrix.node-version < 18
+#     run: node no-fetch-test.js
+# =============================================================================

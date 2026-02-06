@@ -1,0 +1,98 @@
+# =============================================================================
+# EXERCISE 4: Job Dependencies and Artifacts (BROKEN)
+# =============================================================================
+# This CI/CD pipeline has separate build and deploy jobs.
+# The build uploads an artifact, and deploy downloads it.
+#
+# SCENARIO:
+# - Build job runs and succeeds
+# - Build uploads artifact "dist-files"
+# - Deploy job starts but can't find the artifact
+# - Error: "Unable to find any artifacts for the associated workflow run"
+#
+# The team recently upgraded from actions/upload-artifact@v3 to @v4.
+#
+# Your task: Fix the workflow so deploy can access the build artifact.
+#
+# HINTS:
+# - Check artifact action versions and their compatibility
+# - Look at artifact naming between upload and download
+# - Consider job dependencies and execution order
+# - Think about what happens when a job has multiple outputs
+#
+# There are 4 issues to fix in this workflow.
+# =============================================================================
+
+name: Exercise 4 - Artifacts
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    # ISSUE 1: We want to pass values to the deploy job
+    # but the outputs aren't configured correctly
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build application
+        id: build-application
+        run: |
+          mkdir -p dist
+          echo "Built at $(date)" > dist/build-info.txt
+          echo "Version: 1.0.0" >> dist/build-info.txt
+
+      # ISSUE 2: Check the artifact upload configuration
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-files
+          path: dist/
+
+      - name: Set build version
+        id: version
+        run: echo "version=1.0.0" >> $GITHUB_OUTPUT
+
+  test:
+    runs-on: ubuntu-latest
+    # ISSUE 3: Test should run after build, but something is wrong
+    needs: build
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download artifact for testing
+        uses: actions/download-artifact@v4
+        with:
+          # ISSUE 4: Artifact name doesn't match what was uploaded
+          name: dist-files
+          path: ./dist
+
+      - name: Run tests
+        run: |
+          cat dist/build-info.txt
+          echo "Tests passed!"
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [build, test]
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-files
+          path: ./dist
+
+      - name: Deploy
+        run: |
+          echo "Deploying..."
+          ls -la ./dist
+          cat ./dist/build-info.txt

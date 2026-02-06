@@ -1,17 +1,91 @@
+# =============================================================================
+# WORKFLOW: Deploy to Server via SSH
+# =============================================================================
+# This is the most complex workflow in this repository. It deploys the
+# application to a production server via SSH. Key concepts demonstrated:
+#
+#   1. Repository secrets for sensitive data (SSH keys, credentials)
+#   2. Environment protection rules (production environment)
+#   3. SSH key setup and security best practices
+#   4. Build arguments for Docker
+#   5. Remote script execution via SSH (heredocs)
+#   6. Cleanup steps with 'if: always()'
+#   7. Deployment verification
+#   8. Backup and rollback patterns
+#
+# SECURITY CONSIDERATIONS:
+# This workflow handles sensitive operations. Review carefully:
+#   - SSH private keys are stored as secrets
+#   - Never log secret values
+#   - Clean up credentials after use
+#   - Use environment protection for production
+# =============================================================================
+
 name: Deploy to Server
 
+# -----------------------------------------------------------------------------
+# TRIGGERS
+# -----------------------------------------------------------------------------
 on:
   push:
     branches:
       - production  # Deploy only on push to production branch
+
+  # Manual trigger allows deploying without pushing to production branch.
+  # Useful for:
+  #   - Re-deploying after server issues
+  #   - Deploying specific commits
+  #   - Emergency rollbacks
   workflow_dispatch:  # Allow manual deployment from Actions tab
 
+# -----------------------------------------------------------------------------
+# JOBS
+# -----------------------------------------------------------------------------
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
+    # -------------------------------------------------------------------------
+    # DEPLOYMENT ENVIRONMENT: Production
+    # -------------------------------------------------------------------------
+    # The 'environment:' key links this job to a GitHub Environment.
+    #
+    # GITHUB ENVIRONMENTS:
+    # Environments are configured in: Settings → Environments
+    #
+    # ENVIRONMENT FEATURES:
+    # 1. Protection Rules:
+    #    - Required reviewers (N people must approve before deploy)
+    #    - Wait timer (delay before deployment starts)
+    #    - Deployment branch restrictions
+    #
+    # 2. Environment Secrets:
+    #    Secrets scoped to this environment only. More secure than
+    #    repository-level secrets because they're only exposed to jobs
+    #    using this environment.
+    #
+    # 3. Deployment History:
+    #    Track all deployments, who triggered them, success/failure, etc.
+    #
+    # IMPORTANT: Environment secrets are ONLY available when the job
+    # explicitly declares 'environment:'. Without it, you can't access
+    # environment-specific secrets!
+    #
+    # TIP: Use different environments for staging vs production:
+    #   environment:
+    #     name: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
     environment:
       name: production
+
     steps:
+      # STEP 1: Show Runner IP Address (Debugging)
+      # -----------------------------------------------------------------------
+      # Useful for firewall configuration - shows which IP needs access.
+      # GitHub-hosted runners have dynamic IPs from known ranges.
+      #
+      # NOTE: This is for debugging. In production, you might want to
+      # restrict SSH access to GitHub's known IP ranges:
+      # https://api.github.com/meta
       - name: Show runner IP address
         run: |
           echo "GitHub Runner Public IP Address:"
@@ -20,11 +94,30 @@ jobs:
           echo "Alternate check:"
           curl -s https://checkip.amazonaws.com
 
+      # STEP 2: Checkout Code
+      # -----------------------------------------------------------------------
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           submodules: true
 
+      # STEP 3: Docker Build with Build Arguments
+      # -----------------------------------------------------------------------
+      # STEP-LEVEL ENVIRONMENT VARIABLES (env:)
+      # Unlike workflow or job level env, step-level env is scoped to just
+      # this step. Useful for passing secrets without exposing them globally.
+      #
+      # DOCKER BUILD ARGUMENTS:
+      # --build-arg passes values to the Dockerfile's ARG instructions.
+      # This allows customizing the build without changing the Dockerfile.
+      #
+      # In Dockerfile:
+      #   ARG SATVIS_BASE_PATH
+      #   ENV BASE_PATH=${SATVIS_BASE_PATH:-/}
+      #
+      # SECRETS IN BUILD ARGS:
+      # Be careful! Build args can be visible in docker history.
+      # For truly sensitive data, use Docker BuildKit's --secret flag instead.
       - name: Build with Docker (builder stage)
         env:
           SATVIS_BASE_PATH: ${{ secrets.SATVIS_BASE_PATH }}
@@ -33,6 +126,8 @@ jobs:
           docker build --target builder -f Dockerfile.web -t satvis-builder:${{ github.sha }} \
             --build-arg SATVIS_BASE_PATH="${SATVIS_BASE_PATH}" .
 
+      # STEP 4: Extract Build Artifacts
+      # -----------------------------------------------------------------------
       - name: Extract build artifacts from Docker
         run: |
           # Create a container from the builder image
@@ -44,11 +139,15 @@ jobs:
           # Clean up the container
           docker rm satvis-extract
 
+      # STEP 5: Setup Node.js for TLE Updates
+      # -----------------------------------------------------------------------
       - name: Setup Node.js (for TLE updates only)
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
+      # STEP 6 & 7: Update Data
+      # -----------------------------------------------------------------------
       - name: Update TLE data
         run: npm run update-tle
 
@@ -58,11 +157,36 @@ jobs:
           sh update-prelaunch-data.sh
           mv prelaunch.txt groups/
 
+      # STEP 8: Copy TLE Data
+      # -----------------------------------------------------------------------
       - name: Copy TLE data to dist
         run: |
           # Copy freshly updated TLE data into the dist folder
           cp -r data/tle/groups dist/data/tle/
 
+      # STEP 9: Setup SSH
+      # -----------------------------------------------------------------------
+      # This step prepares SSH for connecting to the deployment server.
+      #
+      # SSH SETUP PROCESS:
+      # 1. Create ~/.ssh directory with correct permissions (700)
+      # 2. Write private key from secret to file
+      # 3. Set key permissions (600 - required by SSH)
+      # 4. Add server to known_hosts (prevents MITM attack prompts)
+      #
+      # SECRETS USED:
+      # ${{ secrets.SSH_DEPLOY_KEY }}  - Private SSH key (PEM format)
+      # ${{ secrets.SSH_DEPLOY_HOST }} - Server hostname or IP
+      #
+      # SECURITY NOTES:
+      # - Private keys should be generated specifically for CI/CD
+      # - Use Ed25519 keys for better security: ssh-keygen -t ed25519
+      # - Consider using a dedicated deployment user with limited permissions
+      # - The key is cleaned up at the end (see cleanup step)
+      #
+      # DEBUGGING PATTERN:
+      # Notice how we check if secrets are set without revealing their values.
+      # This helps troubleshoot "secret not found" issues.
       - name: Setup SSH
         env:
           SSH_HOST: ${{ secrets.SSH_DEPLOY_HOST }}
@@ -92,6 +216,35 @@ jobs:
 
           echo "✓ SSH setup completed successfully"
 
+      # STEP 10: Deploy to Server
+      # -----------------------------------------------------------------------
+      # The main deployment step. Creates an archive, uploads it, then
+      # executes a script on the server to deploy.
+      #
+      # HEREDOC SYNTAX (<< ENDSSH ... ENDSSH):
+      # A "here document" passes multi-line input to a command.
+      # The delimiter (ENDSSH) can be any string.
+      #
+      # HEREDOC VARIATIONS:
+      #   << EOF    - Variables are expanded (both local and remote)
+      #   << 'EOF'  - No variable expansion (literal string)
+      #   <<- EOF   - Strips leading tabs (for indentation)
+      #
+      # IMPORTANT: In this heredoc, we have BOTH contexts:
+      #   ${DEPLOY_PATH}           - Expanded on GitHub runner (before SSH)
+      #   \${DEPLOY_NAME}          - Escaped, expanded on remote server
+      #   \$(dirname ...)          - Escaped, executed on remote server
+      #
+      # Without escaping, GitHub tries to expand $() locally, which fails.
+      #
+      # DEPLOYMENT PATTERN:
+      # 1. Create tar.gz archive of dist/
+      # 2. SCP archive to server's parent directory
+      # 3. SSH to server and execute deployment script:
+      #    a. Backup current deployment (with timestamp)
+      #    b. Keep only last 5 backups (cleanup old ones)
+      #    c. Extract new deployment
+      #    d. Set permissions
       - name: Deploy to server
         env:
           SSH_HOST: ${{ secrets.SSH_DEPLOY_HOST }}
@@ -135,6 +288,15 @@ jobs:
             echo "✓ Deployment completed successfully"
           ENDSSH
 
+      # STEP 11: Verify Deployment
+      # -----------------------------------------------------------------------
+      # Post-deployment verification ensures the deployment actually worked.
+      # This catches issues like:
+      #   - Extraction failures
+      #   - Permission problems
+      #   - Missing files
+      #
+      # If verification fails, the workflow fails and you're alerted.
       - name: Verify deployment
         env:
           SSH_HOST: ${{ secrets.SSH_DEPLOY_HOST }}
@@ -151,10 +313,36 @@ jobs:
             fi
           ENDVERIFY
 
+      # STEP 12: Cleanup SSH Key
+      # -----------------------------------------------------------------------
+      # ALWAYS CLEANUP SENSITIVE DATA!
+      #
+      # 'if: always()' ensures this step runs regardless of previous failures.
+      # Even if deployment fails, we still want to remove the SSH key.
+      #
+      # WHY CLEANUP?
+      # - Runners may be reused (especially self-hosted)
+      # - Defense in depth: minimize exposure time
+      # - Good security hygiene
+      #
+      # CONDITIONAL EXECUTION STATES:
+      #   always()    - Run no matter what (success, failure, cancelled)
+      #   success()   - Only if all previous steps succeeded (default)
+      #   failure()   - Only if a previous step failed
+      #   cancelled() - Only if the workflow was cancelled
+      #
+      # You can combine them:
+      #   if: always() && !cancelled()  - Run unless cancelled
+      #   if: failure() || cancelled()  - Run on failure OR cancel
       - name: Cleanup SSH key
         if: always()
         run: rm -f ~/.ssh/deploy_key
 
+      # STEP 13: Deployment Summary
+      # -----------------------------------------------------------------------
+      # Only creates summary on successful deployment.
+      # The 'if: success()' is technically redundant (it's the default),
+      # but makes the intent explicit.
       - name: Deployment summary
         if: success()
         run: |
