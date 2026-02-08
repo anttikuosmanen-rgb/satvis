@@ -279,6 +279,15 @@
           <span class="slider"></span>
           Prominent launch sites
         </label>
+        <div class="toolbarTitle">Snapshot</div>
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 12) }">
+          <input type="button" @click="copySnapshotUrl(false)" />
+          Copy snapshot URL
+        </label>
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 13) }">
+          <input type="button" @click="copySnapshotUrl(true)" />
+          Copy snapshot URL (with TLEs)
+        </label>
       </div>
     </div>
     <div id="toolbarRight">
@@ -305,6 +314,7 @@ import { useCesiumStore } from "../stores/cesium";
 import { useSatStore } from "../stores/sat";
 
 import { DeviceDetect } from "../modules/util/DeviceDetect";
+import { SnapshotService } from "../modules/util/SnapshotService";
 import SatelliteSelect from "./SatelliteSelect.vue";
 import PassCountdownTimer from "./PassCountdownTimer.vue";
 
@@ -1402,6 +1412,11 @@ export default {
           this.currentTime = `${hours}:${minutes}:${seconds} UTC`;
         }
       }
+    },
+    async copySnapshotUrl(includeTles) {
+      // Create SnapshotService instance and copy URL to clipboard
+      const snapshotService = new SnapshotService(this.cc);
+      await snapshotService.copySnapshotUrl({ includeTles });
     },
   },
 };
