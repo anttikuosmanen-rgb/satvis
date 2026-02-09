@@ -39,6 +39,7 @@
     "cesium": "^1.134.1",
     "cesium-sensor-volumes": "github:Flowm/cesium-sensor-volumes#1.134.1",
     "dayjs": "^1.11.18",
+    "lz-string": "^1.5.0",
     "pinia": "^3.0.3",
     "primevue": "^4.4.1",
     "satellite.js": "^6.0.1",
