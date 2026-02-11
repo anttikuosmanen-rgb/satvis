@@ -222,8 +222,8 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
 
           // Filter passes based on current filter settings (sunlight/eclipse)
           const filteredPasses = filterAndSortPasses(this.props.passes, this.viewer.clock.currentTime);
-          // Use baseName to match the name in pass objects (without asterisk for future epochs)
-          CesiumTimelineHelper.updateHighlightRanges(this.viewer, filteredPasses, this.props.baseName);
+          // Use canonicalName to match the name in pass objects (without prefixes/suffixes)
+          CesiumTimelineHelper.updateHighlightRanges(this.viewer, filteredPasses, this.props.canonicalName);
 
           // Request a render to update the UI
           if (this.viewer && this.viewer.scene) {
@@ -240,8 +240,8 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
             .then(() => {
               // Filter passes based on current filter settings (sunlight/eclipse)
               const filteredPasses = filterAndSortPasses(this.props.passes, this.viewer.clock.currentTime);
-              // Use baseName to match the name in pass objects (without asterisk for future epochs)
-              CesiumTimelineHelper.updateHighlightRanges(this.viewer, filteredPasses, this.props.baseName);
+              // Use canonicalName to match the name in pass objects (without prefixes/suffixes)
+              CesiumTimelineHelper.updateHighlightRanges(this.viewer, filteredPasses, this.props.canonicalName);
 
               // Request a render to update the UI
               if (this.viewer && this.viewer.scene) {
@@ -273,9 +273,19 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       }
     });
 
-    // Listen for ClockMonitor time jump events to update Smart Path
+    // Listen for ClockMonitor time jump events to update positions and Smart Path
     this.handleClockTimeJump = (event) => {
-      const { jumpSeconds } = event.detail;
+      const { jumpSeconds, newTime } = event.detail;
+
+      // Update sampled positions when time jumps significantly
+      // This ensures prelaunch satellites have positions for the new time
+      if (Math.abs(jumpSeconds) > 60) {
+        this.props.updateSampledPosition(newTime);
+        this.updatedSampledPositionForComponents(true);
+        // Force a render to show the updated positions
+        this.viewer.scene.requestRender();
+      }
+
       // Only regenerate if Smart Path is active and jump is significant (>80 minutes)
       if (this.individualOrbitMode === "Smart Path" && Math.abs(jumpSeconds) > 4800) {
         this.regenerateSmartPath();
@@ -1132,8 +1142,8 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
           if (this.isSelected) {
             // Filter passes based on current filter settings (sunlight/eclipse)
             const filteredPasses = filterAndSortPasses(this.props.passes, this.viewer.clock.currentTime);
-            // Use baseName to match the name in pass objects (without asterisk for future epochs)
-            CesiumTimelineHelper.updateHighlightRanges(this.viewer, filteredPasses, this.props.baseName);
+            // Use canonicalName to match the name in pass objects (without prefixes/suffixes)
+            CesiumTimelineHelper.updateHighlightRanges(this.viewer, filteredPasses, this.props.canonicalName);
           }
         })
         .catch((err) => {
