@@ -75,7 +75,8 @@ export class CesiumComponentCollection {
       this.constructor.geometries.push(component);
       this.recreateGeometryInstancePrimitive();
     }
-    if (!this.defaultEntity) {
+    // Only set defaultEntity if component is actually an Entity (not a Primitive)
+    if (!this.defaultEntity && component instanceof Entity) {
       this.defaultEntity = component;
     }
   }

@@ -297,12 +297,13 @@ describe("SatelliteManager - Future Epoch Satellites", () => {
     expect(sat.props.name).toBe("PRELAUNCH-SAT *");
   });
 
-  it("should not find future epoch satellite by base name without asterisk", () => {
+  it("should find future epoch satellite by base name without asterisk (canonical lookup)", () => {
     manager.addFromTle(FUTURE_EPOCH_TLE, ["Prelaunch"], false);
 
-    // Looking up by base name (without asterisk) should fail
+    // Canonical lookup finds satellite regardless of * suffix
     const sat = manager.getSatellite("PRELAUNCH-SAT");
-    expect(sat).toBeUndefined();
+    expect(sat).toBeDefined();
+    expect(sat.props.canonicalName).toBe("PRELAUNCH-SAT");
   });
 
   it("should not mark future epoch satellite as stale", () => {
@@ -348,7 +349,7 @@ describe("SatelliteManager - Custom Satellite Naming", () => {
     expect(sat.props.name).toBe("[Custom] FUTURE CUSTOM SAT *");
   });
 
-  it("should find custom future epoch satellite by name with asterisk", () => {
+  it("should find custom future epoch satellite by various name formats (canonical lookup)", () => {
     const futureEpoch = generateFutureEpochForTest();
     const customFutureTle = `[Custom] TEST SAT
 1 99999U 99999A   ${futureEpoch}  .00000000  00000-0  00000-0 0  9999
@@ -360,9 +361,14 @@ describe("SatelliteManager - Custom Satellite Naming", () => {
     const sat = manager.getSatellite("[Custom] TEST SAT *");
     expect(sat).toBeDefined();
 
-    // Should NOT be found by name without asterisk
+    // Canonical lookup also finds satellite without asterisk
     const satWithoutAsterisk = manager.getSatellite("[Custom] TEST SAT");
-    expect(satWithoutAsterisk).toBeUndefined();
+    expect(satWithoutAsterisk).toBeDefined();
+
+    // Canonical lookup finds satellite by base name only
+    const satByBaseName = manager.getSatellite("TEST SAT");
+    expect(satByBaseName).toBeDefined();
+    expect(satByBaseName.props.canonicalName).toBe("TEST SAT");
   });
 });
 

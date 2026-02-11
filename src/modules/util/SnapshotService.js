@@ -9,9 +9,10 @@
  */
 
 import LZString from "lz-string";
-import { JulianDate, Cartesian3 } from "@cesium/engine";
+import { JulianDate, Cartesian3, ConstantProperty } from "@cesium/engine";
 import { useToastProxy } from "../../composables/useToastProxy";
 import { useSatStore } from "../../stores/sat";
+import { SatelliteProperties } from "../SatelliteProperties";
 
 export class SnapshotService {
   constructor(cesiumController) {
@@ -54,6 +55,12 @@ export class SnapshotService {
     const components = this.captureEnabledComponents();
     if (components.length > 0) {
       state.cmp = components;
+    }
+
+    // Capture individual orbit modes (Smart Path) per satellite
+    const orbitModes = this.captureIndividualOrbitModes();
+    if (Object.keys(orbitModes).length > 0) {
+      state.iom = orbitModes; // iom = individual orbit modes
     }
 
     // Optionally capture TLE data
@@ -110,6 +117,7 @@ export class SnapshotService {
 
   /**
    * Capture camera state when tracking an entity
+   * Uses canonical name for satellites (shorter URLs, flexible matching on restore)
    */
   captureTrackedCamera() {
     const entity = this.cc.viewer.trackedEntity;
@@ -119,14 +127,25 @@ export class SnapshotService {
     const offset = this.cc.captureTrackedEntityCameraOffset();
     if (!offset) return null;
 
+    // Try to get canonical name if this is a satellite entity
+    // Otherwise use entity.name for ground stations etc.
+    let name = entity.name;
+    if (this.cc.sats?.getSatellite) {
+      const sat = this.cc.sats.getSatellite(entity.name);
+      if (sat?.props?.canonicalName) {
+        name = sat.props.canonicalName;
+      }
+    }
+
     return {
-      n: entity.name,
+      n: name,
       v: [offset.viewFrom.x, offset.viewFrom.y, offset.viewFrom.z],
     };
   }
 
   /**
    * Capture TLE data for all enabled satellites
+   * Uses canonical names (without prefixes/suffixes) for shorter URLs
    */
   captureTleSnapshot() {
     const tles = {};
@@ -134,12 +153,34 @@ export class SnapshotService {
 
     for (const sat of activeSats) {
       if (sat.props?.orbit?.tle) {
-        // Store TLE as newline-joined string
-        tles[sat.props.name] = sat.props.orbit.tle.join("\n");
+        // Use canonical name (stripped of [Snapshot], [Custom], *) for shorter URLs
+        // The prefix/suffix will be derived when restoring based on satellite properties
+        const canonicalName = sat.props.canonicalName || sat.props.name;
+        tles[canonicalName] = sat.props.orbit.tle.join("\n");
       }
     }
 
     return tles;
+  }
+
+  /**
+   * Capture individual orbit modes for enabled satellites (e.g., "Smart Path")
+   * This is per-satellite state separate from global components
+   * Uses canonical names (without prefixes/suffixes) for shorter URLs
+   */
+  captureIndividualOrbitModes() {
+    const modes = {};
+    const activeSats = this.cc.sats.activeSatellites;
+
+    for (const sat of activeSats) {
+      if (sat.individualOrbitMode) {
+        // Use canonical name for shorter URLs
+        const canonicalName = sat.props.canonicalName || sat.props.name;
+        modes[canonicalName] = sat.individualOrbitMode;
+      }
+    }
+
+    return modes;
   }
 
   /**
@@ -209,8 +250,9 @@ export class SnapshotService {
     }
 
     // Restore TLEs if present (before time/camera so satellites exist)
+    let snapshotNames = [];
     if (state.tle) {
-      await this.restoreTleSnapshot(state.tle);
+      snapshotNames = await this.restoreTleSnapshot(state.tle);
     }
 
     // Restore time state
@@ -218,8 +260,19 @@ export class SnapshotService {
       this.restoreTimeState(state.t);
     }
 
-    // Restore camera state (after a short delay to ensure satellites are loaded)
+    // Restore individual orbit modes (Smart Path) after satellites are created
+    // Need a delay to ensure satellites are fully initialized with components
+    if (state.iom) {
+      setTimeout(() => {
+        console.log("[Snapshot] Restoring individual orbit modes:", state.iom);
+        this.restoreIndividualOrbitModes(state.iom, snapshotNames);
+      }, 500);
+    }
+
+    // Restore camera state (after a delay to ensure satellites are fully loaded and shown)
+    // 1000ms is needed because showEnabledSatellites uses setTimeout batching
     setTimeout(() => {
+      console.log("[Snapshot] Restoring camera state, trk:", state.trk?.n);
       if (state.zen) {
         // Restore zenith view mode
         this.restoreZenithView(state.zen);
@@ -228,7 +281,7 @@ export class SnapshotService {
       } else if (state.cam) {
         this.restoreGlobeCamera(state.cam);
       }
-    }, 500);
+    }, 1000);
   }
 
   /**
@@ -248,6 +301,24 @@ export class SnapshotService {
     if (this.cc.viewer.timeline) {
       this.cc.viewer.timeline.updateFromClock();
     }
+
+    // Force position updates for all active satellites immediately
+    // This ensures prelaunch satellites have positions sampled for the snapshot time
+    const newTime = clock.currentTime;
+    const activeSatellites = this.cc.sats?.activeSatellites || [];
+    for (const sat of activeSatellites) {
+      if (sat.props?.updateSampledPosition) {
+        sat.props.updateSampledPosition(newTime);
+      }
+      if (sat.updatedSampledPositionForComponents) {
+        sat.updatedSampledPositionForComponents(true);
+      }
+    }
+
+    // Request a render to display the updated positions
+    if (this.cc.viewer?.scene?.requestRender) {
+      this.cc.viewer.scene.requestRender();
+    }
   }
 
   /**
@@ -263,8 +334,14 @@ export class SnapshotService {
       name: gs[2] || undefined,
     }));
 
-    // Set ground stations in the store (this will trigger watchers in Satvis.vue)
+    // Set ground stations in the store
     satStore.groundStations = groundStations;
+
+    // Also create the actual ground station entities and set them on SatelliteManager
+    // This ensures satellites have access to ground stations for Smart Path visibility calculations
+    if (this.cc.setGroundStations) {
+      this.cc.setGroundStations(groundStations);
+    }
   }
 
   /**
@@ -277,6 +354,61 @@ export class SnapshotService {
     // Also update the store so UI reflects the change
     const satStore = useSatStore();
     satStore.enabledComponents = components;
+  }
+
+  /**
+   * Restore individual orbit modes (Smart Path) for satellites
+   * @param {Object} modes - Map of satellite name to orbit mode
+   * @param {string[]} snapshotNames - Names of snapshot satellites (for name mapping)
+   * @param {number} retryCount - Internal retry counter
+   */
+  restoreIndividualOrbitModes(modes, snapshotNames = [], retryCount = 0) {
+    const maxRetries = 5;
+    const pendingModes = {};
+
+    for (const [originalName, mode] of Object.entries(modes)) {
+      // getSatellite now handles all name formats (with/without prefixes/suffixes)
+      let sat = this.cc.sats.getSatellite(originalName);
+
+      // If not found by general lookup, try snapshot-specific lookup
+      if (!sat) {
+        sat = this.cc.sats.getSatelliteWithPrefix(originalName, "[Snapshot] ");
+      }
+
+      if (sat && mode === "Smart Path") {
+        // Check if satellite has ground stations (needed for Smart Path)
+        if (!sat.props.groundStationAvailable && retryCount < maxRetries) {
+          console.log("[Snapshot] Satellite not ready, will retry:", sat.props.name);
+          pendingModes[originalName] = mode;
+          continue;
+        }
+
+        // Update sampled positions to ensure components can be created
+        const currentTime = this.cc.viewer.clock.currentTime;
+        if (sat.props?.updateSampledPosition) {
+          sat.props.updateSampledPosition(currentTime);
+        }
+
+        console.log("[Snapshot] Enabling Smart Path for:", sat.props.name, "GS available:", sat.props.groundStationAvailable);
+        // Enable Smart Path mode on this satellite
+        sat.individualOrbitMode = "Smart Path";
+        sat.enableComponent("Smart Path");
+        // Also enable Point and Label when showing path for tracking support
+        sat.enableComponent("Point");
+        sat.enableComponent("Label");
+      } else if (!sat && retryCount < maxRetries) {
+        // Satellite not found yet, will retry
+        pendingModes[originalName] = mode;
+      }
+    }
+
+    // Retry pending modes after a delay
+    if (Object.keys(pendingModes).length > 0 && retryCount < maxRetries) {
+      console.log("[Snapshot] Retrying individual orbit modes in 300ms, retry:", retryCount + 1);
+      setTimeout(() => {
+        this.restoreIndividualOrbitModes(pendingModes, snapshotNames, retryCount + 1);
+      }, 300);
+    }
   }
 
   /**
@@ -330,31 +462,66 @@ export class SnapshotService {
   /**
    * Restore tracked entity camera state
    */
-  restoreTrackedCamera(trkState) {
+  restoreTrackedCamera(trkState, retryCount = 0) {
+    const maxRetries = 5;
+
     // Find the entity by name
     const entityName = trkState.n;
-    const sat = this.cc.sats.getSatellite(entityName);
+    console.log("[Snapshot] Restoring tracked camera for:", entityName, "retry:", retryCount);
 
-    if (sat && sat.defaultEntity) {
-      // Set viewFrom before tracking
-      sat.defaultEntity.viewFrom = new Cartesian3(trkState.v[0], trkState.v[1], trkState.v[2]);
+    // getSatellite now handles all name formats (with/without prefixes/suffixes)
+    let sat = this.cc.sats.getSatellite(entityName);
 
-      // Track the satellite
-      sat.track();
+    // If not found by general lookup, try snapshot-specific lookup
+    if (!sat) {
+      sat = this.cc.sats.getSatelliteWithPrefix(entityName, "[Snapshot] ");
+    }
 
-      // Reset viewFrom to default after camera is positioned
-      // Default from CesiumComponentCollection.createCesiumEntity
-      const defaultViewFrom = new Cartesian3(0, -3600000, 4200000);
-      setTimeout(() => {
-        sat.defaultEntity.viewFrom = defaultViewFrom;
-      }, 500);
+    console.log("[Snapshot] Found sat:", !!sat, "Has defaultEntity:", !!sat?.defaultEntity, "created:", sat?.created);
+
+    if (sat) {
+      // Ensure satellite has a trackable entity
+      if (!sat.defaultEntity) {
+        console.log("[Snapshot] No entity for tracking, enabling Point component...");
+        if (!sat.created) {
+          sat.show(this.cc.sats.enabledComponents);
+        }
+        // Enable Point component to create a trackable entity
+        sat.enableComponent("Point");
+
+        if (retryCount < maxRetries) {
+          setTimeout(() => this.restoreTrackedCamera(trkState, retryCount + 1), 300);
+        }
+        return;
+      }
+
+      try {
+        // Set viewFrom before tracking - must be a ConstantProperty for EntityView.update()
+        sat.defaultEntity.viewFrom = new ConstantProperty(new Cartesian3(trkState.v[0], trkState.v[1], trkState.v[2]));
+
+        // Track the satellite
+        sat.track();
+        console.log("[Snapshot] Tracking started for:", sat.props.name);
+
+        // Reset viewFrom to default after camera is positioned
+        setTimeout(() => {
+          if (sat.defaultEntity) {
+            sat.defaultEntity.viewFrom = new ConstantProperty(new Cartesian3(0, -3600000, 4200000));
+          }
+        }, 500);
+      } catch (error) {
+        console.warn("[Snapshot] Tracking failed, retrying...", error);
+        if (retryCount < maxRetries) {
+          setTimeout(() => this.restoreTrackedCamera(trkState, retryCount + 1), 300);
+        }
+      }
     } else {
       // Entity not found - might be a ground station or not loaded yet
       // Check if it's a ground station
       const viewer = this.cc.viewer;
       const entity = viewer.entities.values.find((e) => e.name === entityName);
       if (entity) {
-        entity.viewFrom = new Cartesian3(trkState.v[0], trkState.v[1], trkState.v[2]);
+        entity.viewFrom = new ConstantProperty(new Cartesian3(trkState.v[0], trkState.v[1], trkState.v[2]));
         viewer.trackedEntity = entity;
       }
     }
@@ -368,8 +535,11 @@ export class SnapshotService {
     const snapshotNames = [];
 
     for (const [name, tle] of Object.entries(tles)) {
+      // Use extractCanonicalName to strip prefixes/suffixes
+      // (SatelliteProperties will add " *" back if epoch is still in future)
+      const canonicalName = SatelliteProperties.extractCanonicalName(name);
       // Prepend [Snapshot] to distinguish from database satellites
-      const snapshotName = `[Snapshot] ${name}`;
+      const snapshotName = `[Snapshot] ${canonicalName}`;
       const lines = tle.split("\n");
 
       // Replace the name line with snapshot-prefixed name
@@ -387,11 +557,35 @@ export class SnapshotService {
 
       // Add as custom satellite with Snapshot tag
       this.cc.sats.addFromTle(modifiedTle, ["Snapshot"], false);
-      snapshotNames.push(snapshotName);
+      // getSatellite now handles all name formats - just lookup by canonical name
+      const actualSat = this.cc.sats.getSatelliteWithPrefix(canonicalName, "[Snapshot] ");
+      if (actualSat) {
+        snapshotNames.push(actualSat.props.name);
+      } else {
+        // Fallback to expected name
+        snapshotNames.push(snapshotName);
+      }
     }
 
     // Update store so satellites appear in the list
     this.cc.sats.updateStore();
+
+    // Ensure ground stations are propagated to newly created satellites
+    // (ground stations were restored before TLEs, but we need to re-propagate
+    // since the setter only updates existing satellites at the time)
+    const gsAvailable = this.cc.sats.groundStationAvailable;
+    const groundStations = this.cc.sats.groundStations;
+    console.log("[Snapshot] Ground station available:", gsAvailable, "count:", groundStations?.length);
+    if (gsAvailable && groundStations) {
+      for (const name of snapshotNames) {
+        const sat = this.cc.sats.getSatellite(name);
+        console.log("[Snapshot] Setting ground stations on satellite:", name, "found:", !!sat);
+        if (sat) {
+          sat.groundStations = groundStations;
+          console.log("[Snapshot] Satellite ground stations after set:", sat.props.groundStations?.length);
+        }
+      }
+    }
 
     // Enable the snapshot satellites using SatelliteManager's setter
     // This triggers showEnabledSatellites() to actually render them
