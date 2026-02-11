@@ -7,6 +7,10 @@ vi.mock("@cesium/engine", () => ({
   JulianDate: {
     toIso8601: (date) => date?.iso || "2025-06-15T12:00:00Z",
     fromIso8601: (iso) => ({ iso }),
+    now: () => ({ iso: "2025-06-15T12:00:00Z" }),
+    compare: () => -1, // Simulates "now" is before epoch
+    addSeconds: (time) => time,
+    addDays: (time) => time,
   },
   Cartesian3: class {
     constructor(x, y, z) {
@@ -15,6 +19,24 @@ vi.mock("@cesium/engine", () => ({
       this.z = z;
     }
   },
+  SampledPositionProperty: class {
+    constructor() {
+      this._property = { _times: [] };
+    }
+  },
+  TimeIntervalCollection: class {
+    constructor() {
+      this._intervals = [];
+    }
+  },
+  TimeInterval: class {},
+  Ellipsoid: { WGS84: {} },
+  ExtrapolationType: { HOLD: 0 },
+  LagrangePolynomialApproximation: {},
+  Matrix3: { multiplyByVector: () => ({}) },
+  ReferenceFrame: { INERTIAL: 0 },
+  Transforms: { computeTemeToPseudoFixedMatrix: () => ({}), computeFixedToIcrfMatrix: () => ({}) },
+  defined: () => true,
 }));
 
 // Mock toast proxy
@@ -22,6 +44,18 @@ vi.mock("../composables/useToastProxy", () => ({
   useToastProxy: () => ({
     add: vi.fn(),
   }),
+}));
+
+// Mock SatelliteProperties to avoid Cesium import cascade
+vi.mock("../modules/SatelliteProperties", () => ({
+  SatelliteProperties: {
+    extractCanonicalName: (name) =>
+      name
+        .replace(/^\[Snapshot\]\s*/i, "")
+        .replace(/^\[Custom\]\s*/i, "")
+        .replace(/\s*\*\s*$/, "")
+        .trim(),
+  },
 }));
 
 // Mock sat store
@@ -367,6 +401,7 @@ describe("SnapshotService - TLE Handling", () => {
           {
             props: {
               name: "ISS (ZARYA)",
+              canonicalName: "ISS (ZARYA)",
               orbit: {
                 tle: [
                   "ISS (ZARYA)",
@@ -379,6 +414,7 @@ describe("SnapshotService - TLE Handling", () => {
           {
             props: {
               name: "HUBBLE SPACE TELESCOPE",
+              canonicalName: "HUBBLE SPACE TELESCOPE",
               orbit: {
                 tle: [
                   "HUBBLE SPACE TELESCOPE",
@@ -409,11 +445,12 @@ describe("SnapshotService - TLE Handling", () => {
     expect(tles["HUBBLE SPACE TELESCOPE"]).toContain("HUBBLE");
   });
 
-  it("should handle satellites with asterisk names", () => {
+  it("should use canonical names (strip * suffix) for shorter URLs", () => {
     mockCesiumController.sats.activeSatellites = [
       {
         props: {
           name: "PRELAUNCH SAT *",
+          canonicalName: "PRELAUNCH SAT", // * suffix stripped in canonical name
           orbit: {
             tle: [
               "PRELAUNCH SAT *",
@@ -428,7 +465,34 @@ describe("SnapshotService - TLE Handling", () => {
     const service = new SnapshotService(mockCesiumController);
     const tles = service.captureTleSnapshot();
 
-    expect(tles["PRELAUNCH SAT *"]).toBeDefined();
+    // Should use canonical name (without *) for shorter URLs
+    expect(tles["PRELAUNCH SAT"]).toBeDefined();
+    expect(tles["PRELAUNCH SAT *"]).toBeUndefined();
+  });
+
+  it("should use canonical names (strip [Snapshot] prefix) for shorter URLs", () => {
+    mockCesiumController.sats.activeSatellites = [
+      {
+        props: {
+          name: "[Snapshot] ISS (ZARYA)",
+          canonicalName: "ISS (ZARYA)", // [Snapshot] prefix stripped in canonical name
+          orbit: {
+            tle: [
+              "[Snapshot] ISS (ZARYA)",
+              "1 25544U 98067A   25166.50000000  .00000000  00000-0  00000-0 0  9999",
+              "2 25544  51.6400   0.0000 0000000   0.0000   0.0000 15.50000000000000",
+            ],
+          },
+        },
+      },
+    ];
+
+    const service = new SnapshotService(mockCesiumController);
+    const tles = service.captureTleSnapshot();
+
+    // Should use canonical name (without [Snapshot]) for shorter URLs
+    expect(tles["ISS (ZARYA)"]).toBeDefined();
+    expect(tles["[Snapshot] ISS (ZARYA)"]).toBeUndefined();
   });
 
   it("should preserve multiline TLE format", () => {
@@ -501,6 +565,7 @@ describe("SnapshotService - Snapshot Capture", () => {
       {
         props: {
           name: "TEST SAT",
+          canonicalName: "TEST SAT",
           orbit: {
             tle: ["TEST SAT", "1 12345U 21001A   25166.50000000  .00000000  00000-0  00000-0 0  9999", "2 12345  51.6400   0.0000 0000000   0.0000   0.0000 15.50000000000000"],
           },

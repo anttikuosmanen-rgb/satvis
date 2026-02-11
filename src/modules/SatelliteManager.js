@@ -15,6 +15,7 @@ import {
 } from "@cesium/engine";
 import { useSatStore } from "../stores/sat";
 import { SatelliteComponentCollection } from "./SatelliteComponentCollection";
+import { SatelliteProperties } from "./SatelliteProperties";
 import { GroundStationEntity } from "./GroundStationEntity";
 
 import { CesiumCleanupHelper } from "./util/CesiumCleanupHelper";
@@ -41,7 +42,7 @@ export class SatelliteManager {
     this.viewer = viewer;
 
     this.satellites = [];
-    this.satellitesByName = new Map(); // O(1) lookup by name
+    this.satellitesByCanonical = new Map(); // O(1) lookup by canonical name -> sat[]
     this.availableComponents = ["Point", "Label", "Orbit", "Orbit track", "Visibility area", "Height stick", "3D model"];
 
     // Track whether initial TLE loading is complete
@@ -563,44 +564,65 @@ export class SatelliteManager {
   }
 
   #add(newSat) {
-    const existingSat = this.satellitesByName.get(newSat.props.name);
-    if (existingSat && existingSat.props.satnum === newSat.props.satnum) {
-      // When TLE data is reloaded for an existing satellite, we need to:
-      // 1. Clean up the old satellite's entities
-      // 2. Merge tags from both old and new
-      // 3. Remove the old satellite
-      // 4. Add the new satellite with fresh TLE data
-      // This ensures orbital elements are updated when TLE files are refreshed
+    const canonical = newSat.props.canonicalName;
 
-      // Merge tags from existing satellite into new satellite
-      newSat.props.addTags(existingSat.props.tags);
+    // Initialize array for this canonical name if needed
+    if (!this.satellitesByCanonical.has(canonical)) {
+      this.satellitesByCanonical.set(canonical, []);
+    }
+
+    const existing = this.satellitesByCanonical.get(canonical);
+
+    // Check for true duplicate (same canonical name AND same TLE signature AND same prefix)
+    // Prefix check ensures [Snapshot] satellites aren't merged with originals even if TLE matches
+    const exactDuplicate = existing.find((s) => s.props.tleSignature === newSat.props.tleSignature && s.props.displayPrefix === newSat.props.displayPrefix);
+
+    if (exactDuplicate) {
+      // True duplicate - just merge tags, no need to replace
+      exactDuplicate.props.addTags(newSat.props.tags);
+      return;
+    }
+
+    // Check for TLE update (same canonical name AND same NORAD number, but different TLE)
+    // This handles the case where TLE files are refreshed with updated orbital elements
+    const samePhysicalSatellite = existing.find((s) => s.props.satnum === newSat.props.satnum && s.props.displayPrefix === newSat.props.displayPrefix);
+
+    if (samePhysicalSatellite) {
+      // Same physical satellite (same satnum and prefix) - update with newer TLE
+      // Merge tags from existing satellite into new one
+      newSat.props.addTags(samePhysicalSatellite.props.tags);
 
       // Clean up old satellite entities from Cesium viewer
-      if (existingSat.hide) {
-        existingSat.hide();
+      if (samePhysicalSatellite.hide) {
+        samePhysicalSatellite.hide();
       }
 
-      // Invalidate pass cache for old satellite
-      if (existingSat.invalidatePassCache) {
-        existingSat.invalidatePassCache();
+      // Invalidate pass cache
+      if (samePhysicalSatellite.invalidatePassCache) {
+        samePhysicalSatellite.invalidatePassCache();
       }
 
       // Remove old satellite from collections
-      const satIndex = this.satellites.indexOf(existingSat);
+      const satIndex = this.satellites.indexOf(samePhysicalSatellite);
       if (satIndex !== -1) {
         this.satellites.splice(satIndex, 1);
       }
-      this.satellitesByName.delete(newSat.props.name);
+      const existingIndex = existing.indexOf(samePhysicalSatellite);
+      if (existingIndex !== -1) {
+        existing.splice(existingIndex, 1);
+      }
 
       // Continue to add the new satellite with updated TLE data below
     }
+
+    // New satellite or TLE update - add to collections
     if (this.groundStationAvailable) {
       newSat.groundStations = this.#groundStations;
     }
     // Set overpass mode for newly added satellite
     newSat.props.overpassMode = this.#overpassMode;
     this.satellites.push(newSat);
-    this.satellitesByName.set(newSat.props.name, newSat); // Add to index
+    existing.push(newSat);
 
     if (this.satIsActive(newSat)) {
       newSat.show(this.#enabledComponents);
@@ -692,8 +714,49 @@ export class SatelliteManager {
     return this.satellites.map((sat) => sat.props.name);
   }
 
+  /**
+   * Primary lookup method - handles any name format (with or without prefixes/suffixes)
+   * @param {string} name - Satellite name (can include [Snapshot], [Custom] prefix or * suffix)
+   * @returns {SatelliteComponentCollection|undefined} The satellite or undefined if not found
+   */
   getSatellite(name) {
-    return this.satellitesByName.get(name);
+    // Extract canonical name from search term
+    const canonical = SatelliteProperties.extractCanonicalName(name);
+
+    // Look up by canonical name
+    const matches = this.satellitesByCanonical.get(canonical) || [];
+    if (matches.length === 0) return undefined;
+    if (matches.length === 1) return matches[0];
+
+    // Multiple satellites with same canonical name (e.g., original + snapshot)
+    // First try exact display name match
+    const exactMatch = matches.find((s) => s.props.name === name);
+    if (exactMatch) return exactMatch;
+
+    // Otherwise return the one without prefix (original), or first match
+    return matches.find((s) => !s.props.displayPrefix) || matches[0];
+  }
+
+  /**
+   * Find satellite with specific prefix (e.g., for snapshot restore)
+   * @param {string} canonicalName - Canonical name (may include decorations - will be stripped)
+   * @param {string} prefix - The prefix to match (e.g., "[Snapshot] ")
+   * @returns {SatelliteComponentCollection|undefined} The satellite with matching prefix
+   */
+  getSatelliteWithPrefix(canonicalName, prefix) {
+    const canonical = SatelliteProperties.extractCanonicalName(canonicalName);
+    const matches = this.satellitesByCanonical.get(canonical) || [];
+    return matches.find((s) => s.props.displayPrefix === prefix);
+  }
+
+  /**
+   * Get all satellites with same canonical name
+   * @param {string} canonicalName - Canonical name (may include decorations - will be stripped)
+   * @returns {SatelliteComponentCollection[]} Array of satellites with matching canonical name
+   */
+  getSatellitesByCanonical(canonicalName) {
+    const canonical = SatelliteProperties.extractCanonicalName(canonicalName);
+    return this.satellitesByCanonical.get(canonical) || [];
   }
 
   refreshLabels() {

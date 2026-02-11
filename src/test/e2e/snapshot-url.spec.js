@@ -379,23 +379,25 @@ test.describe("Snapshot URL - TLE Restoration @regression", () => {
     // Wait for satellites to load
     await page.waitForFunction(() => window.cc?.sats?.satellites?.length > 0, { timeout: 15000 });
 
-    // Wait for snapshot restoration and satellite rendering
-    await page.waitForTimeout(2000);
+    // Build expected snapshot satellite name
+    const snapshotSatName = `[Snapshot] ${satName}`;
+
+    // Wait for [Snapshot] satellite to exist and be rendered (poll instead of fixed timeout)
+    await page.waitForFunction(
+      (name) => {
+        const sat = window.cc.sats.getSatellite(name);
+        return sat && sat.created === true;
+      },
+      snapshotSatName,
+      { timeout: 15000 },
+    );
 
     // Verify [Snapshot] satellite exists in the list
-    const snapshotSatName = `[Snapshot] ${satName}`;
     const snapshotSatExists = await page.evaluate((name) => {
       const sat = window.cc.sats.getSatellite(name);
       return sat !== undefined;
     }, snapshotSatName);
     expect(snapshotSatExists).toBe(true);
-
-    // Verify [Snapshot] satellite is rendered (created = true)
-    const snapshotSatRendered = await page.evaluate((name) => {
-      const sat = window.cc.sats.getSatellite(name);
-      return sat && sat.created === true;
-    }, snapshotSatName);
-    expect(snapshotSatRendered).toBe(true);
 
     // Verify [Snapshot] satellite is in the enabled list
     const snapshotSatEnabled = await page.evaluate((name) => {

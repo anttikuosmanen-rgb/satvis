@@ -96,12 +96,12 @@ test.describe("Bug Reproduction: Pre-Launch Satellite Display @regression", () =
     const result = await page.evaluate(() => {
       const sats = window.cc?.sats?.satellites || [];
       const activeSats = window.cc?.sats?.activeSatellites || [];
-      const sat = sats.find((s) => s.props.baseName?.includes("PRELAUNCH-TEST"));
+      const sat = sats.find((s) => s.props.canonicalName?.includes("PRELAUNCH-TEST"));
       return {
         totalSatellites: sats.length,
         activeSatellites: activeSats.length,
         satelliteName: sat?.props?.name,
-        baseName: sat?.props?.baseName,
+        canonicalName: sat?.props?.canonicalName,
         hasAsterisk: sat?.props?.name?.endsWith(" *"),
         isActive: sat ? window.cc.sats.satIsActive(sat) : false,
       };
@@ -136,7 +136,7 @@ test.describe("Bug Reproduction: Pre-Launch Satellite Display @regression", () =
     // Verify the TLE was parsed correctly (satellite exists and has valid data)
     const result = await page.evaluate(() => {
       const sats = window.cc?.sats?.satellites || [];
-      const sat = sats.find((s) => s.props.baseName?.includes("ENCODING-TEST"));
+      const sat = sats.find((s) => s.props.canonicalName?.includes("ENCODING-TEST"));
       return {
         found: !!sat,
         name: sat?.props?.name,
