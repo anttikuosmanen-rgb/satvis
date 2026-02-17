@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { pauseAnimation, resumeAnimation, waitForPassCalculation, waitForAppReady, withPausedGlobe } from "./helpers/globe-interaction.js";
+import { pauseAnimation, resumeAnimation, waitForPassCalculation, waitForAppReady, withPausedGlobe, flipCameraToOppositeSide } from "./helpers/globe-interaction.js";
 import { buildFreshIssUrl } from "./helpers/fresh-tle.js";
 
 /**
@@ -608,65 +608,65 @@ test.describe("Ground Station", () => {
     // Wait for pass calculation and timeline highlights to be ready
     await waitForPassCalculation(page);
 
-    // Poll for pass data and timeline highlights with retries
-    let passAndHighlightData;
-    for (let attempt = 0; attempt < 5; attempt++) {
-      passAndHighlightData = await page.evaluate(() => {
-        const viewer = window.cc?.viewer;
-        const sats = window.cc?.sats?.satellites;
+    // Wait for pass data and timeline highlights to be ready
+    await page
+      .waitForFunction(
+        () => {
+          const viewer = window.cc?.viewer;
+          const sats = window.cc?.sats?.satellites;
+          if (!viewer || !viewer.timeline || !sats || sats.length === 0) return false;
+          const issSat = sats.find((s) => s.props?.name?.includes("ISS (ZARYA)"));
+          if (!issSat || !issSat.props?.passes || issSat.props.passes.length === 0) return false;
+          const highlightRanges = viewer.timeline._highlightRanges || [];
+          const passHighlights = highlightRanges.filter((h) => h._base === 0);
+          return passHighlights.length > 0;
+        },
+        { timeout: 10000 },
+      )
+      .catch(() => {});
 
-        if (!viewer || !viewer.timeline || !sats || sats.length === 0) {
-          return { found: false, error: "Missing viewer or satellites" };
-        }
+    let passAndHighlightData = await page.evaluate(() => {
+      const viewer = window.cc?.viewer;
+      const sats = window.cc?.sats?.satellites;
 
-        const issSat = sats.find((s) => s.props?.name?.includes("ISS (ZARYA)"));
-        if (!issSat || !issSat.props?.passes || issSat.props.passes.length === 0) {
-          return { found: false, error: "No passes found for " + (issSat?.props?.name || "ISS not found") };
-        }
+      if (!viewer || !viewer.timeline || !sats || sats.length === 0) {
+        return { found: false, error: "Missing viewer or satellites" };
+      }
 
-        const passes = issSat.props.passes;
-        const highlightRanges = viewer.timeline._highlightRanges || [];
+      const issSat = sats.find((s) => s.props?.name?.includes("ISS (ZARYA)"));
+      if (!issSat || !issSat.props?.passes || issSat.props.passes.length === 0) {
+        return { found: false, error: "No passes found for " + (issSat?.props?.name || "ISS not found") };
+      }
 
-        // Find pass-specific highlights (not day/night cycles)
-        // Pass highlights have priority 0 (_base = 0)
-        // Day/night highlights have priority -1 (_base = -1)
-        const passHighlights = highlightRanges.filter((h) => {
-          return h._base === 0; // Pass highlights only
-        });
+      const passes = issSat.props.passes;
+      const highlightRanges = viewer.timeline._highlightRanges || [];
+      const passHighlights = highlightRanges.filter((h) => h._base === 0);
 
-        return {
-          found: passes.length > 0 && passHighlights.length > 0,
-          passCount: passes.length,
-          highlightCount: passHighlights.length,
-          firstPass: passes[0]
-            ? {
-                start: passes[0].start,
-                end: passes[0].end,
-                name: passes[0].name,
-              }
-            : null,
-          firstHighlight: passHighlights[0]
-            ? {
-                start: passHighlights[0].start?.toString(),
-                stop: passHighlights[0].stop?.toString(),
-                color: passHighlights[0].color?.toCssColorString?.(),
-              }
-            : null,
-        };
-      });
-
-      // If found passes and highlights, or we've tried enough times, break
-      if (passAndHighlightData.found) break;
-
-      // Wait before retry
-      await page.waitForTimeout(1000);
-    }
+      return {
+        found: passes.length > 0 && passHighlights.length > 0,
+        passCount: passes.length,
+        highlightCount: passHighlights.length,
+        firstPass: passes[0]
+          ? {
+              start: passes[0].start,
+              end: passes[0].end,
+              name: passes[0].name,
+            }
+          : null,
+        firstHighlight: passHighlights[0]
+          ? {
+              start: passHighlights[0].start?.toString(),
+              stop: passHighlights[0].stop?.toString(),
+              color: passHighlights[0].color?.toCssColorString?.(),
+            }
+          : null,
+      };
+    });
 
     // If no highlights found after retries, try flipping camera to other side of globe (ISS might be there)
     if (!passAndHighlightData.found && passAndHighlightData.passCount > 0) {
-      // Press 'z' to flip camera to opposite side of globe
-      await page.keyboard.press("z");
-      await page.waitForTimeout(500); // Wait for camera animation
+      // Flip camera to opposite side of globe
+      await flipCameraToOppositeSide(page);
 
       // Try getting highlights again
       const retryData = await page.evaluate(() => {
@@ -1140,7 +1140,7 @@ test.describe("Ground Station", () => {
     });
 
     await page.mouse.click(canvasBox.x + canvasBox.width / 2, canvasBox.y + canvasBox.height / 2);
-    await page.waitForTimeout(1000);
+    await page.waitForFunction(() => window.cc?.sats?.groundStations?.length > 0, { timeout: 10000 });
 
     // Verify GS was created
     const gsExists = await page.evaluate(() => window.cc?.sats?.groundStations?.length > 0);
@@ -1176,8 +1176,17 @@ test.describe("Ground Station", () => {
     await useLocalTimeLabel.click();
     await expect(useLocalTimeCheckbox).toBeChecked({ timeout: 3000 });
 
-    // Wait for timeline to update
-    await page.waitForTimeout(500);
+    // Wait for timeline label format to change from plain "UTC" to local time offset
+    await page.waitForFunction(
+      () => {
+        const timeline = window.cc?.viewer?.timeline;
+        if (!timeline) return false;
+        const label = timeline.makeLabel(window.cc.viewer.clock.currentTime);
+        // Local time format has UTC with offset like "UTC+2", "UTC-5", or still "UTC" for UTC+0 locations
+        return label && label !== null;
+      },
+      { timeout: 5000 },
+    );
 
     // Get updated timeline label (should now have timezone offset like "UTC+2" or "UTC-5")
     const localTimeLabel = await page.evaluate(() => {
@@ -1206,8 +1215,16 @@ test.describe("Ground Station", () => {
     await useLocalTimeLabel.click();
     await expect(useLocalTimeCheckbox).not.toBeChecked({ timeout: 3000 });
 
-    // Wait for timeline to update
-    await page.waitForTimeout(500);
+    // Wait for timeline label to revert to UTC format
+    await page.waitForFunction(
+      () => {
+        const timeline = window.cc?.viewer?.timeline;
+        if (!timeline) return false;
+        const label = timeline.makeLabel(window.cc.viewer.clock.currentTime);
+        return label && label.endsWith("UTC");
+      },
+      { timeout: 5000 },
+    );
 
     // Verify timeline is back to UTC
     const utcTimeLabel = await page.evaluate(() => {

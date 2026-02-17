@@ -212,9 +212,6 @@ test.describe("Satellite Selection Menu Navigation", () => {
     // Press down arrow to move to satellites dropdown
     await page.keyboard.press("ArrowDown");
 
-    // Wait a bit for the dropdown to activate
-    await page.waitForTimeout(200);
-
     // Verify a multiselect dropdown is active (either groups or satellites)
     const activeDropdown = page.locator(".multiselect--active");
     await expect(activeDropdown.first()).toBeVisible({ timeout: 2000 });
@@ -226,12 +223,8 @@ test.describe("Satellite Selection Menu Navigation", () => {
     // Open groups dropdown
     await page.keyboard.press("Enter");
 
-    // Wait a bit for dropdown to open
-    await page.waitForTimeout(100);
-
-    // Verify no highlight is visible
-    const focusedItems = await page.locator(".toolbarContent.menu-item-focused").count();
-    expect(focusedItems).toBe(0);
+    // Verify no highlight is visible (dropdown opening removes highlight)
+    await expect(page.locator(".toolbarContent.menu-item-focused")).toHaveCount(0);
   });
 
   test("should not trigger menu shortcuts when typing in dropdown @critical", async ({ page }) => {
@@ -253,7 +246,7 @@ test.describe("Satellite Selection Menu Navigation", () => {
     await page.keyboard.press("Enter");
 
     // Wait for dropdown to open
-    await page.waitForTimeout(200);
+    await expect(page.locator(".multiselect--active").first()).toBeVisible({ timeout: 2000 });
 
     // Close dropdown with Escape - this will close the menu entirely
     await page.keyboard.press("Escape");
@@ -315,7 +308,7 @@ test.describe("Menu Closing Behavior", () => {
     await page.keyboard.press("Enter");
 
     // Wait for dropdown to open
-    await page.waitForTimeout(100);
+    await expect(page.locator(".multiselect--active").first()).toBeVisible({ timeout: 2000 });
 
     // Press Escape - should close both dropdown and menu
     await page.keyboard.press("Escape");
@@ -368,9 +361,6 @@ test.describe("Focus Indicator Visual Feedback", () => {
 
     // Navigate down
     await page.keyboard.press("ArrowDown");
-
-    // Wait a moment for navigation
-    await page.waitForTimeout(50);
 
     // Note: The satellites dropdown opens automatically, so highlight is removed
     // This is expected behavior
