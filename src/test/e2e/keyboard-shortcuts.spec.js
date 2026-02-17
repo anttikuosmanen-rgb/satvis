@@ -169,8 +169,8 @@ test.describe("Menu Navigation with Arrow Keys", () => {
     const firstItemText = await page.locator(".toolbarSwitch.menu-item-focused").first().textContent();
 
     // Navigate down multiple times to wrap around
-    // Satellite visuals has 7 components, so pressing down 7 times should wrap
-    for (let i = 0; i < 7; i++) {
+    // Satellite visuals has 6 components, so pressing down 6 times should wrap
+    for (let i = 0; i < 6; i++) {
       await page.keyboard.press("ArrowDown");
     }
 
