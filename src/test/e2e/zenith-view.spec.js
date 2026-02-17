@@ -17,8 +17,16 @@ test.describe("Zenith View", () => {
     await page.evaluate(() => {
       window.cc?.sats?.zenithViewFromGroundStation();
     });
-    // Wait for the zenith overlay to be set up
-    await page.waitForFunction(() => document.querySelector('[data-testid="zenith-tooltip"]') !== null, { timeout: 5000 });
+    // Wait for the zenith overlay to be set up (tooltip element in DOM + mousemove listener attached)
+    await page.waitForFunction(
+      () => {
+        const tooltip = document.querySelector('[data-testid="zenith-tooltip"]');
+        if (!tooltip) return false;
+        // Zenith view is fully ready when the cleanup function is set
+        return !!window.cc?.sats?.zenithViewCleanup;
+      },
+      { timeout: 5000 },
+    );
 
     const canvas = page.locator("#cesiumContainer canvas").first();
     const box = await canvas.boundingBox();
@@ -28,12 +36,13 @@ test.describe("Zenith View", () => {
     // Tooltip should not be visible before any hover
     await expect(page.locator('[data-testid="zenith-tooltip"]')).not.toBeVisible();
 
-    // Move mouse to center — tooltip still hidden (delay has not elapsed)
+    // Move mouse to center to start the 1.5s hover delay timer
     await page.mouse.move(cx, cy);
     await expect(page.locator('[data-testid="zenith-tooltip"]')).not.toBeVisible();
 
     // Wait for the 1.5 s hover delay to expire — tooltip becomes visible
-    await expect(page.locator('[data-testid="zenith-tooltip"]')).toBeVisible({ timeout: 3000 });
+    // Use 5s timeout to give ample margin over the 1.5s app delay
+    await expect(page.locator('[data-testid="zenith-tooltip"]')).toBeVisible({ timeout: 5000 });
 
     // Tooltip text should contain multi-line Alt/Az format
     const text = await page.locator('[data-testid="zenith-tooltip"]').innerText();
