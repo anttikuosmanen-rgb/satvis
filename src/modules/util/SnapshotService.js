@@ -202,7 +202,7 @@ export class SnapshotService {
 
   /**
    * Capture enabled satellite visualization components
-   * (Point, Label, Orbit, Orbit track, Visibility area, Height stick, 3D model)
+   * (Point, Label, Orbit, Orbit track, Visibility area, Height stick)
    */
   captureEnabledComponents() {
     return [...this.cc.sats.enabledComponents];

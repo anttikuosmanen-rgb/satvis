@@ -81,7 +81,7 @@ test.describe("Snapshot URL - Time Restoration", () => {
     });
 
     await page.getByText("Copy snapshot URL", { exact: true }).click();
-    await page.waitForTimeout(500);
+    await page.waitForFunction(() => window._capturedUrl !== null, { timeout: 5000 });
 
     const snapshotUrl = await page.evaluate(() => window._capturedUrl);
     expect(snapshotUrl).toMatch(/snap=z(%3A|:)/);
@@ -93,8 +93,16 @@ test.describe("Snapshot URL - Time Restoration", () => {
     // Wait for satellites to load (triggers snapshot restore)
     await page.waitForFunction(() => window.cc?.sats?.satellites?.length > 0, { timeout: 15000 });
 
-    // Wait for snapshot restoration
-    await page.waitForTimeout(1500);
+    // Wait for snapshot restoration (clock values restored)
+    await page.waitForFunction(
+      () => {
+        const clock = window.cc?.viewer?.clock;
+        if (!clock) return false;
+        const currentDate = new Date((clock.currentTime.dayNumber - 2440587.5) * 86400000 + clock.currentTime.secondsOfDay * 1000);
+        return currentDate.toISOString().includes("2025-06-15") && clock.multiplier === 60;
+      },
+      { timeout: 15000 },
+    );
 
     // Verify time was restored (access clock directly without Cesium global)
     const timeState = await page.evaluate(() => {
@@ -165,7 +173,7 @@ test.describe("Snapshot URL - Camera Restoration", () => {
     });
 
     await page.getByText("Copy snapshot URL", { exact: true }).click();
-    await page.waitForTimeout(500);
+    await page.waitForFunction(() => window._capturedUrl !== null, { timeout: 5000 });
 
     const snapshotUrl = await page.evaluate(() => window._capturedUrl);
 
@@ -173,9 +181,17 @@ test.describe("Snapshot URL - Camera Restoration", () => {
     await page.goto(snapshotUrl);
     await expect(page.locator("#cesiumContainer canvas").first()).toBeVisible({ timeout: 15000 });
 
-    // Wait for satellites to load and snapshot to restore
+    // Wait for satellites to load and snapshot camera to restore
     await page.waitForFunction(() => window.cc?.sats?.satellites?.length > 0, { timeout: 15000 });
-    await page.waitForTimeout(1500);
+    await page.waitForFunction(
+      (origX) => {
+        const cam = window.cc?.viewer?.camera;
+        if (!cam) return false;
+        return Math.abs(cam.position.x - origX) < 1000;
+      },
+      originalCamera.x,
+      { timeout: 15000 },
+    );
 
     // Verify camera position was restored
     const restoredCamera = await page.evaluate(() => {
@@ -218,7 +234,7 @@ test.describe("Snapshot URL - Ground Station Restoration", () => {
     });
 
     // Wait for ground station to be processed
-    await page.waitForTimeout(1000);
+    await page.waitForFunction(() => window.cc?.sats?.groundStations?.length > 0, { timeout: 10000 });
 
     // Verify ground station via SatelliteManager
     const gsSet = await page.evaluate(() => {
@@ -246,7 +262,7 @@ test.describe("Snapshot URL - Ground Station Restoration", () => {
     });
 
     await page.getByText("Copy snapshot URL", { exact: true }).click();
-    await page.waitForTimeout(500);
+    await page.waitForFunction(() => window._capturedUrl !== null, { timeout: 5000 });
 
     const snapshotUrl = await page.evaluate(() => window._capturedUrl);
 
@@ -259,9 +275,9 @@ test.describe("Snapshot URL - Ground Station Restoration", () => {
     await page.goto(snapshotUrl);
     await expect(page.locator("#cesiumContainer canvas").first()).toBeVisible({ timeout: 15000 });
 
-    // Wait for satellites to load and snapshot to restore
+    // Wait for satellites to load and ground station to restore
     await page.waitForFunction(() => window.cc?.sats?.satellites?.length > 0, { timeout: 15000 });
-    await page.waitForTimeout(2000);
+    await page.waitForFunction(() => window.cc?.sats?.groundStations?.length > 0, { timeout: 15000 });
 
     // Verify ground station was restored (check via SatelliteManager)
     const result = await page.evaluate(() => {

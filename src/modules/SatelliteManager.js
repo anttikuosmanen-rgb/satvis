@@ -48,7 +48,7 @@ export class SatelliteManager {
 
     this.satellites = [];
     this.satellitesByCanonical = new Map(); // O(1) lookup by canonical name -> sat[]
-    this.availableComponents = ["Point", "Label", "Orbit", "Orbit track", "Visibility area", "Height stick", "3D model"];
+    this.availableComponents = ["Point", "Label", "Orbit", "Orbit track", "Visibility area", "Height stick"];
 
     // Track whether initial TLE loading is complete
     // This prevents showing satellites before TLE data is loaded (race condition fix)

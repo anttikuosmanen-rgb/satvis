@@ -17,8 +17,8 @@ test.describe("Zenith View", () => {
     await page.evaluate(() => {
       window.cc?.sats?.zenithViewFromGroundStation();
     });
-    // Give the zenith view time to set up
-    await page.waitForTimeout(500);
+    // Wait for the zenith overlay to be set up
+    await page.waitForFunction(() => document.querySelector('[data-testid="zenith-tooltip"]') !== null, { timeout: 5000 });
 
     const canvas = page.locator("#cesiumContainer canvas").first();
     const box = await canvas.boundingBox();
@@ -32,9 +32,8 @@ test.describe("Zenith View", () => {
     await page.mouse.move(cx, cy);
     await expect(page.locator('[data-testid="zenith-tooltip"]')).not.toBeVisible();
 
-    // Wait for the 1.5 s delay to expire
-    await page.waitForTimeout(2000);
-    await expect(page.locator('[data-testid="zenith-tooltip"]')).toBeVisible();
+    // Wait for the 1.5 s hover delay to expire — tooltip becomes visible
+    await expect(page.locator('[data-testid="zenith-tooltip"]')).toBeVisible({ timeout: 3000 });
 
     // Tooltip text should contain multi-line Alt/Az format
     const text = await page.locator('[data-testid="zenith-tooltip"]').innerText();
@@ -59,7 +58,7 @@ test.describe("Zenith View", () => {
       }
       window.cc?.sats?.enterZenithViewImmediate();
     });
-    await page.waitForTimeout(500);
+    await page.waitForFunction(() => document.querySelector('[data-testid="zenith-tooltip"]') !== null, { timeout: 5000 });
 
     // Looking straight up — sun is below horizon and out of view
     await expect(page.locator('[data-testid="zenith-sun-symbol"]')).not.toBeVisible();
@@ -75,7 +74,6 @@ test.describe("Zenith View", () => {
       });
       window.cc.viewer.scene.requestRender();
     });
-    await page.waitForTimeout(500);
 
     // Now the sun should be on screen
     await expect(page.locator('[data-testid="zenith-sun-symbol"]')).toBeVisible({ timeout: 3000 });
@@ -102,7 +100,7 @@ test.describe("Zenith View", () => {
       }
       window.cc?.sats?.enterZenithViewImmediate();
     });
-    await page.waitForTimeout(500);
+    await page.waitForFunction(() => document.querySelector('[data-testid="zenith-tooltip"]') !== null, { timeout: 5000 });
 
     await expect(page.locator('[data-testid="zenith-sun-symbol"]')).not.toBeVisible();
   });
@@ -120,7 +118,7 @@ test.describe("Zenith View", () => {
       }
       window.cc?.sats?.enterZenithViewImmediate();
     });
-    await page.waitForTimeout(500);
+    await page.waitForFunction(() => document.querySelector('[data-testid="zenith-tooltip"]') !== null, { timeout: 5000 });
 
     // Sun at -8° altitude is below the horizon, not visible when looking straight up
     await expect(page.locator('[data-testid="zenith-sun-symbol"]')).not.toBeVisible();
@@ -138,7 +136,7 @@ test.describe("Zenith View", () => {
       }
       window.cc?.sats?.enterZenithViewImmediate();
     });
-    await page.waitForTimeout(800);
+    await page.waitForFunction(() => document.querySelector('[data-testid="zenith-tooltip"]') !== null, { timeout: 5000 });
 
     // Tilt camera to face East (away from sun at WSW ~255°)
     await page.evaluate(() => {
@@ -151,7 +149,6 @@ test.describe("Zenith View", () => {
       });
       window.cc.viewer.scene.requestRender();
     });
-    await page.waitForTimeout(500);
 
     // Sun is behind the camera — symbol should be hidden
     await expect(page.locator('[data-testid="zenith-sun-symbol"]')).not.toBeVisible();
@@ -171,7 +168,7 @@ test.describe("Zenith View", () => {
       }
       window.cc?.sats?.enterZenithViewImmediate();
     });
-    await page.waitForTimeout(800);
+    await page.waitForFunction(() => document.querySelector('[data-testid="zenith-tooltip"]') !== null, { timeout: 5000 });
 
     const canvas = page.locator("#cesiumContainer canvas").first();
     const canvasBox = await canvas.boundingBox();
@@ -184,7 +181,14 @@ test.describe("Zenith View", () => {
       await page.mouse.down({ button: "left" });
       await page.mouse.move(cx - 300, cy, { steps: 25 });
       await page.mouse.up({ button: "left" });
-      await page.waitForTimeout(300);
+      // Wait for camera animation (scene tweens) to finish
+      await page.waitForFunction(
+        () => {
+          const scene = window.cc?.viewer?.scene;
+          return !scene?.tweens || scene.tweens.length === 0;
+        },
+        { timeout: 3000 },
+      );
 
       const sunSymbol = page.locator('[data-testid="zenith-sun-symbol"]');
       if (await sunSymbol.isVisible()) {
@@ -193,8 +197,8 @@ test.describe("Zenith View", () => {
         const sx = sunBox.x + sunBox.width / 2;
         const sy = sunBox.y + sunBox.height / 2;
         await page.mouse.move(sx, sy);
-        await page.waitForTimeout(2000);
         const tooltip = page.locator('[data-testid="zenith-tooltip"]');
+        await expect(tooltip).toBeVisible({ timeout: 3000 });
         if (await tooltip.isVisible()) {
           const text = await tooltip.innerText();
           const azMatch = text.match(/Az:\s*(\d+\.?\d*)/);
@@ -214,7 +218,6 @@ test.describe("Zenith View", () => {
     await waitForAppReady(page);
 
     await page.evaluate(() => window.cc?.sats?.enterZenithViewImmediate());
-    await page.waitForTimeout(300);
 
     // Elements should be present in DOM while zenith view is active
     await expect(page.locator('[data-testid="zenith-tooltip"]')).toBeAttached();
@@ -222,7 +225,6 @@ test.describe("Zenith View", () => {
 
     // Exit zenith view
     await page.evaluate(() => window.cc?.sats?.exitZenithView());
-    await page.waitForTimeout(300);
 
     // Both elements should be removed from DOM
     await expect(page.locator('[data-testid="zenith-tooltip"]')).not.toBeAttached();
