@@ -283,8 +283,7 @@ test.describe("Pass Notifications", () => {
     const toast = page.locator(".p-toast-message-success, .p-toast-message-info");
     await expect(toast).toBeVisible({ timeout: 5000 });
 
-    // Small delay to allow console logs to be captured
-    await page.waitForTimeout(500);
+    // Console logs are captured asynchronously via the page.on('console') handler above
 
     // Check if notification scheduling was logged
     const notifyLogs = consoleLogs.filter((log) => log.includes("Notify"));

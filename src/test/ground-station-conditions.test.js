@@ -402,9 +402,9 @@ describe("GroundStationConditions - Sun Position Details", () => {
     times.forEach((time) => {
       const sunPos = GroundStationConditions.getSunPosition(MUNICH_GS, time);
 
-      // Azimuth should be a number (can be negative from SunCalc's convention)
+      // Azimuth is 0-360 (north-based, fixed from SunCalc's south-based convention)
       expect(typeof sunPos.azimuth).toBe("number");
-      expect(sunPos.azimuth).toBeGreaterThan(-360);
+      expect(sunPos.azimuth).toBeGreaterThanOrEqual(0);
       expect(sunPos.azimuth).toBeLessThan(360);
     });
   });

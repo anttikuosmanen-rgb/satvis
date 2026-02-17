@@ -19,7 +19,6 @@ import {
   LabelStyle,
   Math as CesiumMath,
   Matrix4,
-  ModelGraphics,
   NearFarScalar,
   PathGraphics,
   PointGraphics,
@@ -96,12 +95,7 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
 
     super.enableComponent(name);
 
-    if (name === "3D model") {
-      // Adjust label offset to avoid overlap with model
-      if (this.components.Label) {
-        this.components.Label.label.pixelOffset = new Cartesian2(20, 0);
-      }
-    } else if (name === "Height stick") {
+    if (name === "Height stick") {
       // Refresh label to show elevation text when height stick is enabled
       if (this.components.Label) {
         this.disableComponent("Label");
@@ -144,12 +138,7 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     // Remove from enabled components list
     this._enabledComponentNames = this._enabledComponentNames.filter((n) => n !== name);
 
-    if (name === "3D model") {
-      // Restore old label offset
-      if (this.components.Label) {
-        this.components.Label.label.pixelOffset = new Cartesian2(10, 0);
-      }
-    } else if (name === "Smart Path") {
+    if (name === "Smart Path") {
       const component = this.components[name];
       if (component && component._entities) {
         // Clean up all polyline segment entities
@@ -433,9 +422,6 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       case "Height stick":
         this.createHeightStick();
         break;
-      case "3D model":
-        this.createModel();
-        break;
       case "Ground station link":
         this.createGroundStationLink();
         break;
@@ -492,15 +478,6 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       material: Color.WHITE,
     });
     this.createCesiumSatelliteEntity("Box", "box", box);
-  }
-
-  createModel() {
-    const model = new ModelGraphics({
-      uri: `./data/models/${this.props.name.split(" ").join("-")}.glb`,
-      minimumPixelSize: 50,
-      maximumScale: 10000,
-    });
-    this.createCesiumSatelliteEntity("3D model", "model", model);
   }
 
   createLabel() {
@@ -808,6 +785,7 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       });
       // Mark as non-selectable so clicking doesn't show infobox
       entity._nonSelectable = true;
+      entity._smartPathState = segment.colorState;
 
       entities.push(entity);
       this.viewer.entities.add(entity);

@@ -10,7 +10,10 @@ import {
   KeyboardEventModifier,
   LabelStyle,
   Math as CesiumMath,
+  Matrix4,
+  Ray,
   ScreenSpaceEventType,
+  Transforms,
   VerticalOrigin,
 } from "@cesium/engine";
 import { useSatStore } from "../stores/sat";
@@ -21,7 +24,9 @@ import { GroundStationEntity } from "./GroundStationEntity";
 import { CesiumCleanupHelper } from "./util/CesiumCleanupHelper";
 import { CesiumTimelineHelper } from "./util/CesiumTimelineHelper";
 import { filterAndSortPasses } from "./util/PassFilter";
+import { GroundStationConditions } from "./util/GroundStationConditions";
 import { LoadingSpinner } from "./util/LoadingSpinner";
+import { formatZenithTooltip, formatSunTooltip } from "./util/zenithViewHelper";
 
 export class SatelliteManager {
   #enabledComponents = ["Point", "Label"];
@@ -43,7 +48,7 @@ export class SatelliteManager {
 
     this.satellites = [];
     this.satellitesByCanonical = new Map(); // O(1) lookup by canonical name -> sat[]
-    this.availableComponents = ["Point", "Label", "Orbit", "Orbit track", "Visibility area", "Height stick", "3D model"];
+    this.availableComponents = ["Point", "Label", "Orbit", "Orbit track", "Visibility area", "Height stick"];
 
     // Track whether initial TLE loading is complete
     // This prevents showing satellites before TLE data is loaded (race condition fix)
@@ -1426,6 +1431,173 @@ export class SatelliteManager {
 
     // Add custom mouse wheel handler for FOV zoom
     const canvas = this.viewer.scene.canvas;
+
+    // ── Zenith view interaction: Alt/Az tooltip + sun symbol ──────────────────
+    const R2D = 180 / Math.PI;
+    const gsCartesian = Cartesian3.fromDegrees(position.longitude, position.latitude, position.height);
+    const enuMatrix = Transforms.eastNorthUpToFixedFrame(gsCartesian);
+
+    // Helper: screen position → Alt/Az
+    const screenToAltAz = (mousePos) => {
+      const ray = this.viewer.camera.getPickRay(mousePos, new Ray());
+      if (!ray) return null;
+      const invEnu = Matrix4.inverseTransformation(enuMatrix, new Matrix4());
+      const d = Matrix4.multiplyByPointAsVector(invEnu, ray.direction, new Cartesian3());
+      const alt = Math.atan2(d.z, Math.hypot(d.x, d.y)) * R2D;
+      const az = (Math.atan2(d.x, d.y) * R2D + 360) % 360;
+      return { alt, az };
+    };
+
+    // Helper: project sun's actual position to screen.
+    // Uses manual perspective projection (camera vectors + trig) instead of
+    // cartesianToCanvasCoordinates which is unreliable near the FOV boundary.
+    // Returns screen {x, y} if the sun is on-screen, null if behind camera or off-screen.
+    const sunDirToScreen = (sunAltDeg, sunAzDeg) => {
+      const cam = this.viewer.camera;
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
+
+      // Sun direction in ENU at its actual altitude
+      const altR = (sunAltDeg * Math.PI) / 180;
+      const azR = (sunAzDeg * Math.PI) / 180;
+      const sunENU = new Cartesian3(Math.cos(altR) * Math.sin(azR), Math.cos(altR) * Math.cos(azR), Math.sin(altR));
+
+      // ENU → world (ECEF)
+      const sunWorld = Matrix4.multiplyByPointAsVector(enuMatrix, sunENU, new Cartesian3());
+      Cartesian3.normalize(sunWorld, sunWorld);
+
+      // Project onto camera axes
+      const dotFwd = Cartesian3.dot(sunWorld, cam.direction);
+      if (dotFwd <= 0.01) return null; // behind camera or at extreme edge
+
+      const dotRight = Cartesian3.dot(sunWorld, cam.right);
+      const dotUp = Cartesian3.dot(sunWorld, cam.up);
+
+      // Perspective projection
+      const fov = cam.frustum.fov;
+      const f = w >= h ? w / 2 / Math.tan(fov / 2) : h / 2 / Math.tan(fov / 2);
+
+      const sx = w / 2 + (dotRight / dotFwd) * f;
+      const sy = h / 2 - (dotUp / dotFwd) * f;
+
+      // Only show if on screen
+      if (sx < -10 || sx > w + 10 || sy < -10 || sy > h + 10) return null;
+      return { x: sx, y: sy };
+    };
+
+    // Tooltip div
+    const tooltip = document.createElement("div");
+    tooltip.dataset.testid = "zenith-tooltip";
+    tooltip.style.cssText = `
+      position: absolute; pointer-events: none; display: none;
+      background: rgba(0,0,0,0.75); color: #fff; padding: 5px 10px;
+      border-radius: 4px; font-family: monospace; font-size: 13px;
+      z-index: 1001; white-space: pre; line-height: 1.5;
+    `;
+    this.viewer.container.appendChild(tooltip);
+
+    // Sun symbol div — needs z-index > canvas (z-index:0) to be visible.
+    // Cesium UI chrome (toolbar, animation, timeline) is given z-index:1002 via injected CSS
+    // during zenith view so it renders on top of the symbol.
+    const sunSymbol = document.createElement("div");
+    sunSymbol.dataset.testid = "zenith-sun-symbol";
+    sunSymbol.textContent = "☀";
+    sunSymbol.style.cssText = `
+      position: absolute; font-size: 20px; display: none; cursor: default;
+      z-index: 1001; transform: translate(-50%, -50%);
+      filter: drop-shadow(0 0 3px rgba(255,180,0,0.9));
+      pointer-events: auto;
+    `;
+    this.viewer.container.appendChild(sunSymbol);
+
+    // Elevate Cesium UI chrome above the sun symbol while zenith view is active.
+    const zenithUiCss = document.createElement("style");
+    zenithUiCss.textContent = `
+      .cesium-viewer-toolbar,
+      .cesium-viewer-animationContainer,
+      .cesium-viewer-timelineContainer,
+      .cesium-viewer-fullscreenContainer,
+      .cesium-viewer-vrContainer { z-index: 1002 !important; }
+    `;
+    document.head.appendChild(zenithUiCss);
+
+    // Mouse move: hide tooltip immediately, show after 1.5 s of stillness
+    let tooltipTimer = null;
+    const mouseMoveHandler = (event) => {
+      tooltip.style.display = "none";
+      clearTimeout(tooltipTimer);
+      const rect = canvas.getBoundingClientRect();
+      const mousePos = new Cartesian2(event.clientX - rect.left, event.clientY - rect.top);
+      tooltipTimer = setTimeout(() => {
+        const altAz = screenToAltAz(mousePos);
+        if (!altAz) return;
+        const picked = this.viewer.scene.pick(mousePos);
+        const state = picked?.id?._smartPathState;
+        tooltip.textContent = formatZenithTooltip(altAz.alt, altAz.az, state);
+        tooltip.style.left = mousePos.x + 16 + "px";
+        tooltip.style.top = mousePos.y - 8 + "px";
+        tooltip.style.display = "block";
+      }, 1500);
+    };
+
+    const mouseLeaveHandler = () => {
+      clearTimeout(tooltipTimer);
+      tooltip.style.display = "none";
+    };
+
+    canvas.addEventListener("mousemove", mouseMoveHandler);
+    canvas.addEventListener("mouseleave", mouseLeaveHandler);
+
+    // Sun symbol hover — show tooltip immediately (no delay for explicit hover)
+    sunSymbol.addEventListener("mouseenter", (e) => {
+      clearTimeout(tooltipTimer);
+      const sunPos = cachedSunPos || GroundStationConditions.getSunPosition(position, JulianDate.toDate(this.viewer.clock.currentTime));
+      tooltip.textContent = formatSunTooltip(sunPos.altitude, sunPos.azimuth);
+      const rect = canvas.getBoundingClientRect();
+      tooltip.style.left = e.clientX - rect.left + 16 + "px";
+      tooltip.style.top = e.clientY - rect.top - 8 + "px";
+      tooltip.style.display = "block";
+    });
+    sunSymbol.addEventListener("mousemove", (e) => {
+      const rect = canvas.getBoundingClientRect();
+      tooltip.style.left = e.clientX - rect.left + 16 + "px";
+      tooltip.style.top = e.clientY - rect.top - 8 + "px";
+    });
+    sunSymbol.addEventListener("mouseleave", () => {
+      tooltip.style.display = "none";
+    });
+
+    // Sun position cache — recalculate every 30s of simulated time
+    let cachedSunPos = null;
+    let cachedSunSimTime = 0;
+    const SUN_CACHE_SIM_SEC = 30;
+
+    // Sun symbol position update (runs on each clock tick)
+    const updateSunSymbol = () => {
+      const simTime = JulianDate.toDate(this.viewer.clock.currentTime).getTime() / 1000;
+      if (!cachedSunPos || Math.abs(simTime - cachedSunSimTime) > SUN_CACHE_SIM_SEC) {
+        const time = JulianDate.toDate(this.viewer.clock.currentTime);
+        cachedSunPos = GroundStationConditions.getSunPosition(position, time);
+        cachedSunSimTime = simTime;
+      }
+      const inTwilight = cachedSunPos.altitude < 0 && cachedSunPos.altitude > -18;
+      if (!inTwilight) {
+        sunSymbol.style.display = "none";
+        return;
+      }
+      const screen = sunDirToScreen(cachedSunPos.altitude, cachedSunPos.azimuth);
+      if (!screen) {
+        sunSymbol.style.display = "none";
+        return;
+      }
+      sunSymbol.style.left = screen.x + "px";
+      sunSymbol.style.top = screen.y + "px";
+      sunSymbol.style.display = "block";
+    };
+    const clockTickRemover = this.viewer.clock.onTick.addEventListener(updateSunSymbol);
+    updateSunSymbol(); // Populate immediately on enter
+    // ── end zenith interaction ────────────────────────────────────────────────
+
     const wheelHandler = (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -1452,8 +1624,12 @@ export class SatelliteManager {
 
     // Add post-render event to keep horizon level (roll = 0)
     const postRenderListener = this.viewer.scene.postRender.addEventListener(() => {
-      // Force camera roll to 0 to keep horizon level
-      if (this.viewer.camera.roll !== 0) {
+      // Force camera roll to 0 to keep horizon level.
+      // Skip when near zenith (pitch ≈ 90°): at that angle camera.heading is ambiguous
+      // due to gimbal lock, and calling setView(heading=...) corrupts camera.right,
+      // breaking the sun symbol edge-clamping fallback.
+      const nearZenith = Math.abs(this.viewer.camera.pitch - CesiumMath.PI_OVER_TWO) < 0.2;
+      if (this.viewer.camera.roll !== 0 && !nearZenith) {
         const heading = this.viewer.camera.heading;
         const pitch = this.viewer.camera.pitch;
         this.viewer.camera.setView({
@@ -1495,6 +1671,14 @@ export class SatelliteManager {
       zenithEntities.forEach((entity) => {
         this.viewer.entities.remove(entity);
       });
+      // Remove zenith interaction elements and listeners
+      canvas.removeEventListener("mousemove", mouseMoveHandler);
+      canvas.removeEventListener("mouseleave", mouseLeaveHandler);
+      clearTimeout(tooltipTimer);
+      clockTickRemover();
+      if (tooltip.parentNode) tooltip.parentNode.removeChild(tooltip);
+      if (sunSymbol.parentNode) sunSymbol.parentNode.removeChild(sunSymbol);
+      if (zenithUiCss.parentNode) zenithUiCss.parentNode.removeChild(zenithUiCss);
       // Restore previous camera mode if it was changed
       if (previousCameraMode && window.cc) {
         window.cc.cameraMode = previousCameraMode;
