@@ -808,6 +808,7 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       });
       // Mark as non-selectable so clicking doesn't show infobox
       entity._nonSelectable = true;
+      entity._smartPathState = segment.colorState;
 
       entities.push(entity);
       this.viewer.entities.add(entity);

@@ -90,7 +90,8 @@ export class GroundStationConditions {
     const sunPosition = SunCalc.getPosition(time, position.latitude, position.longitude);
     return {
       altitude: sunPosition.altitude * (180 / Math.PI), // Convert to degrees
-      azimuth: sunPosition.azimuth * (180 / Math.PI), // Convert to degrees
+      // SunCalc returns azimuth measured from south going west; convert to north-based clockwise (0=N, 90=E, 180=S, 270=W)
+      azimuth: (sunPosition.azimuth * (180 / Math.PI) + 180) % 360,
       isDark: sunPosition.altitude < -6 * deg2rad,
     };
   }
@@ -123,7 +124,7 @@ export class GroundStationConditions {
       const sunPosition = SunCalc.getPosition(time, position.latitude, position.longitude);
       return {
         altitude: sunPosition.altitude * (180 / Math.PI),
-        azimuth: sunPosition.azimuth * (180 / Math.PI),
+        azimuth: (sunPosition.azimuth * (180 / Math.PI) + 180) % 360,
         isDark: sunPosition.altitude < -6 * deg2rad,
       };
     }
