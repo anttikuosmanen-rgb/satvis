@@ -561,17 +561,8 @@ test.describe("Ground Station", () => {
 
     await expect(page.locator("#cesiumContainer canvas").first()).toBeVisible({ timeout: 15000 });
 
-    // Wait for full Cesium scene initialization
-    await page.waitForFunction(
-      () => {
-        const viewer = window.cc?.viewer;
-        if (!viewer || !viewer.scene) return false;
-        return viewer.scene.globe && viewer.scene.globe._surface;
-      },
-      { timeout: 20000 },
-    );
-
-    // Removed unnecessary waitForTimeout
+    // Wait for app to be fully ready (TLE loaded, scene initialized)
+    await waitForAppReady(page);
 
     // Set simulation time and widen timeline window to ensure passes are visible
     await page.evaluate(() => {
