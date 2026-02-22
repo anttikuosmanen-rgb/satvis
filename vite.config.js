@@ -48,6 +48,8 @@ export default defineConfig({
   define: {
     // Define relative base path in cesium for loading assets
     CESIUM_BASE_URL: JSON.stringify("./cesium"),
+    // Local-only sky maps (MilkyWay8K, Starmap8K) are excluded from deployed builds
+    __SATVIS_LOCAL_DEV__: JSON.stringify(!process.env.GITHUB_ACTIONS && !process.env.SATVIS_BASE_PATH),
   },
   plugins: [
     vue(),
