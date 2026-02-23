@@ -351,13 +351,13 @@ export class CesiumController {
     this.skyMapProviders = {
       MilkyWay: {
         defaultAlpha: 0.5,
-        sources: skyFaces("data/cesium-assets/stars/milkyway_2020_4k"),
+        sources: skyFaces("data/stars/milkyway_2020_4k"),
       },
       ...(__SATVIS_LOCAL_DEV__
         ? {
             MilkyWay8K: {
               defaultAlpha: 0.5,
-              sources: skyFaces("data/cesium-assets/stars/milkyway_2020_8k"),
+              sources: skyFaces("data/stars/milkyway_2020_8k"),
             },
           }
         : {}),
@@ -374,22 +374,22 @@ export class CesiumController {
       ...(__SATVIS_LOCAL_DEV__
         ? {
             Starmap8K: {
-              sources: skyFaces("data/cesium-assets/stars/starmap_8k"),
+              sources: skyFaces("data/stars/starmap_8k"),
             },
           }
         : {}),
       HipTyc16K: {
-        sources: skyFaces("data/cesium-assets/stars/hiptyc_2020_16k"),
+        sources: skyFaces("data/stars/hiptyc_2020_16k"),
       },
       Constellations: {
         defaultAlpha: 0.5,
         sources: {
-          positiveX: "data/cesium-assets/stars/constellations/px.png",
-          negativeX: "data/cesium-assets/stars/constellations/mx.png",
-          positiveY: "data/cesium-assets/stars/constellations/py.png",
-          negativeY: "data/cesium-assets/stars/constellations/my.png",
-          positiveZ: "data/cesium-assets/stars/constellations/pz.png",
-          negativeZ: "data/cesium-assets/stars/constellations/mz.png",
+          positiveX: "data/stars/constellations/px.png",
+          negativeX: "data/stars/constellations/mx.png",
+          positiveY: "data/stars/constellations/py.png",
+          negativeY: "data/stars/constellations/my.png",
+          positiveZ: "data/stars/constellations/pz.png",
+          negativeZ: "data/stars/constellations/mz.png",
         },
       },
     };

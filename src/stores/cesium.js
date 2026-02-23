@@ -28,7 +28,12 @@ export const useCesiumStore = defineStore("cesium", {
         url: "sky",
         serialize: (v) => v.join(","),
         deserialize: (v) => v.split(",").filter((e) => e),
-        valid: (v) => v.every((l) => ["MilkyWay", "MilkyWay8K", "Tycho2K", "Starmap8K", "HipTyc16K", "Constellations"].includes(l.split("_")[0])),
+        valid: (v) => {
+          /* global __SATVIS_LOCAL_DEV__ */
+          const names = ["MilkyWay", "Tycho2K", "HipTyc16K", "Constellations"];
+          if (__SATVIS_LOCAL_DEV__) names.push("MilkyWay8K", "Starmap8K");
+          return v.every((l) => names.includes(l.split("_")[0]));
+        },
         default: ["Tycho2K_1"],
       },
       {
