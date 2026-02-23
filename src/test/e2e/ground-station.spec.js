@@ -560,8 +560,6 @@ test.describe("Ground Station", () => {
     await page.goto(buildFreshIssUrl({ gs: "48.1351,11.5820,Munich", hideLight: false, onlyLit: false }));
 
     await expect(page.locator("#cesiumContainer canvas").first()).toBeVisible({ timeout: 15000 });
-
-    // Wait for app to be fully ready (TLE loaded, scene initialized)
     await waitForAppReady(page);
 
     // Set simulation time and widen timeline window to ensure passes are visible
@@ -570,11 +568,10 @@ test.describe("Ground Station", () => {
         const testDate = new Date();
         const julianDate = window.Cesium.JulianDate.fromDate(testDate);
 
-        // Set current time
         window.cc.viewer.clock.currentTime = julianDate;
         window.cc.viewer.clock.shouldAnimate = false;
 
-        // Widen timeline window: 2 days before to 7 days after (wider than default)
+        // Widen timeline window: 2 days before to 7 days after
         const startTime = window.Cesium.JulianDate.addDays(julianDate, -2, new window.Cesium.JulianDate());
         const stopTime = window.Cesium.JulianDate.addDays(julianDate, 7, new window.Cesium.JulianDate());
 
@@ -583,23 +580,15 @@ test.describe("Ground Station", () => {
 
         if (window.cc.viewer.timeline) {
           window.cc.viewer.timeline.zoomTo(startTime, stopTime);
+          window.cc.viewer.timeline.updateFromClock();
         }
-      }
-    });
-
-    // Removed unnecessary waitForTimeout
-
-    // Trigger timeline update
-    await page.evaluate(() => {
-      if (window.cc?.viewer?.timeline) {
-        window.cc.viewer.timeline.updateFromClock();
       }
     });
 
     // Wait for pass calculation and timeline highlights to be ready
     await waitForPassCalculation(page);
 
-    // Wait for pass data and timeline highlights to be ready
+    // Wait for pass highlights to appear on timeline
     await page
       .waitForFunction(
         () => {
