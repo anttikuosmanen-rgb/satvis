@@ -91,6 +91,7 @@ function urlToState(store: ExtendedStore, syncConfig: SyncConfigEntry[]): void {
 }
 
 function stateToUrl(store: ExtendedStore, syncConfig: SyncConfigEntry[]): void {
+  if (!store.defaults) return; // Not yet initialized by urlToState
   const params = new URLSearchParams(location.search);
   syncConfig.forEach((config: SyncConfigEntry) => {
     const value = resolve(config.name, store as Record<string, unknown>);

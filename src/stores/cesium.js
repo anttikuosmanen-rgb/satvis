@@ -3,6 +3,7 @@ import { defineStore } from "pinia";
 export const useCesiumStore = defineStore("cesium", {
   state: () => ({
     layers: ["OfflineHighres"],
+    skyMaps: ["Tycho2K_1"],
     terrainProvider: "None",
     sceneMode: "3D",
     cameraMode: "Fixed",
@@ -21,6 +22,14 @@ export const useCesiumStore = defineStore("cesium", {
         deserialize: (v) => v.split(",").filter((e) => e),
         valid: (v) => v.every((l) => ["Offline", "OfflineHighres", "ArcGis", "OSM", "Topo", "BlackMarble", "Tiles", "GOES-IR", "Nextrad"].includes(l.split("_")[0])),
         default: ["OfflineHighres"],
+      },
+      {
+        name: "skyMaps",
+        url: "sky",
+        serialize: (v) => v.join(","),
+        deserialize: (v) => v.split(",").filter((e) => e),
+        valid: (v) => v.every((l) => ["MilkyWay", "MilkyWay8K", "Tycho2K", "Starmap8K", "HipTyc16K", "Constellations"].includes(l.split("_")[0])),
+        default: ["Tycho2K_1"],
       },
       {
         name: "terrainProvider",

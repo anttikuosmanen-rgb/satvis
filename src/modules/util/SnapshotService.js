@@ -643,8 +643,9 @@ export class SnapshotService {
     const encoded = this.serializeSnapshot(state);
 
     const url = new URL(window.location.href);
-    // Clear existing URL params that might conflict with snapshot
-    url.search = "";
+    // Preserve existing URL params (layers, sky, terrain, etc.) so pinia URL sync
+    // state is included in the snapshot URL. Only clear any previous snap param.
+    url.searchParams.delete("snap");
     url.searchParams.set("snap", encoded);
     const fullUrl = url.toString();
     const chars = fullUrl.length;

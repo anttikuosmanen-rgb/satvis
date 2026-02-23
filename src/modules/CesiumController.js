@@ -1,6 +1,7 @@
 import {
   ArcGisMapServerImageryProvider,
   ArcGISTiledElevationTerrainProvider,
+  buildModuleUrl,
   Cartesian3,
   Cartographic,
   CesiumTerrainProvider,
@@ -34,10 +35,13 @@ import { faBell, faInfo } from "@fortawesome/free-solid-svg-icons";
 import infoBoxCss from "@cesium/widgets/Source/InfoBox/InfoBoxDescription.css?raw";
 import * as satellitejs from "satellite.js";
 
+import SkyBox from "@cesium/engine/Source/Scene/SkyBox";
+
 import { useCesiumStore } from "../stores/cesium";
 import { useSatStore } from "../stores/sat";
 import infoBoxOverrideCss from "../css/infobox.css?raw";
 import { useToastProxy } from "../composables/useToastProxy";
+import { MultiLayerSkyBox } from "./MultiLayerSkyBox";
 import { DeviceDetect } from "./util/DeviceDetect";
 import { PushManager } from "./util/PushManager";
 import { CesiumPerformanceStats } from "./util/CesiumPerformanceStats";
@@ -108,6 +112,27 @@ export class CesiumController {
       const visibleStart = JulianDate.addHours(currentJulian, -12, new JulianDate());
       const visibleStop = JulianDate.addHours(currentJulian, 12, new JulianDate());
       this.viewer.timeline.zoomTo(visibleStart, visibleStop);
+
+      // Override zoomFrom to enforce min/max duration limits.
+      // This prevents the user from zooming past the bounds — the timeline
+      // simply stops at the limit instead of zooming past and snapping back.
+      const timeline = this.viewer.timeline;
+      const originalZoomFrom = timeline.zoomFrom.bind(timeline);
+      const minDuration = 3600; // 1 hour
+      const maxDuration = 730 * 86400; // ~2 years
+      timeline.zoomFrom = function (amount) {
+        const currentSpan = this._timeBarSecondsSpan;
+        const newSpan = currentSpan * amount;
+        let clampedAmount = amount;
+        if (newSpan < minDuration) {
+          clampedAmount = minDuration / currentSpan;
+        } else if (newSpan > maxDuration) {
+          clampedAmount = maxDuration / currentSpan;
+        }
+        // If we're already at the limit and trying to zoom further, do nothing
+        if (Math.abs(clampedAmount - 1) < 1e-9) return;
+        originalZoomFrom(clampedAmount);
+      };
 
       // Track timeline scrubbing state to prevent recentering during drag
       this.isTimelineScrubbing = false;
@@ -305,6 +330,69 @@ export class CesiumController {
         base: false,
       },
     };
+    const defaultSkyBoxUrl = (suffix) => buildModuleUrl(`Assets/Textures/SkyBox/tycho2t3_80_${suffix}.jpg`);
+    this._defaultStarSources = {
+      positiveX: defaultSkyBoxUrl("px"),
+      negativeX: defaultSkyBoxUrl("mx"),
+      positiveY: defaultSkyBoxUrl("py"),
+      negativeY: defaultSkyBoxUrl("my"),
+      positiveZ: defaultSkyBoxUrl("pz"),
+      negativeZ: defaultSkyBoxUrl("mz"),
+    };
+    /* global __SATVIS_LOCAL_DEV__ */
+    const skyFaces = (dir) => ({
+      positiveX: `${dir}/px.jpg`,
+      negativeX: `${dir}/mx.jpg`,
+      positiveY: `${dir}/py.jpg`,
+      negativeY: `${dir}/my.jpg`,
+      positiveZ: `${dir}/pz.jpg`,
+      negativeZ: `${dir}/mz.jpg`,
+    });
+    this.skyMapProviders = {
+      MilkyWay: {
+        defaultAlpha: 0.5,
+        sources: skyFaces("data/cesium-assets/stars/milkyway_2020_4k"),
+      },
+      ...(__SATVIS_LOCAL_DEV__
+        ? {
+            MilkyWay8K: {
+              defaultAlpha: 0.5,
+              sources: skyFaces("data/cesium-assets/stars/milkyway_2020_8k"),
+            },
+          }
+        : {}),
+      Tycho2K: {
+        sources: {
+          positiveX: "data/cesium-assets/stars/TychoSkymapII.t3_08192x04096/TychoSkymapII.t3_08192x04096_80_px.jpg",
+          negativeX: "data/cesium-assets/stars/TychoSkymapII.t3_08192x04096/TychoSkymapII.t3_08192x04096_80_mx.jpg",
+          positiveY: "data/cesium-assets/stars/TychoSkymapII.t3_08192x04096/TychoSkymapII.t3_08192x04096_80_py.jpg",
+          negativeY: "data/cesium-assets/stars/TychoSkymapII.t3_08192x04096/TychoSkymapII.t3_08192x04096_80_my.jpg",
+          positiveZ: "data/cesium-assets/stars/TychoSkymapII.t3_08192x04096/TychoSkymapII.t3_08192x04096_80_pz.jpg",
+          negativeZ: "data/cesium-assets/stars/TychoSkymapII.t3_08192x04096/TychoSkymapII.t3_08192x04096_80_mz.jpg",
+        },
+      },
+      ...(__SATVIS_LOCAL_DEV__
+        ? {
+            Starmap8K: {
+              sources: skyFaces("data/cesium-assets/stars/starmap_8k"),
+            },
+          }
+        : {}),
+      HipTyc16K: {
+        sources: skyFaces("data/cesium-assets/stars/hiptyc_2020_16k"),
+      },
+      Constellations: {
+        defaultAlpha: 0.5,
+        sources: {
+          positiveX: "data/cesium-assets/stars/constellations/px.png",
+          negativeX: "data/cesium-assets/stars/constellations/mx.png",
+          positiveY: "data/cesium-assets/stars/constellations/py.png",
+          negativeY: "data/cesium-assets/stars/constellations/my.png",
+          positiveZ: "data/cesium-assets/stars/constellations/pz.png",
+          negativeZ: "data/cesium-assets/stars/constellations/mz.png",
+        },
+      },
+    };
     this.terrainProviders = {
       None: {
         create: () => new EllipsoidTerrainProvider(),
@@ -400,6 +488,76 @@ export class CesiumController {
 
     const provider = await this.terrainProviders[terrainProviderName].create();
     this.viewer.terrainProvider = provider;
+  }
+
+  get skyMapProviderNames() {
+    return Object.keys(this.skyMapProviders);
+  }
+
+  /**
+   * Set sky map layers from an array of {name, alpha} configs.
+   * Pass an empty array to restore the default Cesium skybox.
+   */
+  set skyMapLayers(configs) {
+    if (!configs || configs.length === 0) {
+      // Restore default sky box
+      if (this._multiLayerSkyBox) {
+        this._multiLayerSkyBox.destroy();
+        this._multiLayerSkyBox = null;
+      }
+      this.viewer.scene.skyBox = SkyBox.createEarthSkyBox();
+      this.viewer.scene.requestRender();
+      return;
+    }
+
+    // Build layer configs with full source paths
+    const layerConfigs = configs
+      .filter((c) => this.skyMapProviders[c.name])
+      .map((c) => ({
+        name: c.name,
+        sources: this.skyMapProviders[c.name].sources,
+        alpha: c.alpha ?? 1.0,
+      }));
+
+    if (layerConfigs.length === 0) return;
+
+    // If no star map layer is selected (only background/overlay layers like MilkyWay or Constellations),
+    // include the default Cesium stars as an implicit base so they aren't replaced entirely
+    const starMapNames = Object.keys(this.skyMapProviders).filter((n) => !this.skyMapProviders[n].defaultAlpha);
+    const hasStarMap = layerConfigs.some((c) => starMapNames.includes(c.name));
+    if (!hasStarMap) {
+      layerConfigs.unshift({
+        name: "_defaultStars",
+        sources: this._defaultStarSources,
+        alpha: 1.0,
+      });
+    }
+
+    if (!this._multiLayerSkyBox) {
+      this._multiLayerSkyBox = new MultiLayerSkyBox();
+      this._multiLayerSkyBox.onLoad = () => this.viewer.scene.requestRender();
+      this._multiLayerSkyBox.setLayers(layerConfigs);
+      this.viewer.scene.skyBox = this._multiLayerSkyBox;
+      this.viewer.scene.requestRender();
+      return;
+    }
+
+    // Check if only alpha values changed (same layers in same order)
+    const currentNames = this._multiLayerSkyBox._layers.map((l) => l.name);
+    const newNames = layerConfigs.map((l) => l.name);
+    const sameLayerSet = currentNames.length === newNames.length && currentNames.every((n, i) => n === newNames[i]);
+
+    if (sameLayerSet) {
+      // Only update alpha values — no image reload needed
+      for (const cfg of layerConfigs) {
+        this._multiLayerSkyBox.setLayerAlpha(cfg.name, cfg.alpha);
+      }
+    } else {
+      // Layer set changed — full reload
+      this._multiLayerSkyBox.setLayers(layerConfigs);
+    }
+    this.viewer.scene.skyBox = this._multiLayerSkyBox;
+    this.viewer.scene.requestRender();
   }
 
   set sceneMode(sceneMode) {
@@ -791,21 +949,34 @@ export class CesiumController {
           needsUpdate = true;
         }
 
-        // If bounds need updating, safely update them
+        // Enforce minimum duration (1 hour)
+        const minDuration = 3600;
+        // Enforce maximum duration (~2 years)
+        const maxDuration = 730 * 86400;
+
+        const duration = JulianDate.secondsDifference(newEnd, newStart);
+        if (duration > 0 && duration < minDuration) {
+          const midpoint = JulianDate.addSeconds(newStart, duration / 2, new JulianDate());
+          newStart = JulianDate.addSeconds(midpoint, -minDuration / 2, new JulianDate());
+          newEnd = JulianDate.addSeconds(midpoint, minDuration / 2, new JulianDate());
+          needsUpdate = true;
+        } else if (duration > maxDuration) {
+          const midpoint = JulianDate.addSeconds(newStart, duration / 2, new JulianDate());
+          newStart = JulianDate.addSeconds(midpoint, -maxDuration / 2, new JulianDate());
+          newEnd = JulianDate.addSeconds(midpoint, maxDuration / 2, new JulianDate());
+          needsUpdate = true;
+        }
+
         if (needsUpdate) {
           // Ensure the range makes sense (end > start)
           const timeDiff = JulianDate.secondsDifference(newEnd, newStart);
           if (timeDiff <= 0) {
-            // If the range is invalid, create a default 7-day range
             newStart = JulianDate.clone(minDate);
             newEnd = JulianDate.addDays(newStart, 7, new JulianDate());
           }
 
-          // Update clock bounds
           this.viewer.clock.startTime = newStart;
           this.viewer.clock.stopTime = newEnd;
-
-          // Update timeline to reflect new bounds
           timeline.zoomTo(newStart, newEnd);
         }
       }
@@ -1793,6 +1964,8 @@ export class CesiumController {
 
   set background(active) {
     if (!active) {
+      // Store current sky box before clearing so it can be restored
+      this._savedSkyBox = this.viewer.scene.skyBox;
       this.viewer.scene.backgroundColor = Color.TRANSPARENT;
       this.viewer.scene.moon = undefined;
       this.viewer.scene.skyAtmosphere = undefined;
@@ -1801,6 +1974,10 @@ export class CesiumController {
       document.documentElement.style.background = "transparent";
       document.body.style.background = "transparent";
       document.getElementById("cesiumContainer").style.background = "transparent";
+    } else if (this._savedSkyBox) {
+      // Restore previously saved sky box
+      this.viewer.scene.skyBox = this._savedSkyBox;
+      this._savedSkyBox = null;
     }
   }
 
