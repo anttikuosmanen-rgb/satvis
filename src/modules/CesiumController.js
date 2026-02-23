@@ -113,6 +113,27 @@ export class CesiumController {
       const visibleStop = JulianDate.addHours(currentJulian, 12, new JulianDate());
       this.viewer.timeline.zoomTo(visibleStart, visibleStop);
 
+      // Override zoomFrom to enforce min/max duration limits.
+      // This prevents the user from zooming past the bounds — the timeline
+      // simply stops at the limit instead of zooming past and snapping back.
+      const timeline = this.viewer.timeline;
+      const originalZoomFrom = timeline.zoomFrom.bind(timeline);
+      const minDuration = 3600; // 1 hour
+      const maxDuration = 730 * 86400; // ~2 years
+      timeline.zoomFrom = function (amount) {
+        const currentSpan = this._timeBarSecondsSpan;
+        const newSpan = currentSpan * amount;
+        let clampedAmount = amount;
+        if (newSpan < minDuration) {
+          clampedAmount = minDuration / currentSpan;
+        } else if (newSpan > maxDuration) {
+          clampedAmount = maxDuration / currentSpan;
+        }
+        // If we're already at the limit and trying to zoom further, do nothing
+        if (Math.abs(clampedAmount - 1) < 1e-9) return;
+        originalZoomFrom(clampedAmount);
+      };
+
       // Track timeline scrubbing state to prevent recentering during drag
       this.isTimelineScrubbing = false;
       this.viewer.timeline.container.addEventListener("mousedown", () => {
@@ -928,21 +949,34 @@ export class CesiumController {
           needsUpdate = true;
         }
 
-        // If bounds need updating, safely update them
+        // Enforce minimum duration (1 hour)
+        const minDuration = 3600;
+        // Enforce maximum duration (~2 years)
+        const maxDuration = 730 * 86400;
+
+        const duration = JulianDate.secondsDifference(newEnd, newStart);
+        if (duration > 0 && duration < minDuration) {
+          const midpoint = JulianDate.addSeconds(newStart, duration / 2, new JulianDate());
+          newStart = JulianDate.addSeconds(midpoint, -minDuration / 2, new JulianDate());
+          newEnd = JulianDate.addSeconds(midpoint, minDuration / 2, new JulianDate());
+          needsUpdate = true;
+        } else if (duration > maxDuration) {
+          const midpoint = JulianDate.addSeconds(newStart, duration / 2, new JulianDate());
+          newStart = JulianDate.addSeconds(midpoint, -maxDuration / 2, new JulianDate());
+          newEnd = JulianDate.addSeconds(midpoint, maxDuration / 2, new JulianDate());
+          needsUpdate = true;
+        }
+
         if (needsUpdate) {
           // Ensure the range makes sense (end > start)
           const timeDiff = JulianDate.secondsDifference(newEnd, newStart);
           if (timeDiff <= 0) {
-            // If the range is invalid, create a default 7-day range
             newStart = JulianDate.clone(minDate);
             newEnd = JulianDate.addDays(newStart, 7, new JulianDate());
           }
 
-          // Update clock bounds
           this.viewer.clock.startTime = newStart;
           this.viewer.clock.stopTime = newEnd;
-
-          // Update timeline to reflect new bounds
           timeline.zoomTo(newStart, newEnd);
         }
       }

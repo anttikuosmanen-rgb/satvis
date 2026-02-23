@@ -334,11 +334,13 @@ export class CesiumTimelineHelper {
       return true; // No cache, needs calculation
     }
 
-    const currentStart = viewer.clock.startTime;
-    const currentStop = viewer.clock.stopTime;
+    // Check both clock bounds AND the visible timeline window
+    // The user can zoom/scroll the timeline beyond the clock bounds
+    const timeline = viewer.timeline;
+    const visibleStart = timeline._startJulian || viewer.clock.startTime;
+    const visibleStop = timeline._endJulian || viewer.clock.stopTime;
 
-    // Check if current timeline is outside the cached range
-    return JulianDate.lessThan(currentStart, cachedRange.start) || JulianDate.greaterThan(currentStop, cachedRange.stop);
+    return JulianDate.lessThan(visibleStart, cachedRange.start) || JulianDate.greaterThan(visibleStop, cachedRange.stop);
   }
 
   static async addGroundStationDaytimeRanges(viewer, groundStation) {
@@ -346,8 +348,14 @@ export class CesiumTimelineHelper {
       return;
     }
 
-    const startTime = viewer.clock.startTime;
-    const stopTime = viewer.clock.stopTime;
+    // Use the wider of clock bounds and visible timeline window
+    const timeline = viewer.timeline;
+    const clockStart = viewer.clock.startTime;
+    const clockStop = viewer.clock.stopTime;
+    const visibleStart = timeline._startJulian || clockStart;
+    const visibleStop = timeline._endJulian || clockStop;
+    const startTime = JulianDate.lessThan(visibleStart, clockStart) ? visibleStart : clockStart;
+    const stopTime = JulianDate.greaterThan(visibleStop, clockStop) ? visibleStop : clockStop;
 
     // Calculate daytime periods for a broader range (extend by 60 days on each side)
     const extendedStart = JulianDate.addDays(startTime, -60, new JulianDate());
