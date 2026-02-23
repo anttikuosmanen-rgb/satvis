@@ -109,6 +109,18 @@
           <span class="slider"></span>
           {{ name }}
         </label>
+        <div class="toolbarTitle">Sky Maps</div>
+        <label v-for="name in cc.skyMapProviderNames" :key="'sky-' + name" class="toolbarSwitch">
+          <input v-model="activeSkyMapNames" type="checkbox" :value="name" />
+          <span class="slider"></span>
+          {{ name }}
+        </label>
+        <template v-for="name in activeSkyMapNames" :key="'skyalpha-' + name">
+          <div class="skymap-opacity">
+            <span class="opacity-label">{{ name }} opacity</span>
+            <input type="range" min="0" max="1" step="0.1" :value="getSkyMapAlpha(name)" class="opacity-slider" @input="setSkyMapAlpha(name, $event.target.value)" />
+          </div>
+        </template>
         <div class="toolbarTitle">Terrain</div>
         <label
           v-for="(name, index) in cc.terrainProviderNames"
@@ -348,10 +360,11 @@ export default {
       activeMenuKey: null, // Which menu is open via keyboard shortcut
       dropdownOpen: false, // Track if a dropdown is currently open (disables menu navigation)
       showLaunchSitesProminent: false, // Toggle for prominent launch site display
+      skyMapAlphaCache: {}, // Persists opacity when a layer is disabled
     };
   },
   computed: {
-    ...mapWritableState(useCesiumStore, ["layers", "terrainProvider", "sceneMode", "cameraMode", "qualityPreset", "showFps", "background", "pickMode"]),
+    ...mapWritableState(useCesiumStore, ["layers", "skyMaps", "terrainProvider", "sceneMode", "cameraMode", "qualityPreset", "showFps", "background", "pickMode"]),
     ...mapWritableState(useSatStore, [
       "enabledComponents",
       "groundStations",
@@ -438,6 +451,34 @@ export default {
 
       return !!activePass;
     },
+    activeSkyMapNames: {
+      get() {
+        return this.skyMaps.map((entry) => entry.split("_")[0]);
+      },
+      set(names) {
+        // Cache alphas of layers being removed
+        for (const entry of this.skyMaps) {
+          const [name, alpha] = entry.split("_");
+          if (!names.includes(name)) {
+            this.skyMapAlphaCache[name] = alpha;
+          }
+        }
+        // Build active map of current alphas
+        const existingMap = {};
+        for (const entry of this.skyMaps) {
+          const [name, alpha] = entry.split("_");
+          existingMap[name] = alpha;
+        }
+        // Use provider order (not checkbox click order) to keep layers stable
+        // Restore cached alpha, or use provider defaultAlpha, or fall back to 1
+        this.skyMaps = cc.skyMapProviderNames
+          .filter((name) => names.includes(name))
+          .map((name) => {
+            const alpha = existingMap[name] || this.skyMapAlphaCache[name] || cc.skyMapProviders[name].defaultAlpha || "1";
+            return `${name}_${alpha}`;
+          });
+      },
+    },
   },
   watch: {
     layers: {
@@ -473,6 +514,17 @@ export default {
     },
     background(value) {
       cc.background = value;
+    },
+    skyMaps: {
+      handler(newSkyMaps) {
+        const configs = newSkyMaps.map((entry) => {
+          const [name, alpha] = entry.split("_");
+          return { name, alpha: parseFloat(alpha) || 1.0 };
+        });
+        cc.skyMapLayers = configs;
+      },
+      deep: true,
+      immediate: true,
     },
     showLaunchSitesProminent(value) {
       if (cc.launchSites) {
@@ -1413,6 +1465,21 @@ export default {
         }
       }
     },
+    getSkyMapAlpha(name) {
+      const entry = this.skyMaps.find((e) => e.startsWith(name + "_"));
+      if (entry) {
+        return parseFloat(entry.split("_")[1]) || 1;
+      }
+      return 1;
+    },
+    setSkyMapAlpha(name, alpha) {
+      this.skyMaps = this.skyMaps.map((entry) => {
+        if (entry.startsWith(name + "_")) {
+          return `${name}_${alpha}`;
+        }
+        return entry;
+      });
+    },
     async copySnapshotUrl(includeTles) {
       // Create SnapshotService instance and copy URL to clipboard
       const snapshotService = new SnapshotService(this.cc);
@@ -1498,5 +1565,24 @@ export default {
 
 .pass-countdown-button.pass-active {
   color: #00ff00 !important; /* Green for ongoing pass */
+}
+
+/* Sky map opacity slider */
+.skymap-opacity {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 4px 10px;
+}
+
+.opacity-label {
+  font-size: 11px;
+  color: #aaa;
+  margin-bottom: 2px;
+}
+
+.opacity-slider {
+  width: 100%;
+  cursor: pointer;
 }
 </style>

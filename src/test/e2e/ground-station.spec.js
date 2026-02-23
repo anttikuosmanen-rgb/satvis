@@ -560,8 +560,6 @@ test.describe("Ground Station", () => {
     await page.goto(buildFreshIssUrl({ gs: "48.1351,11.5820,Munich", hideLight: false, onlyLit: false }));
 
     await expect(page.locator("#cesiumContainer canvas").first()).toBeVisible({ timeout: 15000 });
-
-    // Wait for app to be fully ready (TLE loaded, scene initialized)
     await waitForAppReady(page);
 
     // Set simulation time and widen timeline window to ensure passes are visible
@@ -570,11 +568,10 @@ test.describe("Ground Station", () => {
         const testDate = new Date();
         const julianDate = window.Cesium.JulianDate.fromDate(testDate);
 
-        // Set current time
         window.cc.viewer.clock.currentTime = julianDate;
         window.cc.viewer.clock.shouldAnimate = false;
 
-        // Widen timeline window: 2 days before to 7 days after (wider than default)
+        // Widen timeline window: 2 days before to 7 days after
         const startTime = window.Cesium.JulianDate.addDays(julianDate, -2, new window.Cesium.JulianDate());
         const stopTime = window.Cesium.JulianDate.addDays(julianDate, 7, new window.Cesium.JulianDate());
 
@@ -583,23 +580,15 @@ test.describe("Ground Station", () => {
 
         if (window.cc.viewer.timeline) {
           window.cc.viewer.timeline.zoomTo(startTime, stopTime);
+          window.cc.viewer.timeline.updateFromClock();
         }
-      }
-    });
-
-    // Removed unnecessary waitForTimeout
-
-    // Trigger timeline update
-    await page.evaluate(() => {
-      if (window.cc?.viewer?.timeline) {
-        window.cc.viewer.timeline.updateFromClock();
       }
     });
 
     // Wait for pass calculation and timeline highlights to be ready
     await waitForPassCalculation(page);
 
-    // Wait for pass data and timeline highlights to be ready
+    // Wait for pass highlights to appear on timeline
     await page
       .waitForFunction(
         () => {
@@ -1077,6 +1066,100 @@ test.describe("Ground Station", () => {
 
     // Verify passes were recalculated
     expect(newState.passCount).toBeGreaterThan(0);
+  });
+
+  test("should recalculate daylight highlights after navigating timeline past initial range", async ({ page }) => {
+    // Load with ISS and a ground station (Munich) to trigger daylight highlights
+    await page.goto("/?sats=ISS~(ZARYA)&gs=48.1351,11.5820,Munich");
+
+    await expect(page.locator("#cesiumContainer canvas").first()).toBeVisible({ timeout: 15000 });
+    await waitForAppReady(page);
+    await waitForPassCalculation(page, { timeout: 30000 });
+    await pauseAnimation(page);
+
+    // Helper to get the furthest _stop epoch seconds among daylight highlights (_base === -1)
+    // JulianDate dayNumber 2440587.5 = Unix epoch (1970-01-01T00:00:00Z)
+    const getFurthestDaylightStopEpoch = () => {
+      return page.evaluate(() => {
+        const viewer = window.cc?.viewer;
+        if (!viewer?.timeline) return null;
+
+        const highlights = viewer.timeline._highlightRanges?.filter((r) => r._base === -1) || [];
+        if (highlights.length === 0) return null;
+
+        let furthest = null;
+        for (const h of highlights) {
+          if (h._stop && typeof h._stop.dayNumber === "number") {
+            const epochSec = (h._stop.dayNumber - 2440587.5) * 86400 + h._stop.secondsOfDay;
+            if (furthest === null || epochSec > furthest) {
+              furthest = epochSec;
+            }
+          }
+        }
+        return { count: highlights.length, furthestStopEpoch: furthest };
+      });
+    };
+
+    // Wait for daylight highlights to be computed (they load async after ground station is set up)
+    await page.waitForFunction(
+      () => {
+        const viewer = window.cc?.viewer;
+        if (!viewer?.timeline) return false;
+        const highlights = viewer.timeline._highlightRanges?.filter((r) => r._base === -1) || [];
+        return highlights.length > 0 && highlights.some((h) => h._stop);
+      },
+      { timeout: 30000 },
+    );
+
+    const initialState = await getFurthestDaylightStopEpoch();
+    expect(initialState).not.toBeNull();
+    expect(initialState.count).toBeGreaterThan(0);
+
+    // Navigate timeline 100 days into the future and trigger recalculation
+    await page.evaluate(() => {
+      const viewer = window.cc?.viewer;
+      if (!viewer?.timeline) return;
+
+      // Manually construct JulianDate-like objects by offsetting from current time
+      const now = viewer.clock.currentTime;
+      const futureStart = { dayNumber: now.dayNumber + 100, secondsOfDay: now.secondsOfDay };
+      const futureEnd = { dayNumber: now.dayNumber + 130, secondsOfDay: now.secondsOfDay };
+
+      viewer.timeline.zoomTo(futureStart, futureEnd);
+
+      // Dispatch wheel event on the timeline container to trigger the debounced daytime check
+      const container = viewer.timeline.container;
+      container.dispatchEvent(new WheelEvent("wheel", { deltaY: 1, bubbles: true }));
+    });
+
+    // Wait for daylight highlights to be fully recalculated with a further stop date.
+    // The recalculation is async (yields to browser), so we wait until the furthest _stop
+    // exceeds the initial by at least 1 day AND the highlight count has stabilized.
+    const oneDayInSeconds = 86400;
+    const threshold = initialState.furthestStopEpoch + oneDayInSeconds;
+
+    await page.waitForFunction(
+      ({ threshold: t, minCount }) => {
+        const viewer = window.cc?.viewer;
+        if (!viewer?.timeline) return false;
+
+        const highlights = viewer.timeline._highlightRanges?.filter((r) => r._base === -1) || [];
+        // Require at least as many highlights as initially (recalculation is complete, not partial)
+        if (highlights.length < minCount) return false;
+
+        for (const h of highlights) {
+          if (h._stop && typeof h._stop.dayNumber === "number") {
+            const epochSec = (h._stop.dayNumber - 2440587.5) * 86400 + h._stop.secondsOfDay;
+            if (epochSec > t) {
+              return true;
+            }
+          }
+        }
+        return false;
+      },
+      { threshold, minCount: initialState.count },
+      { timeout: 30000 },
+    );
   });
 
   test("should toggle local time and update timeline and clock display", async ({ page }) => {
