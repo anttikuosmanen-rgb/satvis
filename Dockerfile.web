@@ -21,6 +21,7 @@ WORKDIR /app
 # Accept build arguments for environment-specific configuration
 ARG SATVIS_BASE_PATH=""
 ENV SATVIS_BASE_PATH=${SATVIS_BASE_PATH}
+ENV SATVIS_LOCAL_DEV=false
 
 # Copy package files for dependency installation
 # Copying these first allows Docker to cache npm install layer
