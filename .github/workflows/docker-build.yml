@@ -197,7 +197,7 @@ jobs:
       # -----------------------------------------------------------------------
       - name: Build TLE updater image
         run: |
-          docker build -f Dockerfile.tle-updater -t ghcr.io/${{ env.IMAGE_NAME_TLE }}:latest \
+          docker build -f infra/Dockerfile.tle-updater -t ghcr.io/${{ env.IMAGE_NAME_TLE }}:latest \
             -t ghcr.io/${{ env.IMAGE_NAME_TLE }}:${{ github.sha }} \
             --label "org.opencontainers.image.source=${{ github.repositoryUrl }}" \
             --label "org.opencontainers.image.created=${{ steps.meta-tle.outputs.created }}" \

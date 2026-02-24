@@ -51,7 +51,17 @@ Satellite orbit visualization and pass prediction with enhanced features for vis
 ## Enhanced Features in This Fork
 
 ### Zenith View
-Ground-level sky viewing from your ground station location with sky-up camera perspective. Watch satellites move across the sky as they would appear during passes. Toggle between normal 3D globe and zenith view modes.
+Ground-level sky viewing from your ground station location with sky-up camera perspective. Watch satellites move across the sky as they would appear during passes. Toggle between normal 3D globe and zenith view modes. Sun symbol shows direction below the horizon during twilight.
+
+### Sky Maps
+- **Multi-Layer System** - Enable multiple sky maps simultaneously with additive compositing
+- **Per-Layer Opacity** - Independent opacity slider for each active sky map
+- **Available Maps** - MilkyWay (4K), Tycho2K (default), HipTyc16K, Constellations overlay
+- **URL Persistence** - Sky map selection and opacity saved in URL for bookmarking
+- **iOS Optimization** - Only Tycho2K available on iOS to prevent memory crashes
+
+### Snapshot URLs
+Share exact view state with others via snapshot URLs. Captures camera position, time, selected satellites, ground station, and optionally TLE data. Available from the Debug menu with options to include or exclude TLE data.
 
 ### Pass Prediction & Visualization
 - **Smart Pass Calculations** - Optimized caching and chunked processing with automatic cache invalidation
@@ -63,6 +73,7 @@ Ground-level sky viewing from your ground station location with sky-up camera pe
 - **Polar Coordinates** - Proper daytime calculation and caching for polar regions
 - **GEO Satellites** - Continuous visibility display for geostationary satellites
 - **Pre-launch Support** - Dedicated group for upcoming launches with epoch-based filtering
+- **Launch Sites** - Prominent display of launch sites with pre-launch satellite lock-in positioning
 
 ### Keyboard Navigation
 Full keyboard control with shortcuts for all menus and functions. Arrow keys navigate menu items, Enter activates, ESC closes menus/info boxes or resets to globe view when tracking. Time acceleration with number keys (1-9, 0 for 1x to 1024x, Shift for reverse). Spacebar toggles satellite/ground station views with camera position persistence. Shift+T tracks selected entity. Z key flips camera to opposite side of globe. Shortcuts displayed in tooltips.
@@ -70,12 +81,13 @@ Full keyboard control with shortcuts for all menus and functions. Arrow keys nav
 ### Timeline Controls
 - **Zoom Controls** - Plus/minus buttons with smooth 0.75x/1.33x zoom steps
 - **Zoom Preservation** - Maintains zoom level during time navigation and pass jumps
+- **Dynamic Highlights** - Daylight and pass highlights recalculate when navigating beyond the visible range
 - **Improved Bounds** - Better handling of timeline limits and consistency
 
 ### User Interface
 - **Pass Info Cards** - Clean card-based layout for pass listings with countdown timers
-- **Mobile Optimization** - Streamlined interface with timeline controls hidden on iOS
-- **Debug Menu** - Advanced options (swath mode, performance stats) in dedicated menu
+- **Mobile Optimization** - Streamlined interface with timeline controls hidden on iOS, memory-safe sky maps
+- **Debug Menu** - Advanced options (swath mode, performance stats, snapshot URLs, launch sites) in dedicated menu
 - **Tooltip Shortcuts** - Keyboard shortcuts displayed on all menu buttons
 - **Info Box Improvements** - ESC key support, disabled spacebar scrolling for consistent shortcuts
 
@@ -86,11 +98,12 @@ Full keyboard control with shortcuts for all menus and functions. Arrow keys nav
 - **View Toggle** - Spacebar to quickly switch between satellite tracking and ground station focus
 
 ### Technical Improvements
-- **Automated Deployment** - GitHub Actions CI/CD with TLE data updates
-- **Code Quality** - ESLint and Prettier integration, comprehensive E2E test suite
+- **Automated Deployment** - GitHub Actions CI/CD with TLE data updates, Docker multi-stage builds
+- **Code Quality** - ESLint and Prettier integration, comprehensive E2E test suite with Playwright
 - **Browser Compatibility** - Replaced geo-tz with tz-lookup for better browser support
 - **Error Handling** - Improved error handling for TLE data, entity tracking, and pass calculations
-- **Performance** - Optimized rendering, caching strategies, and worker-based calculations
+- **Performance** - Optimized rendering, caching strategies, and worker-based SGP4 calculations
+- **Canonical Names** - Structured satellite name identification supporting snapshots and custom satellites
 
 ## Built With
 - [CesiumJS](https://cesiumjs.org)
@@ -112,14 +125,6 @@ npm clean-install
 - `npm run build` to build the application (output in `dist` folder)
 - `npm run serve` to build the application and serve with static webserver
 - `npm run update-tle` to retrieve the latest satellite TLEs from NORAD
-
-## iOS App
-To provide pass notifications on iOS where local browser notifications are [not
-supported](https://developer.mozilla.org/en-US/docs/Web/API/Notifications_API#Browser_compatibility)
-a simple app wraps the webview and handles the scheduling of
-[UserNotifications](https://developer.apple.com/documentation/usernotifications).
-
-<p align="center"><a href="https://apps.apple.com/app/satvis/id1441084766"><img src="src/assets/app-store-badge.svg" width="250" /></a></p>
 
 ## License
 This project is licensed under the MIT License - see `LICENSE` file for details.

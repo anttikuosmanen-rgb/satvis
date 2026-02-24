@@ -30,16 +30,12 @@ coverage
 # Documentation
 *.md
 !README.md
-DEPLOYMENT.md
-DEPLOYMENT-SETUP.md
-CLAUDE.md
 LICENSE
 
 # CI/CD (already in image via workflows)
 .github/workflows
 
 # Test files
-cypress
 *.test.js
 *.spec.js
 
@@ -48,13 +44,16 @@ cypress
 .prettierrc*
 tsconfig.json
 
-# Kubernetes manifests (not needed in image)
-k8s/
+# Infrastructure (not needed in image)
+infra/
 
 # Docker files (not needed in image)
 Dockerfile*
 .dockerignore
 docker-compose.yml
+
+# Tools (not needed in image)
+tools/
 
 # Temporary files
 tmp/
