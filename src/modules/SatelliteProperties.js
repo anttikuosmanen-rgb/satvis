@@ -387,13 +387,13 @@ export class SatelliteProperties {
 
     const temeToFixed = Transforms.computeTemeToPseudoFixedMatrix(timestamp);
     if (!defined(temeToFixed)) {
-      console.error("Reference frame transformation data failed to load");
+      return { positionFixed: positionInertialTEME, positionInertial: positionInertialTEME };
     }
     const positionFixed = Matrix3.multiplyByVector(temeToFixed, positionInertialTEME, new Cartesian3());
 
     const fixedToIcrf = Transforms.computeFixedToIcrfMatrix(timestamp);
     if (!defined(fixedToIcrf)) {
-      console.error("Reference frame transformation data failed to load");
+      return { positionFixed, positionInertial: positionFixed };
     }
     const positionInertialICRF = Matrix3.multiplyByVector(fixedToIcrf, positionFixed, new Cartesian3());
 
