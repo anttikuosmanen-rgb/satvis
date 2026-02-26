@@ -14,6 +14,8 @@ export class PlanetaryPositions {
       { body: Astronomy.Body.Mars, name: "Mars", color: [255, 100, 70], symbol: "♂" }, // Red-orange
       { body: Astronomy.Body.Jupiter, name: "Jupiter", color: [255, 220, 180], symbol: "♃" }, // Pale orange
       { body: Astronomy.Body.Saturn, name: "Saturn", color: [255, 235, 200], symbol: "♄" }, // Pale yellow-white
+      { body: Astronomy.Body.Uranus, name: "Uranus", color: [173, 216, 230], symbol: "⛢", minDistance: 2.5e12 }, // Light blue, visible beyond 2500M km
+      { body: Astronomy.Body.Neptune, name: "Neptune", color: [100, 149, 237], symbol: "♆", minDistance: 2.5e12 }, // Cornflower blue, visible beyond 2500M km
     ];
   }
 

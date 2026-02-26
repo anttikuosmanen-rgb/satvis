@@ -1,4 +1,33 @@
-import { CallbackProperty, Cartesian3, Color, PathGraphics, PolylineGraphics, ReferenceFrame, JulianDate, Transforms, Matrix3, DistanceDisplayCondition } from "@cesium/engine";
+import {
+  CallbackProperty,
+  Cartesian3,
+  Color,
+  DistanceDisplayCondition,
+  JulianDate,
+  Matrix3,
+  Matrix4,
+  PathGraphics,
+  PolylineGraphics,
+  ReferenceFrame,
+  Transforms,
+  defined,
+} from "@cesium/engine";
+import * as Astronomy from "astronomy-engine";
+import { OrbitLinePrimitive } from "./OrbitLinePrimitive";
+import { CesiumCallbackHelper } from "./util/CesiumCallbackHelper";
+
+const AU_TO_METERS = 1.496e11;
+
+/**
+ * Get Earth's heliocentric position in meters (ICRF frame).
+ * @param {JulianDate} time
+ * @returns {Cartesian3}
+ */
+export function getEarthHelioVectorMeters(time) {
+  const jsDate = JulianDate.toDate(time);
+  const earthVector = Astronomy.HelioVector(Astronomy.Body.Earth, jsDate);
+  return new Cartesian3(earthVector.x * AU_TO_METERS, earthVector.y * AU_TO_METERS, earthVector.z * AU_TO_METERS);
+}
 
 /**
  * Generic orbit renderer for celestial bodies
@@ -7,7 +36,10 @@ import { CallbackProperty, Cartesian3, Color, PathGraphics, PolylineGraphics, Re
 export class CelestialOrbitRenderer {
   constructor(viewer) {
     this.viewer = viewer;
-    this.orbitEntities = new Map(); // Map of body name to orbit entity
+    this.orbitEntities = new Map(); // Map of body name to orbit entity (PathGraphics/PolylineGraphics)
+    this.orbitPrimitives = new Map(); // Map of body name to { primitive, removeCallback, heliocentric, requiredFar }
+    this.orbitUpdaters = new Map(); // Map of body name to updater cleanup function
+    this._originalFrustumFar = viewer.camera.frustum.far;
   }
 
   /**
@@ -15,18 +47,8 @@ export class CelestialOrbitRenderer {
    * @param {string} bodyName - Unique name for the body
    * @param {Function} positionFunction - Function(time) that returns Cartesian3 position
    * @param {Object} options - Orbit visualization options
-   * @param {number} options.orbitalPeriod - Orbital period in seconds
-   * @param {Color} options.color - Orbit line color (default: white with alpha 0.3)
-   * @param {number} options.width - Line width (default: 1)
-   * @param {number} options.resolution - Sample resolution in seconds (default: 3600)
-   * @param {number} options.leadTimeFraction - Fraction of orbit to show ahead (default: 0.5)
-   * @param {number} options.trailTimeFraction - Fraction of orbit to show behind (default: 0.5)
-   * @param {ReferenceFrame} options.referenceFrame - Reference frame for position (default: ReferenceFrame.INERTIAL)
-   * @param {boolean} options.useSampledPosition - Use SampledPositionProperty instead of CallbackProperty (default: false)
-   * @param {boolean} options.usePolyline - Use PolylineGraphics for complete orbit rendering without LOD culling (default: false)
    */
   addOrbit(bodyName, positionFunction, options = {}) {
-    // Remove existing orbit if present
     this.removeOrbit(bodyName);
 
     const {
@@ -39,6 +61,9 @@ export class CelestialOrbitRenderer {
       referenceFrame = ReferenceFrame.INERTIAL,
       useSampledPosition = false,
       usePolyline = false,
+      usePrimitive = false,
+      heliocentric = false,
+      minDistance = 0,
     } = options;
 
     if (!orbitalPeriod) {
@@ -46,122 +71,81 @@ export class CelestialOrbitRenderer {
       return;
     }
 
+    if (usePrimitive) {
+      return this._addPrimitiveOrbit(bodyName, positionFunction, {
+        orbitalPeriod,
+        color,
+        resolution,
+        referenceFrame,
+        heliocentric,
+        minDistance,
+      });
+    }
+
     let orbitEntity;
 
     if (usePolyline) {
-      // Pre-calculate complete orbit positions for PolylineGraphics
-      // This avoids PathGraphics LOD culling issues
       const currentTime = this.viewer.clock.currentTime;
-
-      // Limit number of samples to prevent memory allocation failure
-      // Use at most 1000 samples for very long orbits, more for shorter ones
       const maxSamples = 1000;
       const idealSamples = Math.ceil(orbitalPeriod / resolution);
       const numSamples = Math.min(idealSamples, maxSamples);
       const positions = [];
 
-      console.log(`Creating polyline for ${bodyName}: ${numSamples} samples (period: ${(orbitalPeriod / (24 * 60 * 60)).toFixed(1)} days)`);
-
       for (let i = 0; i <= numSamples; i++) {
         const sampleTime = JulianDate.addSeconds(currentTime, (i / numSamples) * orbitalPeriod, new JulianDate());
         const posInertial = positionFunction(sampleTime);
 
-        // Transform from inertial to fixed frame if needed
-        // PolylineGraphics always expects positions in the Fixed (ECEF) frame
         if (referenceFrame === ReferenceFrame.INERTIAL) {
           const icrfToFixed = Transforms.computeIcrfToFixedMatrix(sampleTime);
           if (icrfToFixed) {
-            const posFixed = Matrix3.multiplyByVector(icrfToFixed, posInertial, new Cartesian3());
-            positions.push(posFixed);
-
-            // Debug: Log first few positions
-            if (i < 3) {
-              console.log(`  Sample ${i} INERTIAL: x=${posInertial.x.toExponential(2)}, y=${posInertial.y.toExponential(2)}, z=${posInertial.z.toExponential(2)}`);
-              console.log(`  Sample ${i} FIXED:    x=${posFixed.x.toExponential(2)}, y=${posFixed.y.toExponential(2)}, z=${posFixed.z.toExponential(2)}`);
-            }
+            positions.push(Matrix3.multiplyByVector(icrfToFixed, posInertial, new Cartesian3()));
           } else {
-            // Fallback if transformation fails
             positions.push(Cartesian3.clone(posInertial));
           }
         } else {
-          // Already in Fixed frame
           positions.push(Cartesian3.clone(posInertial));
-
-          // Debug: Log first few positions
-          if (i < 3) {
-            console.log(`  Sample ${i}: x=${posInertial.x.toExponential(2)}, y=${posInertial.y.toExponential(2)}, z=${posInertial.z.toExponential(2)}`);
-          }
         }
       }
 
-      console.log(`Created ${positions.length} positions for ${bodyName} polyline`);
-
-      // Create polyline entity with pre-calculated positions
-      // Positions are always in Fixed (ECEF) frame after transformation
       orbitEntity = this.viewer.entities.add({
         id: `orbit-${bodyName}`,
         polyline: new PolylineGraphics({
           show: true,
-          positions: positions,
+          positions,
           material: color,
-          width: width,
-          arcType: 0, // ArcType.NONE - no geodesic/rhumb line interpolation
+          width,
+          arcType: 0,
           distanceDisplayCondition: new DistanceDisplayCondition(0.0, Number.POSITIVE_INFINITY),
         }),
         distanceDisplayCondition: new DistanceDisplayCondition(0.0, Number.POSITIVE_INFINITY),
       });
-      console.log(`Added polyline entity for ${bodyName}:`, {
-        id: orbitEntity.id,
-        hasPolyline: !!orbitEntity.polyline,
-        polylineShow: orbitEntity.polyline?.show,
-        polylineWidth: orbitEntity.polyline?.width,
-        numPositions: orbitEntity.polyline?.positions?.getValue?.()?.length || positions.length,
-      });
     } else {
-      // Use PathGraphics with dynamic position property
       let positionProperty;
 
       if (useSampledPosition && referenceFrame === ReferenceFrame.INERTIAL) {
-        // For inertial frame, use a CallbackProperty that returns position in INERTIAL frame
-        // Cesium's PathGraphics will sample this at different times automatically
         positionProperty = new CallbackProperty((time, result) => {
-          const pos = positionFunction(time);
-          return Cartesian3.clone(pos, result);
+          return Cartesian3.clone(positionFunction(time), result);
         }, false);
-
-        // Mark this as an inertial frame position by adding referenceFrame property
         positionProperty.referenceFrame = referenceFrame;
-
-        // Add getValueInReferenceFrame method that properly handles inertial positions
         positionProperty.getValueInReferenceFrame = function (time, requestedFrame, result) {
-          // Get position in inertial frame
           const inertialPos = this.getValue(time, result);
-
-          // If requested frame is FIXED, transform from inertial to fixed
           if (requestedFrame === ReferenceFrame.FIXED) {
             const icrfToFixed = Transforms.computeIcrfToFixedMatrix(time);
             if (icrfToFixed) {
               return Matrix3.multiplyByVector(icrfToFixed, inertialPos, result);
             }
           }
-
-          // Otherwise return inertial position
           return inertialPos;
         };
       } else {
-        // Use CallbackProperty (positions assumed to be in Fixed frame)
         positionProperty = new CallbackProperty((time, result) => {
-          const pos = positionFunction(time);
-          return Cartesian3.clone(pos, result);
+          return Cartesian3.clone(positionFunction(time), result);
         }, false);
-
-        // Add getValueInReferenceFrame method required by PathGraphics
         positionProperty.getValueInReferenceFrame = function (time, referenceFrame, result) {
           return this.getValue(time, result);
         };
       }
 
-      // Create orbit entity with PathGraphics
       orbitEntity = this.viewer.entities.add({
         id: `orbit-${bodyName}`,
         position: positionProperty,
@@ -170,8 +154,8 @@ export class CelestialOrbitRenderer {
           leadTime: orbitalPeriod * leadTimeFraction,
           trailTime: orbitalPeriod * trailTimeFraction,
           material: color,
-          resolution: resolution,
-          width: width,
+          resolution,
+          width,
           distanceDisplayCondition: new DistanceDisplayCondition(0.0, Number.POSITIVE_INFINITY),
         }),
         distanceDisplayCondition: new DistanceDisplayCondition(0.0, Number.POSITIVE_INFINITY),
@@ -183,22 +167,141 @@ export class CelestialOrbitRenderer {
   }
 
   /**
-   * Remove orbit for a celestial body
-   * @param {string} bodyName - Name of the body
+   * Create orbit using OrbitLinePrimitive (GL_LINE_STRIP, cull-free).
+   * Positions are pre-computed in the orbit's native frame and transformed
+   * to ECEF via modelMatrix updated every 0.5s.
    */
+  _addPrimitiveOrbit(bodyName, positionFunction, { orbitalPeriod, color, resolution, referenceFrame, heliocentric, minDistance = 0 }) {
+    const currentTime = this.viewer.clock.currentTime;
+    const maxSamples = 1000;
+    const idealSamples = Math.ceil(orbitalPeriod / resolution);
+    const numSamples = Math.min(idealSamples, maxSamples);
+
+    // Pre-compute positions in native frame
+    const positions = [];
+    for (let i = 0; i <= numSamples; i++) {
+      const sampleTime = JulianDate.addSeconds(currentTime, (i / numSamples) * orbitalPeriod, new JulianDate());
+      positions.push(Cartesian3.clone(positionFunction(sampleTime)));
+    }
+
+    // Compute initial modelMatrix
+    const modelMatrix = this._computeModelMatrix(currentTime, referenceFrame, heliocentric);
+
+    const primitive = new OrbitLinePrimitive({
+      positions,
+      color,
+      modelMatrix,
+      show: true,
+      minDistance,
+    });
+
+    this.viewer.scene.primitives.add(primitive);
+
+    // Store max orbit radius for dynamic frustum far computation
+    const maxOrbitRadius = positions.reduce((max, p) => Math.max(max, Cartesian3.magnitude(p)), 0);
+
+    // Register periodic callback to update modelMatrix
+    let removeCallback;
+    if (referenceFrame === ReferenceFrame.INERTIAL) {
+      const scratchMatrix = new Matrix4();
+      removeCallback = CesiumCallbackHelper.createPeriodicTimeCallback(this.viewer, 0.5, (time) => {
+        const entry = this.orbitPrimitives.get(bodyName);
+        if (!entry) {
+          removeCallback();
+          return;
+        }
+        const newMatrix = this._computeModelMatrix(time, referenceFrame, heliocentric, scratchMatrix);
+        entry.primitive.modelMatrix = newMatrix;
+        // Re-apply frustum far in case something else reset it
+        this._updateFrustumFar();
+      });
+    }
+
+    this.orbitPrimitives.set(bodyName, { primitive, removeCallback, heliocentric, maxOrbitRadius });
+    this._updateFrustumFar();
+
+    return primitive;
+  }
+
+  /**
+   * Compute modelMatrix for transforming native-frame positions to ECEF.
+   *
+   * For geocentric orbits: ICRF→ECEF rotation only.
+   * For heliocentric orbits: ICRF→ECEF rotation + translation to offset
+   *   from Earth to Sun (negate Earth's helio position in ECEF).
+   */
+  _computeModelMatrix(time, referenceFrame, heliocentric, result) {
+    if (referenceFrame !== ReferenceFrame.INERTIAL) {
+      return result ? Matrix4.clone(Matrix4.IDENTITY, result) : Matrix4.clone(Matrix4.IDENTITY);
+    }
+
+    const icrfToFixed = Transforms.computeIcrfToFixedMatrix(time);
+    if (!defined(icrfToFixed)) {
+      return result ? Matrix4.clone(Matrix4.IDENTITY, result) : Matrix4.clone(Matrix4.IDENTITY);
+    }
+
+    if (!heliocentric) {
+      // Geocentric: just rotation from ICRF to ECEF
+      const m = result || new Matrix4();
+      return Matrix4.fromRotationTranslation(icrfToFixed, Cartesian3.ZERO, m);
+    }
+
+    // Heliocentric: rotate ICRF→ECEF, then translate so Sun-centered
+    // positions end up at the correct ECEF location.
+    // Earth's helio position in ICRF → rotate to ECEF → negate = translation
+    const earthHelioICRF = getEarthHelioVectorMeters(time);
+    const earthInECEF = Matrix3.multiplyByVector(icrfToFixed, earthHelioICRF, new Cartesian3());
+    const translation = Cartesian3.negate(earthInECEF, earthInECEF);
+
+    const m = result || new Matrix4();
+    return Matrix4.fromRotationTranslation(icrfToFixed, translation, m);
+  }
+
+  /**
+   * Update camera frustum far plane to accommodate the largest orbit primitive.
+   * Accounts for both orbit size and current camera distance, so orbits remain
+   * visible even when the camera is far beyond the outermost orbit.
+   */
+  _updateFrustumFar() {
+    let maxRequired = this._originalFrustumFar;
+    const cameraDistance = Cartesian3.magnitude(this.viewer.camera.positionWC);
+    for (const entry of this.orbitPrimitives.values()) {
+      // Need camera distance + orbit radius to see the far side of the orbit
+      const required = cameraDistance + entry.maxOrbitRadius * 2;
+      if (required > maxRequired) {
+        maxRequired = required;
+      }
+    }
+    // Only increase, never decrease — another renderer may need a larger value
+    if (maxRequired > this.viewer.camera.frustum.far) {
+      this.viewer.camera.frustum.far = maxRequired;
+    }
+  }
+
   removeOrbit(bodyName) {
     const entity = this.orbitEntities.get(bodyName);
     if (entity) {
       this.viewer.entities.remove(entity);
       this.orbitEntities.delete(bodyName);
     }
+
+    const entry = this.orbitPrimitives.get(bodyName);
+    if (entry) {
+      this.viewer.scene.primitives.remove(entry.primitive);
+      if (entry.removeCallback) {
+        entry.removeCallback();
+      }
+      this.orbitPrimitives.delete(bodyName);
+      this._updateFrustumFar();
+    }
+
+    const removeCallback = this.orbitUpdaters.get(bodyName);
+    if (removeCallback) {
+      removeCallback();
+      this.orbitUpdaters.delete(bodyName);
+    }
   }
 
-  /**
-   * Show/hide orbit for a celestial body
-   * @param {string} bodyName - Name of the body
-   * @param {boolean} visible - Whether to show the orbit
-   */
   setOrbitVisibility(bodyName, visible) {
     const entity = this.orbitEntities.get(bodyName);
     if (entity) {
@@ -208,59 +311,51 @@ export class CelestialOrbitRenderer {
         entity.polyline.show = visible;
       }
     }
+
+    const entry = this.orbitPrimitives.get(bodyName);
+    if (entry) {
+      entry.primitive.show = visible;
+    }
   }
 
-  /**
-   * Update orbit properties
-   * @param {string} bodyName - Name of the body
-   * @param {Object} updates - Properties to update (color, width, etc.)
-   */
   updateOrbit(bodyName, updates) {
     const entity = this.orbitEntities.get(bodyName);
-    if (!entity) {
-      return;
-    }
+    if (!entity) return;
 
     const graphics = entity.path || entity.polyline;
-    if (!graphics) {
-      return;
-    }
+    if (!graphics) return;
 
-    if (updates.color !== undefined) {
-      graphics.material = updates.color;
-    }
-    if (updates.width !== undefined) {
-      graphics.width = updates.width;
-    }
-    if (updates.show !== undefined) {
-      graphics.show = updates.show;
-    }
+    if (updates.color !== undefined) graphics.material = updates.color;
+    if (updates.width !== undefined) graphics.width = updates.width;
+    if (updates.show !== undefined) graphics.show = updates.show;
   }
 
-  /**
-   * Check if orbit exists for a body
-   * @param {string} bodyName - Name of the body
-   * @returns {boolean} True if orbit exists
-   */
   hasOrbit(bodyName) {
-    return this.orbitEntities.has(bodyName);
+    return this.orbitEntities.has(bodyName) || this.orbitPrimitives.has(bodyName);
   }
 
-  /**
-   * Remove all orbits
-   */
   clear() {
     for (const entity of this.orbitEntities.values()) {
       this.viewer.entities.remove(entity);
     }
     this.orbitEntities.clear();
+
+    for (const entry of this.orbitPrimitives.values()) {
+      this.viewer.scene.primitives.remove(entry.primitive);
+      if (entry.removeCallback) {
+        entry.removeCallback();
+      }
+    }
+    this.orbitPrimitives.clear();
+    this._updateFrustumFar();
+
+    for (const removeCallback of this.orbitUpdaters.values()) {
+      removeCallback();
+    }
+    this.orbitUpdaters.clear();
   }
 
-  /**
-   * Get all orbit body names
-   * @returns {Array<string>} Array of body names
-   */
   getOrbitNames() {
-    return Array.from(this.orbitEntities.keys());
+    return [...this.orbitEntities.keys(), ...this.orbitPrimitives.keys()];
   }
 }

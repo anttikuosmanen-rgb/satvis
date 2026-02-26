@@ -38,6 +38,8 @@ export class PlanetManager {
       Mars: 686.98 * 24 * 60 * 60, // 686.980 days
       Jupiter: 4332.589 * 24 * 60 * 60, // 11.862 years
       Saturn: 10759.22 * 24 * 60 * 60, // 29.457 years
+      Uranus: 30688.5 * 24 * 60 * 60, // 84.01 years
+      Neptune: 60182.0 * 24 * 60 * 60, // 164.8 years
     };
   }
 
@@ -104,8 +106,6 @@ export class PlanetManager {
       this.isInZenithView = event.detail.active;
     };
     window.addEventListener("zenithViewChanged", this.zenithViewChangeHandler);
-
-    console.log(`Planet rendering enabled in ${mode} mode`);
   }
 
   /**
@@ -171,8 +171,6 @@ export class PlanetManager {
     // Reset update tracking
     this.lastUpdateTime = null;
     this.lastRealUpdate = null;
-
-    console.log("Planet rendering disabled");
   }
 
   /**
@@ -206,20 +204,6 @@ export class PlanetManager {
         const positions = this.planetary.calculatePositions(time);
         const planet = positions.find((p) => p.name === planetName);
         if (planet) {
-          // Debug: log first time we see this planet
-          if (!this._logged) {
-            this._logged = {};
-          }
-          if (!this._logged[planetName]) {
-            console.log(`${planetName} position:`, {
-              x: planet.position.x.toExponential(2),
-              y: planet.position.y.toExponential(2),
-              z: planet.position.z.toExponential(2),
-              ra: planet.ra.toFixed(4),
-              dec: planet.dec.toFixed(2),
-            });
-            this._logged[planetName] = true;
-          }
           return Cartesian3.clone(planet.position, result);
         }
         return result;
@@ -548,33 +532,61 @@ export class PlanetManager {
     const currentTime = this.viewer.clock.currentTime;
     const positions = this.planetary.calculatePositions(currentTime);
 
+    const cameraDist = Cartesian3.magnitude(this.viewer.camera.positionWC);
+
     positions.forEach((planetData) => {
       const isOccluded = this.isPlanetOccludedByEarth(planetData.position);
+      const planetInfo = this.planetary.planets.find((p) => p.name === planetData.name);
+      const minDist = planetInfo?.minDistance || 0;
+      const tooClose = minDist > 0 && cameraDist < minDist;
+
+      // Compute fade alpha (0→1) over 20% range beyond minDistance
+      let fadeAlpha = 1.0;
+      if (minDist > 0 && !tooClose) {
+        const fadeEnd = minDist * 1.2;
+        fadeAlpha = Math.min((cameraDist - minDist) / (fadeEnd - minDist), 1.0);
+      }
+
+      const visible = !isOccluded && !tooClose;
 
       if (this.renderMode === "billboard") {
         const entity = this.planetEntities.find((e) => e.id === `planet-${planetData.name}`);
         if (entity && entity.billboard) {
-          entity.billboard.show = !isOccluded;
+          entity.billboard.show = visible;
+          if (visible && minDist > 0) {
+            entity.billboard.color = Color.WHITE.withAlpha(fadeAlpha);
+          }
         }
         if (entity && entity.label) {
-          entity.label.show = !isOccluded && this.showLabels;
+          entity.label.show = visible && this.showLabels;
+          if (visible && minDist > 0) {
+            entity.label.fillColor = Color.WHITE.withAlpha(fadeAlpha);
+          }
         }
       } else if (this.renderMode === "point" && this.pointPrimitives) {
         const point = this.pointPrimitives._pointPrimitives.find((p) => p.planetName === planetData.name);
         if (point) {
-          point.show = !isOccluded;
+          point.show = visible;
+          if (visible && minDist > 0) {
+            const baseColor = Color.fromBytes(planetInfo.color[0], planetInfo.color[1], planetInfo.color[2], Math.round(fadeAlpha * 255));
+            point.color = baseColor;
+          }
         }
         const labelEntity = this.planetEntities.find((e) => e.id === `planet-label-${planetData.name}`);
         if (labelEntity && labelEntity.label) {
-          labelEntity.label.show = !isOccluded && this.showLabels;
+          labelEntity.label.show = visible && this.showLabels;
+          if (visible && minDist > 0) {
+            labelEntity.label.fillColor = Color.WHITE.withAlpha(fadeAlpha);
+          }
         }
       }
     });
   }
 
   /**
-   * Get planet position in heliocentric inertial frame
-   * This is used for orbit rendering - we need positions relative to the Sun in inertial frame
+   * Get planet position in heliocentric inertial frame (Sun-centered ICRF).
+   * Returns pure heliocentric coordinates — the modelMatrix in
+   * CelestialOrbitRenderer handles the Earth offset for display.
    * @param {string} planetName - Name of the planet
    * @param {JulianDate} time - Time for position calculation
    * @returns {Cartesian3} Position in ICRF frame relative to Sun
@@ -588,26 +600,10 @@ export class PlanetManager {
 
     // Get heliocentric position (planet relative to Sun) in ICRF frame
     // HelioVector returns position in AU, we need to convert to meters
+    const AU_TO_METERS = 1.496e11;
     const helioVector = Astronomy.HelioVector(planet.body, jsDate);
 
-    // Convert from AU to meters (1 AU = 1.496e11 meters)
-    const xInertial = helioVector.x * 1.496e11;
-    const yInertial = helioVector.y * 1.496e11;
-    const zInertial = helioVector.z * 1.496e11;
-
-    // Get Earth's heliocentric position to transform to Earth-centered frame
-    const earthVector = Astronomy.HelioVector(Astronomy.Body.Earth, jsDate);
-    const earthX = earthVector.x * 1.496e11;
-    const earthY = earthVector.y * 1.496e11;
-    const earthZ = earthVector.z * 1.496e11;
-
-    // Transform to Earth-centered heliocentric (planet position - Earth position)
-    // This way the orbit is centered on the Sun, but positioned relative to Earth's location
-    const relX = xInertial - earthX;
-    const relY = yInertial - earthY;
-    const relZ = zInertial - earthZ;
-
-    return new Cartesian3(relX, relY, relZ);
+    return new Cartesian3(helioVector.x * AU_TO_METERS, helioVector.y * AU_TO_METERS, helioVector.z * AU_TO_METERS);
   }
 
   /**
@@ -615,29 +611,15 @@ export class PlanetManager {
    * Called when showOrbits state changes
    */
   updatePlanetOrbitsVisibility() {
-    console.log("updatePlanetOrbitsVisibility called", {
-      enabled: this.enabled,
-      showOrbits: this.showOrbits,
-    });
-
     if (!this.enabled) {
-      console.log("Planets not enabled, skipping orbit update");
       return;
     }
 
     const planets = this.planetary.getPlanetNames();
 
     if (this.showOrbits) {
-      console.log("Adding planet orbits for:", planets);
-      // Add orbits for all planets (currently only Mercury for debugging)
       planets.forEach((planetName) => {
-        // DEBUG: Only enable Mercury orbit for now
-        if (planetName !== "Mercury") {
-          return;
-        }
-
         if (!this.orbitRenderer.hasOrbit(planetName)) {
-          const planetData = this.planetary.planets.find((p) => p.name === planetName);
           const orbitalPeriod = this.orbitalPeriods[planetName];
 
           if (!orbitalPeriod) {
@@ -650,24 +632,24 @@ export class PlanetManager {
             return this.getPlanetPositionInertial(planetName, time);
           };
 
-          console.log(`Creating orbit for ${planetName} with period ${orbitalPeriod} seconds`);
+          const planetInfo = this.planetary.planets.find((p) => p.name === planetName);
 
           // Add orbit with planet-specific color
           this.orbitRenderer.addOrbit(planetName, positionFunction, {
             orbitalPeriod: orbitalPeriod,
-            color: Color.fromBytes(planetData.color[0], planetData.color[1], planetData.color[2], 128), // 0.5 alpha = 128/255
+            color: Color.MEDIUMPURPLE,
             width: 3, // Thicker to be more visible
-            resolution: Math.max(orbitalPeriod / 50, 3600 * 24 * 7), // Very coarse: 50 samples or 1 week intervals
+            resolution: orbitalPeriod / 200, // 200 samples per orbit for smooth ellipses
             leadTimeFraction: 1.0, // Show full orbit ahead
             trailTimeFraction: 0.0, // Don't show trail behind
             referenceFrame: ReferenceFrame.INERTIAL,
-            useSampledPosition: true, // Use custom frame handling for dynamic updates
-            usePolyline: false, // Back to PathGraphics with very coarse sampling
+            usePrimitive: true, // Use Primitive + modelMatrix for LOD-culling-free rendering
+            heliocentric: true, // Sun-centric orbit — proper ellipses centered on the Sun
+            minDistance: planetInfo?.minDistance || 0,
           });
         }
       });
     } else {
-      console.log("Removing planet orbits");
       // Remove all planet orbits
       planets.forEach((planetName) => {
         if (this.orbitRenderer.hasOrbit(planetName)) {
