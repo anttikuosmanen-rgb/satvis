@@ -84,7 +84,9 @@ test.describe("Planet Orbits", () => {
     });
 
     expect(result.names.length).toBe(7);
-    for (const name of result.names) {
+    // Uranus/Neptune have minDistance > 2000M km so won't have draw commands at this distance
+    const alwaysVisiblePlanets = ["Mercury", "Venus", "Mars", "Jupiter", "Saturn"];
+    for (const name of alwaysVisiblePlanets) {
       const state = result.primitiveStates[name];
       expect(state.show).toBe(true);
       expect(state.hasDrawCommand).toBe(true);
@@ -99,11 +101,14 @@ test.describe("Planet Orbits", () => {
     await setCameraAboveEcliptic(page, 1_500_000_000);
 
     // Request render and verify no errors
+    // At 1500M km, Uranus/Neptune orbit primitives won't render (minDistance > 2500M km)
+    // Check only the 5 always-visible planets
     const result = await page.evaluate(() => {
       window.cc.viewer.scene.requestRender();
       const renderer = window.cc.planets.orbitRenderer;
       const names = renderer.getOrbitNames();
-      const allVisible = names.every((n) => {
+      const alwaysVisible = ["Mercury", "Venus", "Mars", "Jupiter", "Saturn"];
+      const allVisible = alwaysVisible.every((n) => {
         const entry = renderer.orbitPrimitives.get(n);
         return entry && entry.primitive.show && entry.primitive._drawCommand;
       });
