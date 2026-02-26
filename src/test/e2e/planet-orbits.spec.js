@@ -83,7 +83,7 @@ test.describe("Planet Orbits", () => {
       return { names, primitiveStates };
     });
 
-    expect(result.names.length).toBe(5);
+    expect(result.names.length).toBe(7);
     for (const name of result.names) {
       const state = result.primitiveStates[name];
       expect(state.show).toBe(true);
@@ -114,7 +114,7 @@ test.describe("Planet Orbits", () => {
 
     expect(result.allVisible).toBe(true);
     expect(result.hasError).toBe(false);
-    expect(result.count).toBe(5);
+    expect(result.count).toBe(7);
   });
 
   test("should center planet orbits on the Sun, not Earth", async ({ page }) => {
@@ -178,7 +178,7 @@ test.describe("Planet Orbits", () => {
       const noneInEntities = names.every((n) => !renderer.orbitEntities.has(n));
       return { names, allInPrimitives, noneInEntities, count: names.length };
     });
-    expect(diag.count).toBe(5); // Mercury, Venus, Mars, Jupiter, Saturn
+    expect(diag.count).toBe(7); // Mercury, Venus, Mars, Jupiter, Saturn, Uranus, Neptune
     expect(diag.allInPrimitives).toBe(true);
     expect(diag.noneInEntities).toBe(true);
   });
