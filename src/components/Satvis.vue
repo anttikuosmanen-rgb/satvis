@@ -262,6 +262,11 @@
             </label>
           </template>
           <label class="toolbarSwitch">
+            <input v-model="enabledComponents" type="checkbox" value="Earth orbit" />
+            <span class="slider"></span>
+            Earth orbit
+          </label>
+          <label class="toolbarSwitch">
             <input v-model="enabledComponents" type="checkbox" value="Planet orbits" />
             <span class="slider"></span>
             Planet orbits

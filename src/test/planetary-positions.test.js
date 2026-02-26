@@ -10,12 +10,12 @@ describe("PlanetaryPositions - Initialization", () => {
     planetary = new PlanetaryPositions();
   });
 
-  it("should initialize with 5 planets", () => {
+  it("should initialize with 7 planets", () => {
     expect(planetary.planets).toBeDefined();
-    expect(planetary.planets).toHaveLength(5);
+    expect(planetary.planets).toHaveLength(7);
   });
 
-  it("should include Mercury, Venus, Mars, Jupiter, Saturn", () => {
+  it("should include Mercury, Venus, Mars, Jupiter, Saturn, Uranus, Neptune", () => {
     const names = planetary.getPlanetNames();
 
     expect(names).toContain("Mercury");
@@ -23,6 +23,8 @@ describe("PlanetaryPositions - Initialization", () => {
     expect(names).toContain("Mars");
     expect(names).toContain("Jupiter");
     expect(names).toContain("Saturn");
+    expect(names).toContain("Uranus");
+    expect(names).toContain("Neptune");
   });
 
   it("should have color and symbol for each planet", () => {
@@ -50,7 +52,7 @@ describe("PlanetaryPositions - Position Calculations", () => {
     const positions = planetary.calculatePositions(testTime);
 
     expect(positions).toBeDefined();
-    expect(positions).toHaveLength(5);
+    expect(positions).toHaveLength(7);
 
     positions.forEach((planetData) => {
       expect(planetData.name).toBeDefined();
@@ -74,7 +76,7 @@ describe("PlanetaryPositions - Position Calculations", () => {
       // Positions should be in reasonable range (millions of km)
       const distance = Math.sqrt(planetData.position.x ** 2 + planetData.position.y ** 2 + planetData.position.z ** 2);
       expect(distance).toBeGreaterThan(1e10); // > 10 million km
-      expect(distance).toBeLessThan(2e12); // < 2 billion km (Saturn is furthest)
+      expect(distance).toBeLessThan(5e12); // < 5 billion km (Neptune is furthest)
     });
   });
 
@@ -116,6 +118,8 @@ describe("PlanetaryPositions - Position Calculations", () => {
       Mars: { min: 0.5, max: 2.6 },
       Jupiter: { min: 4.0, max: 6.5 },
       Saturn: { min: 8.0, max: 11.0 },
+      Uranus: { min: 17.0, max: 21.0 },
+      Neptune: { min: 28.0, max: 32.0 },
     };
 
     positions.forEach((planetData) => {
@@ -136,7 +140,7 @@ describe("PlanetaryPositions - Position Calculations", () => {
       // Mars: -2.9 to 1.8
       // Saturn: -0.5 to 1.2
       expect(planetData.magnitude).toBeGreaterThan(-5);
-      expect(planetData.magnitude).toBeLessThan(6);
+      expect(planetData.magnitude).toBeLessThan(9); // Uranus/Neptune can be up to ~8
     });
   });
 });
@@ -354,7 +358,7 @@ describe("PlanetaryPositions - Time Dependency", () => {
 
     const positions = planetary.calculatePositions(futureTime);
 
-    expect(positions).toHaveLength(5);
+    expect(positions).toHaveLength(7);
 
     positions.forEach((planetData) => {
       expect(planetData.position).toBeDefined();
@@ -368,7 +372,7 @@ describe("PlanetaryPositions - Time Dependency", () => {
 
     const positions = planetary.calculatePositions(pastTime);
 
-    expect(positions).toHaveLength(5);
+    expect(positions).toHaveLength(7);
 
     positions.forEach((planetData) => {
       expect(planetData.position).toBeDefined();
