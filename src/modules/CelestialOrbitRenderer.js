@@ -9,6 +9,7 @@ import {
   PathGraphics,
   PolylineGraphics,
   ReferenceFrame,
+  SceneMode,
   Transforms,
   defined,
 } from "@cesium/engine";
@@ -40,6 +41,15 @@ export class CelestialOrbitRenderer {
     this.orbitPrimitives = new Map(); // Map of body name to { primitive, removeCallback, heliocentric, requiredFar }
     this.orbitUpdaters = new Map(); // Map of body name to updater cleanup function
     this._originalFrustumFar = viewer.camera.frustum.far;
+
+    // Hide orbit primitives during morph and in non-3D modes (modelMatrix unsupported)
+    this._morphStartListener = viewer.scene.morphStart.addEventListener(() => {
+      this._setPrimitivesVisible(false);
+    });
+    this._morphCompleteListener = viewer.scene.morphComplete.addEventListener(() => {
+      const is3D = viewer.scene.mode === SceneMode.SCENE3D;
+      this._setPrimitivesVisible(is3D);
+    });
   }
 
   /**
@@ -192,6 +202,7 @@ export class CelestialOrbitRenderer {
       color,
       modelMatrix,
       show: true,
+      depthTestEnabled: true,
       minDistance,
     });
 
@@ -334,6 +345,16 @@ export class CelestialOrbitRenderer {
     return this.orbitEntities.has(bodyName) || this.orbitPrimitives.has(bodyName);
   }
 
+  /**
+   * Show or hide all orbit primitives (used during scene mode transitions).
+   * @param {boolean} visible
+   */
+  _setPrimitivesVisible(visible) {
+    for (const entry of this.orbitPrimitives.values()) {
+      entry.primitive.show = visible;
+    }
+  }
+
   clear() {
     for (const entity of this.orbitEntities.values()) {
       this.viewer.entities.remove(entity);
@@ -357,5 +378,21 @@ export class CelestialOrbitRenderer {
 
   getOrbitNames() {
     return [...this.orbitEntities.keys(), ...this.orbitPrimitives.keys()];
+  }
+
+  /**
+   * Clean up all resources including scene mode listeners.
+   * Call when this renderer is no longer needed.
+   */
+  destroy() {
+    this.clear();
+    if (this._morphStartListener) {
+      this._morphStartListener();
+      this._morphStartListener = null;
+    }
+    if (this._morphCompleteListener) {
+      this._morphCompleteListener();
+      this._morphCompleteListener = null;
+    }
   }
 }

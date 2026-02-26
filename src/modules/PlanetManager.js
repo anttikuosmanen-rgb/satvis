@@ -1,4 +1,15 @@
-import { Cartesian3, Color, JulianDate, VerticalOrigin, HorizontalOrigin, CallbackProperty, ReferenceFrame } from "@cesium/engine";
+import {
+  Cartesian3,
+  Color,
+  JulianDate,
+  VerticalOrigin,
+  HorizontalOrigin,
+  CallbackProperty,
+  ReferenceFrame,
+  ScreenSpaceEventHandler,
+  ScreenSpaceEventType,
+  defined,
+} from "@cesium/engine";
 import * as Astronomy from "astronomy-engine";
 import { PlanetaryPositions } from "./PlanetaryPositions";
 import { CelestialOrbitRenderer } from "./CelestialOrbitRenderer";
@@ -23,12 +34,10 @@ export class PlanetManager {
     this.showLabels = true; // Whether to show planet labels
     this.showOrbits = false; // Whether to show planet orbits
     this.trackedEntityListener = null; // Listener to prevent planet tracking
-    this.occlusionCheckListener = null; // Listener for checking Earth globe occlusion
-    this.earthRadius = 6378137.0; // Earth's radius in meters
-    this.lastOcclusionCheck = 0; // Last time we checked occlusion (in milliseconds)
-    this.occlusionCheckInterval = 1000; // Check occlusion every 1 second
-    this.isInZenithView = false; // Track if we're in zenith view mode
-    this.zenithViewChangeHandler = null; // Handler for zenith view state changes
+    this.distanceCheckListener = null; // Listener for distance-based visibility (Uranus/Neptune)
+    this.lastDistanceCheck = 0; // Last time we checked distance (in milliseconds)
+    this.distanceCheckInterval = 1000; // Check distance every 1 second
+    this.pointPickHandler = null; // Click handler for point primitive picking
 
     // Orbital periods for planets around the Sun (in seconds)
     // Source: NASA Solar System Dynamics
@@ -96,16 +105,26 @@ export class PlanetManager {
       }
     });
 
-    // Add listener to check for Earth globe occlusion (throttled to 1 second)
-    this.occlusionCheckListener = this.viewer.scene.preRender.addEventListener(() => {
-      this.updatePlanetOcclusion();
+    // Add listener for distance-based visibility (Uranus/Neptune fade-in)
+    this.distanceCheckListener = this.viewer.scene.preRender.addEventListener(() => {
+      this.updateDistanceVisibility();
     });
 
-    // Listen for zenith view state changes
-    this.zenithViewChangeHandler = (event) => {
-      this.isInZenithView = event.detail.active;
-    };
-    window.addEventListener("zenithViewChanged", this.zenithViewChangeHandler);
+    // Add click handler for point primitive picking
+    // PointPrimitives don't trigger Cesium's entity selection, so we handle it manually
+    this.pointPickHandler = new ScreenSpaceEventHandler(this.viewer.scene.canvas);
+    this.pointPickHandler.setInputAction((event) => {
+      if (this.renderMode !== "point") return;
+      const pickedObject = this.viewer.scene.pick(event.position);
+      if (defined(pickedObject) && pickedObject.primitive === this.pointPrimitives) {
+        // Find the label entity for this planet and select it
+        const planetName = pickedObject.id;
+        const labelEntity = this.planetEntities.find((e) => e.id === `planet-label-${planetName}`);
+        if (labelEntity) {
+          this.viewer.selectedEntity = labelEntity;
+        }
+      }
+    }, ScreenSpaceEventType.LEFT_CLICK);
   }
 
   /**
@@ -136,21 +155,21 @@ export class PlanetManager {
       this.trackedEntityListener = null;
     }
 
-    // Clear occlusion check listener
-    if (this.occlusionCheckListener) {
-      this.occlusionCheckListener();
-      this.occlusionCheckListener = null;
-    }
-
-    // Remove zenith view change listener
-    if (this.zenithViewChangeHandler) {
-      window.removeEventListener("zenithViewChanged", this.zenithViewChangeHandler);
-      this.zenithViewChangeHandler = null;
+    // Clear distance check listener
+    if (this.distanceCheckListener) {
+      this.distanceCheckListener();
+      this.distanceCheckListener = null;
     }
 
     // Remove ClockMonitor listener
     if (typeof window !== "undefined" && this.handleClockTimeJump) {
       window.removeEventListener("cesium:clockTimeJumped", this.handleClockTimeJump);
+    }
+
+    // Remove point pick handler
+    if (this.pointPickHandler) {
+      this.pointPickHandler.destroy();
+      this.pointPickHandler = null;
     }
 
     // Clear all orbits
@@ -184,8 +203,15 @@ export class PlanetManager {
 
     const wasEnabled = this.enabled;
     if (wasEnabled) {
+      // Save orbit state — disable() clears orbits but we want to preserve them
+      const hadOrbits = this.showOrbits;
       this.disable();
       await this.enable(mode);
+      // Restore orbit state
+      if (hadOrbits) {
+        this.showOrbits = true;
+        this.updatePlanetOrbitsVisibility();
+      }
     }
   }
 
@@ -218,7 +244,6 @@ export class PlanetManager {
           image: this.createPlanetCanvas(planetData.color, 10),
           scale: 0.8,
           verticalOrigin: VerticalOrigin.CENTER,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY, // Always visible
           scaleByDistance: null, // Keep constant size
         },
         label: {
@@ -231,7 +256,6 @@ export class PlanetManager {
           verticalOrigin: VerticalOrigin.TOP,
           horizontalOrigin: HorizontalOrigin.CENTER,
           pixelOffset: new Cartesian3(0, 8, 0),
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
           show: new CallbackProperty(() => this.showLabels, false),
         },
         description: new CallbackProperty((time) => {
@@ -266,7 +290,6 @@ export class PlanetManager {
         pixelSize: 5,
         outlineColor: Color.WHITE,
         outlineWidth: 1,
-        disableDepthTestDistance: Number.POSITIVE_INFINITY, // Always visible
       });
 
       point.planetName = planetName; // Store planet name for updates
@@ -296,7 +319,6 @@ export class PlanetManager {
           verticalOrigin: VerticalOrigin.TOP,
           horizontalOrigin: HorizontalOrigin.CENTER,
           pixelOffset: new Cartesian3(0, 8, 0),
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
           show: new CallbackProperty(() => this.showLabels, false),
         },
         description: new CallbackProperty((time) => {
@@ -477,105 +499,64 @@ export class PlanetManager {
   }
 
   /**
-   * Check if a planet is occluded by Earth's globe
-   * @param {Cartesian3} planetPosition - Planet position in world coordinates
-   * @returns {boolean} True if planet is behind Earth from camera perspective
+   * Update distance-based visibility for planets with minDistance (Uranus/Neptune).
+   * Throttled to run every 1 second to avoid performance impact.
+   * Earth occlusion is handled by Cesium's native depth testing via frustum rendering order.
    */
-  isPlanetOccludedByEarth(planetPosition) {
-    const cameraPosition = this.viewer.camera.position;
-    const earthCenter = Cartesian3.ZERO;
-
-    // Vector from camera to planet (normalized)
-    const cameraToPlanet = Cartesian3.subtract(planetPosition, cameraPosition, new Cartesian3());
-    Cartesian3.normalize(cameraToPlanet, cameraToPlanet);
-
-    // Vector from camera to Earth center (normalized)
-    const cameraToEarth = Cartesian3.subtract(earthCenter, cameraPosition, new Cartesian3());
-    const distanceToEarth = Cartesian3.magnitude(cameraToEarth);
-    Cartesian3.normalize(cameraToEarth, cameraToEarth);
-
-    // Calculate angular separation between planet and Earth center
-    const angle = Cartesian3.angleBetween(cameraToPlanet, cameraToEarth);
-
-    // Calculate Earth's angular radius as seen from camera
-    const earthAngularRadius = Math.asin(this.earthRadius / distanceToEarth);
-
-    // For normal views: Check if planet is within Earth's angular radius
-    // This handles the case where you're looking at Earth from the side
-    if (!this.isInZenithView) {
-      return angle < earthAngularRadius;
-    }
-
-    // For zenith view mode: Use dot product to check if planet is below horizon
-    // If dot product is positive, camera→planet and camera→Earth point in similar directions
-    // This means the planet is beyond Earth (below the horizon)
-    const dotProduct = Cartesian3.dot(cameraToPlanet, cameraToEarth);
-    return dotProduct > 0;
-  }
-
-  /**
-   * Update occlusion state for all planets
-   * Throttled to run every 1 second to avoid performance impact
-   */
-  updatePlanetOcclusion() {
+  updateDistanceVisibility() {
     if (!this.enabled) {
       return;
     }
 
     // Throttle to once per second
     const now = Date.now();
-    if (now - this.lastOcclusionCheck < this.occlusionCheckInterval) {
+    if (now - this.lastDistanceCheck < this.distanceCheckInterval) {
       return;
     }
-    this.lastOcclusionCheck = now;
-
-    const currentTime = this.viewer.clock.currentTime;
-    const positions = this.planetary.calculatePositions(currentTime);
+    this.lastDistanceCheck = now;
 
     const cameraDist = Cartesian3.magnitude(this.viewer.camera.positionWC);
 
-    positions.forEach((planetData) => {
-      const isOccluded = this.isPlanetOccludedByEarth(planetData.position);
-      const planetInfo = this.planetary.planets.find((p) => p.name === planetData.name);
-      const minDist = planetInfo?.minDistance || 0;
-      const tooClose = minDist > 0 && cameraDist < minDist;
+    this.planetary.planets.forEach((planetInfo) => {
+      const minDist = planetInfo.minDistance || 0;
+      if (minDist === 0) return; // Only process planets with minDistance
+
+      const tooClose = cameraDist < minDist;
 
       // Compute fade alpha (0→1) over 20% range beyond minDistance
       let fadeAlpha = 1.0;
-      if (minDist > 0 && !tooClose) {
+      if (!tooClose) {
         const fadeEnd = minDist * 1.2;
         fadeAlpha = Math.min((cameraDist - minDist) / (fadeEnd - minDist), 1.0);
       }
 
-      const visible = !isOccluded && !tooClose;
-
       if (this.renderMode === "billboard") {
-        const entity = this.planetEntities.find((e) => e.id === `planet-${planetData.name}`);
+        const entity = this.planetEntities.find((e) => e.id === `planet-${planetInfo.name}`);
         if (entity && entity.billboard) {
-          entity.billboard.show = visible;
-          if (visible && minDist > 0) {
+          entity.billboard.show = !tooClose;
+          if (!tooClose) {
             entity.billboard.color = Color.WHITE.withAlpha(fadeAlpha);
           }
         }
         if (entity && entity.label) {
-          entity.label.show = visible && this.showLabels;
-          if (visible && minDist > 0) {
+          entity.label.show = !tooClose && this.showLabels;
+          if (!tooClose) {
             entity.label.fillColor = Color.WHITE.withAlpha(fadeAlpha);
           }
         }
       } else if (this.renderMode === "point" && this.pointPrimitives) {
-        const point = this.pointPrimitives._pointPrimitives.find((p) => p.planetName === planetData.name);
+        const point = this.pointPrimitives._pointPrimitives.find((p) => p.planetName === planetInfo.name);
         if (point) {
-          point.show = visible;
-          if (visible && minDist > 0) {
+          point.show = !tooClose;
+          if (!tooClose) {
             const baseColor = Color.fromBytes(planetInfo.color[0], planetInfo.color[1], planetInfo.color[2], Math.round(fadeAlpha * 255));
             point.color = baseColor;
           }
         }
-        const labelEntity = this.planetEntities.find((e) => e.id === `planet-label-${planetData.name}`);
+        const labelEntity = this.planetEntities.find((e) => e.id === `planet-label-${planetInfo.name}`);
         if (labelEntity && labelEntity.label) {
-          labelEntity.label.show = visible && this.showLabels;
-          if (visible && minDist > 0) {
+          labelEntity.label.show = !tooClose && this.showLabels;
+          if (!tooClose) {
             labelEntity.label.fillColor = Color.WHITE.withAlpha(fadeAlpha);
           }
         }

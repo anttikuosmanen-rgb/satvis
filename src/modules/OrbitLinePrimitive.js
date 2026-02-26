@@ -51,7 +51,7 @@ export class OrbitLinePrimitive {
    * @param {Color} [options.color=Color.WHITE] - Line color
    * @param {Matrix4} [options.modelMatrix=Matrix4.IDENTITY] - Transform from native frame to ECEF
    * @param {boolean} [options.show=true] - Whether to show the primitive
-   * @param {boolean} [options.depthTestEnabled=false] - Enable depth testing (use for geocentric orbits near Earth; heliocentric orbits at AU-scale must disable to avoid multi-frustum depth clamping)
+   * @param {boolean} [options.depthTestEnabled=false] - Enable depth testing against Earth's globe and other geometry
    */
   constructor({ positions, color = Color.WHITE, modelMatrix = Matrix4.IDENTITY, show = true, depthTestEnabled = false, minDistance = 0, fadeRange = 0.2 }) {
     this._positions = positions;
