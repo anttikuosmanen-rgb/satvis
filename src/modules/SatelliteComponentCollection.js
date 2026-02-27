@@ -195,7 +195,7 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
         return;
       }
 
-      if (entity?.name?.includes("Groundstation")) {
+      if (window.cc?.sats?.isGroundStationEntity(entity)) {
         this.handleGroundStationHighlights(entity);
         return;
       }
@@ -247,7 +247,7 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     this.eventListeners.trackedEntity = this.viewer.trackedEntityChanged.addEventListener(() => {
       // Handle ground station tracking (double-click to focus)
       const trackedEntity = this.viewer.trackedEntity;
-      if (trackedEntity?.name?.includes("Groundstation")) {
+      if (window.cc?.sats?.isGroundStationEntity(trackedEntity)) {
         this.handleGroundStationHighlights(trackedEntity);
         return;
       }
@@ -295,9 +295,9 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       return;
     }
 
-    // Check if highlights already exist for this ground station
-    // If the timeline already has highlights and the ground station is already selected, skip recalculation
-    const hasExistingHighlights = this.viewer.timeline?._highlightRanges?.length > 0;
+    // Check if pass highlights already exist for this ground station
+    // Only check pass highlights (base === 0), not daylight ranges (base === -1)
+    const hasExistingHighlights = this.viewer.timeline?._highlightRanges?.some((r) => r._base === 0);
     const isAlreadySelected = this.viewer.selectedEntity === entity || this.viewer.trackedEntity === entity;
 
     if (hasExistingHighlights && isAlreadySelected) {
@@ -817,6 +817,27 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     let lastRadiusCalcTime = null;
     const radiusCacheTime = 2.0; // Cache for 2 seconds
 
+    // Shared radius computation for both axes (circular footprint)
+    const computeRadius = (time) => {
+      const lod = lodCalculator(time);
+      if (lod >= 2) {
+        return cachedRadius || 1200000; // ~1200 km typical LEO radius
+      }
+
+      const currentSeconds = time.dayNumber * 86400 + time.secondsOfDay;
+      if (lastRadiusCalcTime && Math.abs(currentSeconds - lastRadiusCalcTime) < radiusCacheTime && cachedRadius) {
+        return cachedRadius;
+      }
+
+      const radiusKm = this.props.getVisibleAreaRadius(time);
+      const radiusM = radiusKm * 1000;
+
+      cachedRadius = radiusM;
+      lastRadiusCalcTime = currentSeconds;
+
+      return radiusM;
+    };
+
     // Create a circle showing the satellite's visibility footprint on Earth's surface
     // This represents the area where the satellite can be observed above 10° elevation
     const visibilityCircle = new EllipseGraphics({
@@ -833,55 +854,13 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
       heightReference: HeightReference.RELATIVE_TO_GROUND,
 
       // Dynamic radius based on satellite altitude and 10° minimum elevation
-      // The radius represents the distance from subsatellite point to 10° horizon
+      // The radius represents the arc distance from subsatellite point to 10° horizon
       semiMajorAxis: new CallbackProperty((time) => {
-        // Check LOD level - skip calculations for distant satellites
-        const lod = lodCalculator(time);
-        if (lod >= 2) {
-          // Return cached value or approximate radius for distant satellites
-          return cachedRadius || 2000000; // ~2000 km default radius
-        }
-
-        // Check cache
-        const currentSeconds = time.dayNumber * 86400 + time.secondsOfDay;
-        if (lastRadiusCalcTime && Math.abs(currentSeconds - lastRadiusCalcTime) < radiusCacheTime && cachedRadius) {
-          return cachedRadius;
-        }
-
-        // Calculate fresh radius
-        const visibleWidthKm = this.props.getVisibleAreaWidth(time);
-        const radiusKm = visibleWidthKm / 2; // Convert diameter to radius
-        const expandedRadiusKm = radiusKm * 1.15; // Expand by 15% for better visibility
-        const radiusM = expandedRadiusKm * 1000; // Convert to meters
-
-        // Update cache
-        cachedRadius = radiusM;
-        lastRadiusCalcTime = currentSeconds;
-
-        return radiusM;
+        return computeRadius(time);
       }, false),
 
       semiMinorAxis: new CallbackProperty((time) => {
-        // Use same cached radius calculation for minor axis (circular)
-        const lod = lodCalculator(time);
-        if (lod >= 2) {
-          return cachedRadius || 2000000;
-        }
-
-        const currentSeconds = time.dayNumber * 86400 + time.secondsOfDay;
-        if (lastRadiusCalcTime && Math.abs(currentSeconds - lastRadiusCalcTime) < radiusCacheTime && cachedRadius) {
-          return cachedRadius;
-        }
-
-        const visibleWidthKm = this.props.getVisibleAreaWidth(time);
-        const radiusKm = visibleWidthKm / 2;
-        const expandedRadiusKm = radiusKm * 1.15;
-        const radiusM = expandedRadiusKm * 1000;
-
-        cachedRadius = radiusM;
-        lastRadiusCalcTime = currentSeconds;
-
-        return radiusM;
+        return computeRadius(time);
       }, false),
     });
 
