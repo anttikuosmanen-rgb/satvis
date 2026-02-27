@@ -96,6 +96,9 @@ export class PlanetManager {
     // Initial position update
     this.updatePositions();
 
+    // Extend frustum far plane so distant planets aren't clipped
+    this._updateFrustumFar();
+
     // Add listener to prevent planet tracking
     this.trackedEntityListener = this.viewer.trackedEntityChanged.addEventListener(() => {
       const tracked = this.viewer.trackedEntity;
@@ -515,6 +518,9 @@ export class PlanetManager {
     }
     this.lastDistanceCheck = now;
 
+    // Re-apply frustum far in case something else reset it
+    this._updateFrustumFar();
+
     const cameraDist = Cartesian3.magnitude(this.viewer.camera.positionWC);
 
     this.planetary.planets.forEach((planetInfo) => {
@@ -562,6 +568,20 @@ export class PlanetManager {
         }
       }
     });
+  }
+
+  /**
+   * Extend the camera frustum far plane so distant planets aren't clipped.
+   * Neptune can be ~4.7 trillion meters from Earth; without this the default
+   * far plane culls all planets beyond it.
+   */
+  _updateFrustumFar() {
+    const cameraDistance = Cartesian3.magnitude(this.viewer.camera.positionWC);
+    const maxPlanetDistance = 4.7e12; // Neptune at ~30 AU
+    const required = cameraDistance + maxPlanetDistance;
+    if (required > this.viewer.camera.frustum.far) {
+      this.viewer.camera.frustum.far = required;
+    }
   }
 
   /**
