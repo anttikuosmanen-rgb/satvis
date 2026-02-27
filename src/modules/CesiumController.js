@@ -348,12 +348,16 @@ export class CesiumController {
       positiveZ: `${dir}/pz.jpg`,
       negativeZ: `${dir}/mz.jpg`,
     });
+    const isIos = DeviceDetect.isIos();
     this.skyMapProviders = {
-      MilkyWay: {
-        defaultAlpha: 0.5,
-        sources: skyFaces("data/stars/milkyway_2020_4k"),
-      },
-      ...(__SATVIS_LOCAL_DEV__
+      // On iOS, only offer Tycho2K to avoid out-of-memory crashes
+      ...(!isIos && {
+        MilkyWay: {
+          defaultAlpha: 0.5,
+          sources: skyFaces("data/stars/milkyway_2020_4k"),
+        },
+      }),
+      ...(__SATVIS_LOCAL_DEV__ && !isIos
         ? {
             MilkyWay8K: {
               defaultAlpha: 0.5,
@@ -371,27 +375,31 @@ export class CesiumController {
           negativeZ: "data/cesium-assets/stars/TychoSkymapII.t3_08192x04096/TychoSkymapII.t3_08192x04096_80_mz.jpg",
         },
       },
-      ...(__SATVIS_LOCAL_DEV__
+      ...(__SATVIS_LOCAL_DEV__ && !isIos
         ? {
             Starmap8K: {
               sources: skyFaces("data/stars/starmap_8k"),
             },
           }
         : {}),
-      HipTyc16K: {
-        sources: skyFaces("data/stars/hiptyc_2020_16k"),
-      },
-      Constellations: {
-        defaultAlpha: 0.5,
-        sources: {
-          positiveX: "data/stars/constellations/px.png",
-          negativeX: "data/stars/constellations/mx.png",
-          positiveY: "data/stars/constellations/py.png",
-          negativeY: "data/stars/constellations/my.png",
-          positiveZ: "data/stars/constellations/pz.png",
-          negativeZ: "data/stars/constellations/mz.png",
+      ...(!isIos && {
+        HipTyc16K: {
+          sources: skyFaces("data/stars/hiptyc_2020_16k"),
         },
-      },
+      }),
+      ...(!isIos && {
+        Constellations: {
+          defaultAlpha: 0.5,
+          sources: {
+            positiveX: "data/stars/constellations/px.png",
+            negativeX: "data/stars/constellations/mx.png",
+            positiveY: "data/stars/constellations/py.png",
+            negativeY: "data/stars/constellations/my.png",
+            positiveZ: "data/stars/constellations/pz.png",
+            negativeZ: "data/stars/constellations/mz.png",
+          },
+        },
+      }),
     };
     this.terrainProviders = {
       None: {
@@ -737,7 +745,7 @@ export class CesiumController {
   // Helper: Check if currently tracking a ground station
   isTrackingGroundStation() {
     const tracked = this.viewer.trackedEntity;
-    return tracked?.name?.includes("Groundstation");
+    return this.sats.isGroundStationEntity(tracked);
   }
 
   // Helper: Toggle between GS focus and satellite tracking
@@ -1029,7 +1037,7 @@ export class CesiumController {
         const entity = pickedObject.id;
 
         // Check if this is a satellite entity (not ground station)
-        if (entity.name && !entity.name.includes("Groundstation")) {
+        if (!this.sats.isGroundStationEntity(entity)) {
           // Extract satellite name from entity name (format: "SatelliteName - Point")
           const satelliteName = entity.name.split(" - ")[0];
           let satellite = this.sats.getSatellite(satelliteName);
@@ -1650,7 +1658,7 @@ export class CesiumController {
               return;
             }
             // If not a satellite, might be a ground station - track directly
-            if (selectedEntity.name.includes("Groundstation")) {
+            if (this.sats.isGroundStationEntity(selectedEntity)) {
               this.viewer.trackedEntity = selectedEntity;
               return;
             }
@@ -2502,11 +2510,9 @@ export class CesiumController {
       lastSelectedEntity = selectedEntity;
 
       // Check if the selected entity is a ground station
-      if (selectedEntity && selectedEntity.name && selectedEntity.name.includes("Groundstation")) {
-        // Find the ground station in the satellite manager
-        // Match by entity name since the entity may be recreated with a different ID
-        // when description is refreshed or during HMR (Hot Module Reload)
-        const groundStation = this.sats.groundStations.find((gs) => gs.components?.Groundstation?.name === selectedEntity.name);
+      if (selectedEntity && this.sats.isGroundStationEntity(selectedEntity)) {
+        // Find the ground station that owns this entity
+        const groundStation = this.sats.groundStations.find((gs) => gs.components && Object.values(gs.components).includes(selectedEntity));
 
         if (groundStation) {
           // Get all passes for enabled satellites at this ground station
