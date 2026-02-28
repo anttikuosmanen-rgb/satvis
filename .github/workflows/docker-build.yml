@@ -1,32 +1,148 @@
+# =============================================================================
+# WORKFLOW: Build and Push Docker Images
+# =============================================================================
+# This workflow builds Docker images and pushes them to GitHub Container
+# Registry (GHCR). It demonstrates:
+#   1. Workflow-level environment variables
+#   2. Manual workflow dispatch triggers
+#   3. Docker authentication with GITHUB_TOKEN
+#   4. Image tagging strategies (latest + SHA)
+#   5. OCI image labels for metadata
+#   6. GitHub Step Summary for rich run reports
+#
+# IMAGES BUILT:
+#   - ghcr.io/owner/repo/web:latest        - Main web application
+#   - ghcr.io/owner/repo/tle-updater:latest - TLE data updater utility
+# =============================================================================
+
 name: Build and Push Docker Images
 
+# -----------------------------------------------------------------------------
+# TRIGGERS
+# -----------------------------------------------------------------------------
 on:
   push:
     branches:
       - master  # Only build on master branch
+
+  # WORKFLOW_DISPATCH: Manual Trigger
+  # ---------------------------------
+  # Allows running this workflow manually from the GitHub Actions UI.
+  # Click "Actions" → Select workflow → "Run workflow" button.
+  #
+  # You can also trigger via GitHub CLI:
+  #   gh workflow run docker-build.yml
+  #
+  # ADVANCED: You can add inputs for manual runs:
+  #   workflow_dispatch:
+  #     inputs:
+  #       environment:
+  #         description: 'Target environment'
+  #         required: true
+  #         default: 'staging'
+  #         type: choice
+  #         options: [staging, production]
+  #
+  # Access inputs via: ${{ github.event.inputs.environment }}
   workflow_dispatch:  # Allow manual triggering
 
+# -----------------------------------------------------------------------------
+# WORKFLOW-LEVEL ENVIRONMENT VARIABLES (env:)
+# -----------------------------------------------------------------------------
+# The 'env:' key at the workflow level defines environment variables
+# available to ALL jobs and steps in this workflow.
+#
+# SCOPE LEVELS for env:
+#   1. Workflow level (here) - Available everywhere in the workflow
+#   2. Job level - Available only within that job
+#   3. Step level - Available only within that step
+#
+# WHY USE WORKFLOW-LEVEL ENV?
+# - DRY principle: Define once, use many times
+# - Easy updates: Change in one place
+# - Consistency: Ensures all steps use the same values
+#
+# CONTEXT EXPRESSIONS IN ENV:
+# You can use context expressions in env values.
+# ${{ github.repository }} expands to "owner/repo" format.
 env:
+  # GHCR is GitHub's container registry
   REGISTRY: ghcr.io
+  # Image names include the repository path for organization
+  # Result: ghcr.io/owner/satvis/web
   IMAGE_NAME_WEB: ${{ github.repository }}/web
+  # Result: ghcr.io/owner/satvis/tle-updater
   IMAGE_NAME_TLE: ${{ github.repository }}/tle-updater
 
+# -----------------------------------------------------------------------------
+# JOBS
+# -----------------------------------------------------------------------------
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+
+    # -------------------------------------------------------------------------
+    # PERMISSIONS
+    # -------------------------------------------------------------------------
+    # 'packages: write' is REQUIRED for pushing to GHCR.
+    # Without this, the docker push will fail with 403 Forbidden.
     permissions:
       contents: read
       packages: write  # Required for pushing to ghcr.io
 
     steps:
+      # STEP 1: Checkout
+      # -----------------------------------------------------------------------
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           submodules: true
 
+      # STEP 2: Docker Login to GHCR
+      # -----------------------------------------------------------------------
+      # Authenticates to GitHub Container Registry for pushing images.
+      #
+      # AUTHENTICATION METHOD:
+      # Uses GITHUB_TOKEN (automatically provided by GitHub Actions).
+      # The token is passed via stdin for security (not in command args).
+      #
+      # SECRETS CONTEXT:
+      # ${{ secrets.GITHUB_TOKEN }} is automatically available in workflows.
+      # It's a short-lived token with permissions defined in the 'permissions:' block.
+      #
+      # ALTERNATIVE: Use docker/login-action@v3 for a more polished approach:
+      #   - uses: docker/login-action@v3
+      #     with:
+      #       registry: ghcr.io
+      #       username: ${{ github.actor }}
+      #       password: ${{ secrets.GITHUB_TOKEN }}
+      #
+      # GITHUB.ACTOR:
+      # The username of the person or app that triggered the workflow.
+      # For push events, this is the committer. For workflow_dispatch, the button clicker.
       - name: Log in to GitHub Container Registry
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
+      # STEP 3: Extract Metadata for Web Image
+      # -----------------------------------------------------------------------
+      # Prepares tags and metadata for the Docker build.
+      #
+      # STEP OUTPUTS (GITHUB_OUTPUT):
+      # Steps can produce outputs that other steps can consume.
+      # Write to $GITHUB_OUTPUT file in format: name=value
+      #
+      # HOW TO SET OUTPUTS:
+      #   echo "output_name=output_value" >> $GITHUB_OUTPUT
+      #
+      # HOW TO CONSUME OUTPUTS:
+      # First, the step needs an 'id:'. Then:
+      #   ${{ steps.step-id.outputs.output_name }}
+      #
+      # NOTE: Multi-line outputs need special handling:
+      #   echo "output_name<<EOF" >> $GITHUB_OUTPUT
+      #   echo "line 1" >> $GITHUB_OUTPUT
+      #   echo "line 2" >> $GITHUB_OUTPUT
+      #   echo "EOF" >> $GITHUB_OUTPUT
       - name: Extract metadata for web image
         id: meta-web
         run: |
@@ -34,6 +150,8 @@ jobs:
           echo "tags=ghcr.io/${{ env.IMAGE_NAME_WEB }}:latest,ghcr.io/${{ env.IMAGE_NAME_WEB }}:${{ github.sha }}" >> $GITHUB_OUTPUT
           echo "created=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
 
+      # STEP 4: Extract Metadata for TLE Updater Image
+      # -----------------------------------------------------------------------
       - name: Extract metadata for TLE updater image
         id: meta-tle
         run: |
@@ -41,6 +159,31 @@ jobs:
           echo "tags=ghcr.io/${{ env.IMAGE_NAME_TLE }}:latest,ghcr.io/${{ env.IMAGE_NAME_TLE }}:${{ github.sha }}" >> $GITHUB_OUTPUT
           echo "created=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
 
+      # STEP 5: Build Web Image
+      # -----------------------------------------------------------------------
+      # Builds the Docker image with multiple tags and OCI labels.
+      #
+      # DOCKER BUILD FLAGS:
+      #   -f Dockerfile.web  - Specify which Dockerfile to use
+      #   -t tag             - Apply a tag (can specify multiple)
+      #   --label            - Add metadata labels to the image
+      #   .                  - Build context (current directory)
+      #
+      # OCI IMAGE LABELS:
+      # Open Container Initiative (OCI) defines standard labels for metadata.
+      # These appear in GHCR's UI and help with image discovery/management.
+      #
+      # Common OCI labels:
+      #   org.opencontainers.image.source    - Link to source repository
+      #   org.opencontainers.image.created   - Build timestamp
+      #   org.opencontainers.image.revision  - Git commit SHA
+      #   org.opencontainers.image.version   - Semantic version
+      #   org.opencontainers.image.title     - Human-readable title
+      #   org.opencontainers.image.description - Description
+      #
+      # LINE CONTINUATION:
+      # The '\' at line end continues the command to the next line.
+      # This makes long commands more readable.
       - name: Build web image
         run: |
           docker build -f Dockerfile.web -t ghcr.io/${{ env.IMAGE_NAME_WEB }}:latest \
@@ -50,25 +193,58 @@ jobs:
             --label "org.opencontainers.image.revision=${{ github.sha }}" \
             .
 
+      # STEP 6: Build TLE Updater Image
+      # -----------------------------------------------------------------------
       - name: Build TLE updater image
         run: |
-          docker build -f Dockerfile.tle-updater -t ghcr.io/${{ env.IMAGE_NAME_TLE }}:latest \
+          docker build -f infra/Dockerfile.tle-updater -t ghcr.io/${{ env.IMAGE_NAME_TLE }}:latest \
             -t ghcr.io/${{ env.IMAGE_NAME_TLE }}:${{ github.sha }} \
             --label "org.opencontainers.image.source=${{ github.repositoryUrl }}" \
             --label "org.opencontainers.image.created=${{ steps.meta-tle.outputs.created }}" \
             --label "org.opencontainers.image.revision=${{ github.sha }}" \
             .
 
+      # STEP 7: Push Web Image
+      # -----------------------------------------------------------------------
+      # Pushes both tags to GHCR. Each push uploads layers not already present.
+      # The second push is fast because layers are already uploaded.
       - name: Push web image
         run: |
           docker push ghcr.io/${{ env.IMAGE_NAME_WEB }}:latest
           docker push ghcr.io/${{ env.IMAGE_NAME_WEB }}:${{ github.sha }}
 
+      # STEP 8: Push TLE Updater Image
+      # -----------------------------------------------------------------------
       - name: Push TLE updater image
         run: |
           docker push ghcr.io/${{ env.IMAGE_NAME_TLE }}:latest
           docker push ghcr.io/${{ env.IMAGE_NAME_TLE }}:${{ github.sha }}
 
+      # STEP 9: Create Workflow Summary
+      # -----------------------------------------------------------------------
+      # GITHUB_STEP_SUMMARY creates a rich summary displayed in the Actions UI.
+      # It supports Markdown formatting and appears at the bottom of the run page.
+      #
+      # HOW IT WORKS:
+      # Append markdown to $GITHUB_STEP_SUMMARY file.
+      # Each step can contribute to the summary.
+      # The summary persists after the workflow completes.
+      #
+      # MARKDOWN FEATURES SUPPORTED:
+      # - Headers (##, ###)
+      # - Bold, italic
+      # - Code blocks (inline and fenced)
+      # - Lists (ordered and unordered)
+      # - Tables
+      # - Links and images
+      # - Emojis (✅, ❌, etc.)
+      #
+      # USE CASES:
+      # - Test results summary
+      # - Deployment URLs
+      # - Build artifacts list
+      # - Performance metrics
+      # - Error summaries
       - name: Image summary
         run: |
           echo "## ✅ Docker Images Built and Pushed" >> $GITHUB_STEP_SUMMARY

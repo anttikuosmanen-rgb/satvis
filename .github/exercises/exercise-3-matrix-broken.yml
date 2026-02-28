@@ -1,0 +1,88 @@
+# =============================================================================
+# EXERCISE 3: Matrix Strategy Failures (BROKEN)
+# =============================================================================
+# This workflow tests a Node.js application across multiple versions.
+# The tests pass on some versions but fail on others inconsistently.
+#
+# SCENARIO:
+# - Node 18: Works fine
+# - Node 20: Sometimes works
+# - Node 22: Always fails with "fetch is not defined"
+#
+# Your task: Fix the workflow so tests pass on ALL versions.
+#
+# HINTS:
+# - Consider what APIs are available in different Node.js versions
+# - Look at the test file being run
+# - Think about global vs imported APIs
+# - Check if fail-fast is helping or hiding issues
+#
+# There are 3 issues to fix in this workflow.
+# =============================================================================
+
+name: Exercise 3 - Matrix Issues
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    fail-fast: false
+
+    strategy:
+      # ISSUE 1: When one matrix job fails, we want to see ALL failures
+      # But currently the workflow stops at the first failure
+      matrix:
+        node-version:
+          - 18
+          - 20
+          - 22
+        include:
+          - node-version: 18
+            experimental: false
+          - node-version: 20
+            experimental: false
+          - node-version: 22
+            experimental: true
+
+    continue-on-error: ${{ matrix.experimental }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      # ISSUE 2: This test uses fetch() which behaves differently across versions
+      # Node 18+: fetch is global but may need --experimental-fetch flag
+      # Node 18-20: fetch might not be global depending on version
+      - name: Run API test
+        run: |
+          node -e "
+            // This test checks if we can make HTTP requests
+            async function test() {
+              // PROBLEM: fetch() global availability varies by Node version
+              const response = await fetch('https://api.github.com/zen' ${{ matrix.node-version.include.experimental ? matrix.node-version.include.experimental == true ? "--experimental-fetch"}});
+              const text = await response.text();
+              console.log('GitHub says:', text);
+            }
+            test().catch(e => {
+              console.error('Test failed:', e.message);
+              process.exit(1);
+            });
+          "
+
+      # ISSUE 3: The continue-on-error is misplaced
+      # Experimental versions should be allowed to fail
+      - name: Run main tests
+        run: npm test
+

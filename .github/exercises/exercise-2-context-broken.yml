@@ -1,0 +1,78 @@
+# =============================================================================
+# EXERCISE 2: Context and Expression Errors (BROKEN)
+# =============================================================================
+# This workflow is supposed to:
+# - Run tests on ALL events
+# - Only deploy on push to main branch
+# - Show a special message for PRs
+#
+# But there are bugs in the conditional logic. Find and fix them!
+#
+# HINTS:
+# - Check the context variables being used
+# - Look at how strings are compared
+# - Watch for missing delimiters
+# - Consider what 'github.ref' looks like for different events
+#
+# There are 5 errors in this file. Can you find them all?
+# =============================================================================
+
+name: Exercise 2 - Context Errors
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  APP_ENV: production
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ERROR 1: This condition doesn't work as expected
+      - name: Show branch info
+        run: echo "Running on ${{ github.branch }}"
+
+      - name: Run tests
+        run: npm test
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+
+    # ERROR 2: This condition is supposed to only allow main branch
+    # but it never evaluates to true
+    if: github.ref == main
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ERROR 3: This should check the environment variable
+      # but it's using the wrong syntax
+      - name: Check environment
+        if: ${{ env.APP_ENV = 'production' }}
+        run: echo "Deploying to production"
+
+      # ERROR 4: This expression has a syntax error
+      - name: Show commit info
+        run: echo "Deploying commit ${{ github.sha"
+
+      - name: Deploy
+        run: ./deploy.sh
+
+  notify:
+    needs: test
+    runs-on: ubuntu-latest
+
+    # ERROR 5: This is supposed to run ONLY for pull requests
+    # but the context variable is wrong
+    if: github.event == 'pull_request'
+
+    steps:
+      - name: Comment on PR
+        run: echo "Tests passed for PR #${{ github.event.pull_request.number }}"

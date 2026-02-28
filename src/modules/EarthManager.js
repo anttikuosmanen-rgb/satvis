@@ -1,6 +1,7 @@
 import {
   Cartesian3,
   Color,
+  JulianDate,
   VerticalOrigin,
   HorizontalOrigin,
   CallbackProperty,
@@ -8,7 +9,6 @@ import {
   Transforms,
   Matrix3,
   ReferenceFrame,
-  JulianDate,
 } from "@cesium/engine";
 import * as Astronomy from "astronomy-engine";
 import { CelestialOrbitRenderer } from "./CelestialOrbitRenderer";
@@ -30,17 +30,11 @@ export class EarthManager {
     this.trackedEntityListener = null;
     this.showLabels = true;
     this.showMoonOrbit = false;
+    this.showEarthOrbit = false;
     this.orbitRenderer = new CelestialOrbitRenderer(viewer); // Generic orbit renderer
     this.distanceThreshold = 1e10; // 10,000,000 km (10 million km) - distance at which to show Earth/Moon as points
     this.lastGlobeShowState = true; // Track globe visibility state
     this.lastMoonShowState = true; // Track moon visibility state
-    this.earthRadius = 6378137.0; // Earth's radius in meters
-    this.lastOcclusionCheck = 0; // Last time we checked occlusion (in milliseconds)
-    this.occlusionCheckInterval = 1000; // Check occlusion every 1 second
-    this.isInZenithView = false; // Track if we're in zenith view mode
-    this.zenithViewChangeHandler = null; // Handler for zenith view state changes
-    this.isMoonOccluded = false; // Track if Moon is currently occluded by Earth
-    this.moonOrbitHeliocentric = true; // Toggle between heliocentric (true) and Earth-centric (false) Moon orbit
   }
 
   /**
@@ -73,14 +67,6 @@ export class EarthManager {
         this.viewer.trackedEntity = undefined;
       }
     });
-
-    // Listen for zenith view state changes
-    this.zenithViewChangeHandler = (event) => {
-      this.isInZenithView = event.detail.active;
-    };
-    window.addEventListener("zenithViewChanged", this.zenithViewChangeHandler);
-
-    console.log(`Earth and Moon point rendering enabled in ${mode} mode`);
   }
 
   /**
@@ -111,12 +97,6 @@ export class EarthManager {
       this.trackedEntityListener = null;
     }
 
-    // Remove zenith view change listener
-    if (this.zenithViewChangeHandler) {
-      window.removeEventListener("zenithViewChanged", this.zenithViewChangeHandler);
-      this.zenithViewChangeHandler = null;
-    }
-
     // Remove entities (billboards or labels)
     if (this.earthEntity) {
       this.viewer.entities.remove(this.earthEntity);
@@ -141,8 +121,6 @@ export class EarthManager {
     this.viewer.scene.moon.show = true;
     this.lastGlobeShowState = true;
     this.lastMoonShowState = true;
-
-    console.log("Earth and Moon point rendering disabled");
   }
 
   /**
@@ -156,8 +134,20 @@ export class EarthManager {
 
     const wasEnabled = this.enabled;
     if (wasEnabled) {
+      // Save orbit state — disable() clears orbits but we want to preserve them
+      const hadMoonOrbit = this.showMoonOrbit;
+      const hadEarthOrbit = this.showEarthOrbit;
       this.disable();
       await this.enable(mode);
+      // Restore orbit state
+      if (hadMoonOrbit) {
+        this.showMoonOrbit = true;
+        this.updateMoonOrbitVisibility();
+      }
+      if (hadEarthOrbit) {
+        this.showEarthOrbit = true;
+        this.updateEarthOrbitVisibility();
+      }
     }
   }
 
@@ -177,7 +167,7 @@ export class EarthManager {
         image: this.createBodyCanvas([100, 149, 237], 12), // Cornflower blue
         scale: 1.0,
         verticalOrigin: VerticalOrigin.CENTER,
-        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+
         show: new CallbackProperty(() => this.shouldShowPoints(), false),
       },
       label: {
@@ -190,7 +180,7 @@ export class EarthManager {
         verticalOrigin: VerticalOrigin.TOP,
         horizontalOrigin: HorizontalOrigin.CENTER,
         pixelOffset: new Cartesian3(0, 10, 0),
-        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+
         show: new CallbackProperty(() => this.showLabels && this.shouldShowPoints(), false),
       },
       description: this.generateEarthDescription(),
@@ -229,8 +219,8 @@ export class EarthManager {
         image: this.createBodyCanvas([192, 192, 192], 10), // Light gray
         scale: 0.7,
         verticalOrigin: VerticalOrigin.CENTER,
-        disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        show: new CallbackProperty(() => !this.isMoonOccluded, false), // Hide when occluded by Earth
+
+        show: true,
       },
       label: {
         text: "☾", // Moon symbol
@@ -242,8 +232,8 @@ export class EarthManager {
         verticalOrigin: VerticalOrigin.TOP,
         horizontalOrigin: HorizontalOrigin.CENTER,
         pixelOffset: new Cartesian3(0, 8, 0),
-        disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        show: new CallbackProperty(() => this.showLabels && !this.isMoonOccluded, false),
+
+        show: new CallbackProperty(() => this.showLabels, false),
       },
       description: this.generateMoonDescription(),
     });
@@ -266,7 +256,6 @@ export class EarthManager {
       pixelSize: 6,
       outlineColor: Color.WHITE,
       outlineWidth: 1,
-      disableDepthTestDistance: Number.POSITIVE_INFINITY,
     });
 
     // Moon point - needs dynamic position update
@@ -277,7 +266,6 @@ export class EarthManager {
       pixelSize: 5,
       outlineColor: Color.WHITE,
       outlineWidth: 1,
-      disableDepthTestDistance: Number.POSITIVE_INFINITY,
       show: true,
     });
 
@@ -297,7 +285,7 @@ export class EarthManager {
         verticalOrigin: VerticalOrigin.TOP,
         horizontalOrigin: HorizontalOrigin.CENTER,
         pixelOffset: new Cartesian3(0, 10, 0),
-        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+
         show: new CallbackProperty(() => this.showLabels && this.shouldShowPoints(), false),
       },
       description: this.generateEarthDescription(),
@@ -339,8 +327,8 @@ export class EarthManager {
         verticalOrigin: VerticalOrigin.TOP,
         horizontalOrigin: HorizontalOrigin.CENTER,
         pixelOffset: new Cartesian3(0, 8, 0),
-        disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        show: new CallbackProperty(() => this.showLabels && !this.isMoonOccluded, false),
+
+        show: new CallbackProperty(() => this.showLabels, false),
       },
       description: this.generateMoonDescription(),
     });
@@ -395,77 +383,6 @@ export class EarthManager {
       this.pointPrimitives._pointPrimitives.forEach((point) => {
         point.show = shouldShow;
       });
-    }
-
-    // Check Moon occlusion by Earth (throttled to 1 check per second)
-    this.updateMoonOcclusion();
-  }
-
-  /**
-   * Check if Moon is occluded by Earth's globe from camera perspective
-   * @param {Cartesian3} moonPosition - Moon position in Fixed frame
-   * @returns {boolean} True if Moon is occluded (hidden behind Earth)
-   */
-  isMoonOccludedByEarth(moonPosition) {
-    const cameraPosition = this.viewer.camera.position;
-    const earthCenter = Cartesian3.ZERO;
-
-    // Vector from camera to Moon (normalized)
-    const cameraToMoon = Cartesian3.subtract(moonPosition, cameraPosition, new Cartesian3());
-    Cartesian3.normalize(cameraToMoon, cameraToMoon);
-
-    // Vector from camera to Earth center (normalized)
-    const cameraToEarth = Cartesian3.subtract(earthCenter, cameraPosition, new Cartesian3());
-    const distanceToEarth = Cartesian3.magnitude(cameraToEarth);
-    Cartesian3.normalize(cameraToEarth, cameraToEarth);
-
-    // Calculate angular separation between Moon and Earth center
-    const angle = Cartesian3.angleBetween(cameraToMoon, cameraToEarth);
-
-    // Calculate Earth's angular radius as seen from camera
-    const earthAngularRadius = Math.asin(this.earthRadius / distanceToEarth);
-
-    // For normal views: Check if Moon is within Earth's angular radius
-    if (!this.isInZenithView) {
-      return angle < earthAngularRadius;
-    }
-
-    // For zenith view mode: Use dot product to check if Moon is below horizon
-    // If dot product > 0, Moon is in the same general direction as Earth center (below horizon)
-    const dotProduct = Cartesian3.dot(cameraToMoon, cameraToEarth);
-    return dotProduct > 0;
-  }
-
-  /**
-   * Update Moon visibility based on occlusion by Earth
-   * Throttled to run at most once per second
-   */
-  updateMoonOcclusion() {
-    if (!this.moonEntity) {
-      return;
-    }
-
-    // Throttle occlusion checks to once per second
-    const now = Date.now();
-    if (now - this.lastOcclusionCheck < this.occlusionCheckInterval) {
-      return;
-    }
-    this.lastOcclusionCheck = now;
-
-    // Get current Moon position
-    const currentTime = this.viewer.clock.currentTime;
-    const moonPosition = this.moonEntity.position.getValue(currentTime);
-
-    if (!moonPosition) {
-      return;
-    }
-
-    // Update occlusion state - CallbackProperty will pick up the change
-    this.isMoonOccluded = this.isMoonOccludedByEarth(moonPosition);
-
-    // Update Moon point primitive visibility (point mode only)
-    if (this.renderMode === "point" && this.moonPoint) {
-      this.moonPoint.show = !this.isMoonOccluded;
     }
   }
 
@@ -563,6 +480,12 @@ export class EarthManager {
       this.showMoonOrbit = shouldShowMoonOrbit;
       this.updateMoonOrbitVisibility();
     }
+
+    const shouldShowEarthOrbit = enabledComponents.includes("Earth orbit");
+    if (shouldShowEarthOrbit !== this.showEarthOrbit) {
+      this.showEarthOrbit = shouldShowEarthOrbit;
+      this.updateEarthOrbitVisibility();
+    }
   }
 
   /**
@@ -574,90 +497,68 @@ export class EarthManager {
   }
 
   /**
-   * Get Moon position in heliocentric inertial frame
-   * Uses the same approach as PlanetManager for consistency
-   * @param {JulianDate} time - Time for position calculation
-   * @returns {Cartesian3} Position in ICRF frame relative to Sun
-   */
-  getMoonPositionInertial(time) {
-    const jsDate = JulianDate.toDate(time);
-
-    // Get Moon's heliocentric position (relative to Sun) in ICRF frame
-    const moonVector = Astronomy.HelioVector(Astronomy.Body.Moon, jsDate);
-
-    // Convert from AU to meters (1 AU = 1.496e11 meters)
-    const xInertial = moonVector.x * 1.496e11;
-    const yInertial = moonVector.y * 1.496e11;
-    const zInertial = moonVector.z * 1.496e11;
-
-    // Get Earth's heliocentric position to transform to Earth-centered frame
-    const earthVector = Astronomy.HelioVector(Astronomy.Body.Earth, jsDate);
-    const earthX = earthVector.x * 1.496e11;
-    const earthY = earthVector.y * 1.496e11;
-    const earthZ = earthVector.z * 1.496e11;
-
-    // Transform to Earth-centered heliocentric (Moon position - Earth position)
-    const relX = xInertial - earthX;
-    const relY = yInertial - earthY;
-    const relZ = zInertial - earthZ;
-
-    return new Cartesian3(relX, relY, relZ);
-  }
-
-  /**
    * Update Moon orbit path visibility
-   * Uses the generic CelestialOrbitRenderer for consistent orbit visualization
+   * Uses the generic CelestialOrbitRenderer for consistent orbit visualization.
+   * Moon orbit is geocentric (Earth-centered) since the Moon orbits Earth.
    */
   updateMoonOrbitVisibility() {
     if (this.showMoonOrbit && !this.orbitRenderer.hasOrbit("Moon")) {
-      // Add Moon orbit using generic renderer
       const lunarOrbitalPeriod = 27.39 * 24 * 60 * 60; // Moon's orbital period in seconds (~27.3 days)
 
       this.orbitRenderer.addOrbit(
         "Moon",
         (time) => {
-          if (this.moonOrbitHeliocentric) {
-            // Get Moon position in heliocentric inertial frame (same as planets)
-            return this.getMoonPositionInertial(time);
-          } else {
-            // Get Moon position in Earth-centric inertial frame (ICRF)
-            return Simon1994PlanetaryPositions.computeMoonPositionInEarthInertialFrame(time);
-          }
+          // Earth-centric inertial frame (ICRF) — Moon orbits Earth
+          return Simon1994PlanetaryPositions.computeMoonPositionInEarthInertialFrame(time);
         },
         {
           orbitalPeriod: lunarOrbitalPeriod,
-          color: Color.LIGHTGRAY.withAlpha(0.5),
-          width: 3, // Thicker to be more visible
-          resolution: lunarOrbitalPeriod / 50, // Very coarse: 50 samples
-          leadTimeFraction: 1.0, // Show full orbit ahead
-          trailTimeFraction: 0.0, // Don't show trail behind
-          referenceFrame: ReferenceFrame.INERTIAL, // Use inertial frame
-          useSampledPosition: true, // Use SampledPositionProperty for proper frame handling
-          usePolyline: false, // Back to PathGraphics with coarse sampling
+          color: Color.GRAY,
+          width: 3,
+          resolution: lunarOrbitalPeriod / 200, // 200 samples for smooth orbit
+          leadTimeFraction: 1.0,
+          trailTimeFraction: 0.0,
+          referenceFrame: ReferenceFrame.INERTIAL,
+          usePrimitive: true,
+          heliocentric: false, // Geocentric — Moon orbits Earth, not the Sun
         },
       );
     } else if (!this.showMoonOrbit && this.orbitRenderer.hasOrbit("Moon")) {
-      // Remove the orbit
       this.orbitRenderer.removeOrbit("Moon");
     }
   }
 
   /**
-   * Toggle Moon orbit between heliocentric and Earth-centric modes
-   * @param {boolean} heliocentric - True for heliocentric, false for Earth-centric
+   * Update Earth orbit path visibility.
+   * Earth orbit is heliocentric (Sun-centered) — shows Earth's path around the Sun.
    */
-  setMoonOrbitMode(heliocentric) {
-    if (this.moonOrbitHeliocentric !== heliocentric) {
-      this.moonOrbitHeliocentric = heliocentric;
+  updateEarthOrbitVisibility() {
+    if (this.showEarthOrbit && !this.orbitRenderer.hasOrbit("Earth")) {
+      const AU_TO_METERS = 1.496e11;
+      const earthOrbitalPeriod = 365.256 * 24 * 60 * 60; // ~1 year in seconds
 
-      // If orbit is currently visible, remove and recreate it with new mode
-      if (this.showMoonOrbit && this.orbitRenderer.hasOrbit("Moon")) {
-        this.orbitRenderer.removeOrbit("Moon");
-        this.showMoonOrbit = false; // Temporarily disable
-        this.updateMoonOrbitVisibility(); // This will see showMoonOrbit is false
-        this.showMoonOrbit = true; // Re-enable
-        this.updateMoonOrbitVisibility(); // This will recreate with new mode
-      }
+      this.orbitRenderer.addOrbit(
+        "Earth",
+        (time) => {
+          const jsDate = JulianDate.toDate(time);
+          const helioVector = Astronomy.HelioVector(Astronomy.Body.Earth, jsDate);
+          return new Cartesian3(helioVector.x * AU_TO_METERS, helioVector.y * AU_TO_METERS, helioVector.z * AU_TO_METERS);
+        },
+        {
+          orbitalPeriod: earthOrbitalPeriod,
+          color: Color.DODGERBLUE,
+          width: 1,
+          resolution: earthOrbitalPeriod / 200, // 200 samples for smooth orbit
+          leadTimeFraction: 1.0,
+          trailTimeFraction: 0.0,
+          referenceFrame: ReferenceFrame.INERTIAL,
+          usePrimitive: true,
+          heliocentric: true, // Sun-centric orbit
+          minDistance: 50_000_000 * 1000, // Only visible beyond 50M km
+        },
+      );
+    } else if (!this.showEarthOrbit && this.orbitRenderer.hasOrbit("Earth")) {
+      this.orbitRenderer.removeOrbit("Earth");
     }
   }
 }

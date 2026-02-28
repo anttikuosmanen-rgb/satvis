@@ -2,11 +2,10 @@
 /dist/
 /dev-dist/
 
-cypress/screenshots/
-cypress/videos/
-cypress/fixtures/
-cypress/support/
+coverage/
 report/
+playwright-report/
+test-results/
 
 # TLE data files
 prelaunch.txt

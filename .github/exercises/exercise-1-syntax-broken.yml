@@ -1,0 +1,44 @@
+# =============================================================================
+# EXERCISE 1: Syntax Errors (BROKEN)
+# =============================================================================
+# This workflow has several syntax errors that prevent it from running.
+# Your task: Find and fix all the errors.
+#
+# HINTS:
+# - Check indentation carefully (YAML requires consistent spacing)
+# - Look for missing required fields
+# - Check action names for typos
+# - Verify YAML structure (colons, dashes, etc.)
+#
+# There are 5 errors in this file. Can you find them all?
+# =============================================================================
+
+name: Exercise 1 - Syntax Errors
+
+# ERROR 1: Something is wrong with this trigger section
+on
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    # ERROR 2: This line has an issue
+    runs-on ubuntu-latest
+
+    steps:
+      # ERROR 3: Check this action name carefully
+      - name: Checkout code
+        uses: action/checkout@v4
+
+      # ERROR 4: Look at the indentation here
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+          with:
+            node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # ERROR 5: Something is wrong with this step
+      - name Run tests
+        run: npm test

@@ -14,6 +14,7 @@ import App from "./App.vue";
 import { router, setupRouterGuards } from "./router";
 import piniaUrlSync from "./modules/util/pinia-plugin-url-sync.ts";
 import { CesiumController } from "./modules/CesiumController";
+import { SnapshotService } from "./modules/util/SnapshotService";
 import { getConfigPreset } from "./config/presets";
 import { usePWAUpdate } from "./composables/usePWAUpdate.ts";
 
@@ -62,3 +63,18 @@ app.component("FontAwesomeIcon", FontAwesomeIcon);
 
 // Mount the app
 app.mount("#app");
+
+// Initialize SnapshotService and check for snapshot URL parameter
+// This needs to happen after satellites are loaded so entities exist for tracking
+const snapshotService = new SnapshotService(cc);
+window.addEventListener(
+  "satellitesLoaded",
+  () => {
+    // Check for snapshot URL parameter and restore if present
+    // Use a short delay to ensure all satellite entities are created
+    setTimeout(() => {
+      snapshotService.restoreFromUrlIfPresent();
+    }, 500);
+  },
+  { once: true },
+);

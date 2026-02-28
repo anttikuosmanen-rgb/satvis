@@ -330,6 +330,86 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
     expect(result[0]).toContain("STARLINK");
     expect(result[1]).toContain("ONEWEB");
   });
+
+  // Tests for + encoding in TLE exponent fields (e.g., 00000+0)
+  describe("TLE exponent field encoding", () => {
+    it("should encode + as %2B in TLE exponent fields during serialization", () => {
+      const config = customSatellitesConfig;
+      // TLE with positive exponent: 00000+0 means 0×10^0
+      const tleWithPlus = `TEST SAT
+1 99999U 99999A   25023.50000000  .00000000  00000+0  00000+0 0  9999
+2 99999  45.0000 123.4567 0001234  67.8901 292.1234 15.12345678901234`;
+
+      const result = config.serialize([tleWithPlus]);
+
+      // The + should be encoded as %2B
+      expect(result).toContain("%2B");
+      expect(result).not.toContain("00000+0");
+      expect(result).toContain("00000%2B0");
+    });
+
+    it("should decode %2B back to + during deserialization", () => {
+      const config = customSatellitesConfig;
+      // Simulate URL with encoded + signs
+      const encodedTle = `TEST SAT
+1 99999U 99999A   25023.50000000  .00000000  00000%2B0  00000%2B0 0  9999
+2 99999  45.0000 123.4567 0001234  67.8901 292.1234 15.12345678901234`;
+
+      const result = config.deserialize(encodedTle);
+
+      expect(result).toHaveLength(1);
+      // The %2B should be decoded back to +
+      expect(result[0]).toContain("00000+0");
+      expect(result[0]).not.toContain("%2B");
+    });
+
+    it("should fix legacy URLs where + was decoded as space in exponent fields", () => {
+      const config = customSatellitesConfig;
+      // Legacy URL where + was decoded as space: "00000 0" instead of "00000+0"
+      const corruptedTle = `TEST SAT
+1 99999U 99999A   25023.50000000  .00000000  00000 0  00000 0 0  9999
+2 99999  45.0000 123.4567 0001234  67.8901 292.1234 15.12345678901234`;
+
+      const result = config.deserialize(corruptedTle);
+
+      expect(result).toHaveLength(1);
+      // The corrupted "00000 0" should be fixed to "00000+0"
+      expect(result[0]).toContain("00000+0");
+      expect(result[0]).not.toMatch(/00000 0 /);
+    });
+
+    it("should preserve negative exponents (- signs) unchanged", () => {
+      const config = customSatellitesConfig;
+      // TLE with negative exponent: 12345-4 means 0.12345×10^-4
+      const tleWithMinus = `TEST SAT
+1 99999U 99999A   25023.50000000  .00012345  00000+0  12345-4 0  9999
+2 99999  45.0000 123.4567 0001234  67.8901 292.1234 15.12345678901234`;
+
+      const serialized = config.serialize([tleWithMinus]);
+      const result = config.deserialize(serialized);
+
+      expect(result).toHaveLength(1);
+      // Negative exponents should be preserved
+      expect(result[0]).toContain("12345-4");
+      // Positive exponents should round-trip correctly
+      expect(result[0]).toContain("00000+0");
+    });
+
+    it("should handle TLE with multiple + exponent fields correctly", () => {
+      const config = customSatellitesConfig;
+      // Both BSTAR field and B* term have + exponents
+      const tleMultiplePlus = `STARLINK-TEST
+1 72000U 26018A   26025.67999722  .00031619  00000+0  39260+0 0    08
+2 72000  97.2904  50.1205 0011892 279.3429  97.4353 16.07625819    19`;
+
+      const serialized = config.serialize([tleMultiplePlus]);
+      const result = config.deserialize(serialized);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toContain("00000+0");
+      expect(result[0]).toContain("39260+0");
+    });
+  });
 });
 
 describe("Sat Store - URL Sync - Other Configs", () => {

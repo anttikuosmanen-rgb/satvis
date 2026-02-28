@@ -1,41 +1,235 @@
+# =============================================================================
+# WORKFLOW: Run Tests
+# =============================================================================
+# This workflow runs the project's test suite with code coverage reporting.
+# It's one of the simplest workflows in this repository, making it a great
+# starting point for learning GitHub Actions.
+#
+# YAML BASICS:
+# - YAML uses indentation (2 spaces is standard) to define structure
+# - Key-value pairs use "key: value" syntax
+# - Lists use "- item" syntax (dash followed by space)
+# - Comments start with # and continue to end of line
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# WORKFLOW NAME
+# -----------------------------------------------------------------------------
+# The 'name' field sets the display name shown in the GitHub Actions UI.
+# This appears in:
+#   - The Actions tab sidebar
+#   - PR status checks
+#   - Commit status badges
+# If omitted, GitHub uses the workflow filename instead.
 name: Run Tests
 
+# -----------------------------------------------------------------------------
+# TRIGGERS (on:)
+# -----------------------------------------------------------------------------
+# The 'on:' key defines WHEN this workflow runs. This is required.
+# Common trigger events include:
+#   - push: When commits are pushed
+#   - pull_request: When PRs are opened, updated, or synchronized
+#   - workflow_dispatch: Manual trigger from GitHub UI
+#   - schedule: Cron-based scheduling
+#   - repository_dispatch: External webhook triggers
+#
+# YAML SYNTAX NOTE:
+# What follows 'on:' is a "mapping" (also called "object" or "dictionary").
+# Each child key under 'on:' specifies an event and its configuration.
 on:
+  # PUSH EVENT
+  # Triggers when commits are pushed to matching branches.
   push:
+    # 'branches:' is a YAML list (sequence) that filters which branches trigger.
+    # The '**' is a glob pattern that matches ALL branches.
+    # Other examples:
+    #   - ['main', 'master']       # Only main and master
+    #   - ['feature/**']           # Branches starting with feature/
+    #   - ['!test/**']             # Exclude branches starting with test/
     branches: ['**']
+
+  # PULL REQUEST EVENT
+  # Triggers when pull requests are opened, updated, or synchronized.
+  # By default, triggers on: opened, synchronize, reopened
+  # You can customize with 'types:' key (e.g., types: [opened, labeled])
   pull_request:
     branches: ['**']
 
+# -----------------------------------------------------------------------------
+# JOBS
+# -----------------------------------------------------------------------------
+# The 'jobs:' section defines one or more jobs that run in the workflow.
+# Jobs run in PARALLEL by default (unless you specify dependencies with 'needs:').
+# Each job runs on a fresh virtual machine (runner).
+#
+# YAML SYNTAX NOTE:
+# 'jobs:' is a mapping where each key is a job ID (used internally).
+# Job IDs must:
+#   - Start with a letter or underscore
+#   - Contain only alphanumeric characters, hyphens, or underscores
 jobs:
+  # JOB: test
+  # 'test' below is a user-defined job ID - you choose this name.
+  # It appears in the Actions UI and can be referenced by other jobs
+  # using 'needs: test'. Job IDs must be unique within the workflow.
   test:
+    # -------------------------------------------------------------------------
+    # RUNNER SELECTION (runs-on:)
+    # -------------------------------------------------------------------------
+    # Specifies which type of virtual machine runs this job.
+    # GitHub-hosted runners include:
+    #   - ubuntu-latest (most common, currently Ubuntu 22.04)
+    #   - ubuntu-22.04, ubuntu-20.04 (specific versions)
+    #   - windows-latest, windows-2022, windows-2019
+    #   - macos-latest, macos-14 (ARM64), macos-13 (Intel)
+    #
+    # Self-hosted runners use: runs-on: self-hosted
+    # Or with labels: runs-on: [self-hosted, linux, x64]
     runs-on: ubuntu-latest
 
+    # -------------------------------------------------------------------------
+    # MATRIX STRATEGY
+    # -------------------------------------------------------------------------
+    # The 'strategy:' key enables running a job multiple times with different
+    # configurations. This is called "matrix builds".
+    #
+    # HOW IT WORKS:
+    # 1. Define variables under 'matrix:'
+    # 2. Each combination creates a separate job instance
+    # 3. Access values using: ${{ matrix.variable-name }}
+    #
+    # In this simple case, we only test Node.js 20.x, so only ONE job runs.
+    # For multiple versions, see nodejs.yml which tests Node 20 AND 22.
     strategy:
       matrix:
+        # YAML LIST SYNTAX:
+        # This is a list with one item. Alternative syntaxes:
+        #   node-version: [20.x]           # Inline/flow style (used here)
+        #   node-version:                  # Block style
+        #     - 20.x
         node-version: [20.x]
 
+    # -------------------------------------------------------------------------
+    # STEPS
+    # -------------------------------------------------------------------------
+    # Steps are the individual tasks within a job. They run SEQUENTIALLY.
+    # Each step is either:
+    #   1. An ACTION: uses: owner/repo@version
+    #   2. A SHELL COMMAND: run: command
+    #
+    # Steps share the same filesystem within a job, so files created in
+    # one step are available in subsequent steps.
     steps:
+      # STEP 1: Checkout Repository
+      # -----------------------------------------------------------------------
+      # 'uses:' specifies a pre-built action to run.
+      # Format: owner/repository@version
+      #
+      # VERSION PINNING BEST PRACTICES:
+      #   @v4         - Major version (gets minor/patch updates automatically)
+      #   @v4.1.0     - Exact version (most reproducible)
+      #   @abc123     - Commit SHA (most secure, prevents tag hijacking)
+      #
+      # actions/checkout clones your repository into the runner's workspace.
+      # Without this step, your code isn't available!
       - name: Checkout code
         uses: actions/checkout@v4
+        # 'with:' provides input parameters to the action.
+        # Each action defines what inputs it accepts.
+        # See action docs: https://github.com/actions/checkout
         with:
+          # This repo uses git submodules, so we need 'recursive' to clone them.
+          # Options: true (1 level), recursive (all levels), false (none)
           submodules: recursive
 
+      # STEP 2: Setup Node.js
+      # -----------------------------------------------------------------------
+      # actions/setup-node configures the Node.js environment:
+      #   - Downloads and installs the specified Node.js version
+      #   - Adds it to PATH so 'node' and 'npm' commands work
+      #   - Optionally configures npm/yarn/pnpm caching
+      #
+      # CONTEXT EXPRESSION: ${{ matrix.node-version }}
+      # The ${{ }} syntax evaluates expressions and inserts the result.
+      # Here it accesses the current matrix value (20.x).
+      #
+      # Common contexts available:
+      #   github.*   - Event data, repo info, actor, SHA, etc.
+      #   env.*      - Environment variables
+      #   secrets.*  - Repository secrets
+      #   matrix.*   - Current matrix combination
+      #   steps.*    - Outputs from previous steps
+      #   runner.*   - Runner information
+      #   job.*      - Job-level information
       - name: Setup Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
+          # CACHING: Speeds up subsequent runs by caching npm's global cache.
+          # Supported values: 'npm', 'yarn', 'pnpm'
+          # This caches ~/.npm (not node_modules), which speeds up npm install.
+          # Cache key is automatically generated from package-lock.json hash.
           cache: 'npm'
 
+      # STEP 3: Install Dependencies
+      # -----------------------------------------------------------------------
+      # 'run:' executes shell commands directly on the runner.
+      # Default shell:
+      #   - Linux/macOS: bash
+      #   - Windows: PowerShell
+      #
+      # 'npm clean-install' (or 'npm ci') is preferred over 'npm install' in CI:
+      #   - Deletes node_modules first for clean state
+      #   - Installs EXACTLY what's in package-lock.json
+      #   - Faster than npm install
+      #   - Fails if package.json and lock file are out of sync
       - name: Install dependencies
         run: npm clean-install
 
+      # STEP 4: Run Tests with Coverage
+      # -----------------------------------------------------------------------
+      # Runs the test suite with coverage reporting.
+      # The '--' passes subsequent arguments to the underlying test runner.
+      # So 'npm test -- --run --coverage' becomes:
+      #   vitest --run --coverage (based on this project's package.json)
+      #
+      # --run: Run tests once and exit (vs watch mode)
+      # --coverage: Generate code coverage report
       - name: Run tests with coverage
         run: npm test -- --run --coverage
 
+      # STEP 5: Upload Coverage Artifacts
+      # -----------------------------------------------------------------------
+      # actions/upload-artifact saves files from the workflow run.
+      # Artifacts can be:
+      #   - Downloaded from the Actions UI
+      #   - Used by downstream jobs
+      #   - Used for debugging failed builds
+      #
+      # CONDITIONAL EXECUTION (if:)
+      # The 'if:' key controls whether a step runs.
+      # Common conditions:
+      #   if: always()                  - Run regardless of previous step status
+      #   if: success()                 - Only if all previous steps succeeded (default)
+      #   if: failure()                 - Only if a previous step failed
+      #   if: cancelled()               - Only if workflow was cancelled
+      #   if: github.ref == 'refs/heads/main'  - Branch check
+      #   if: github.event_name == 'push'      - Event type check
+      #
+      # Here, 'always()' ensures coverage is uploaded even if tests fail,
+      # which is useful for analyzing what failed.
       - name: Upload coverage reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
+          # Artifact name - appears in the Actions UI
+          # Using matrix value makes it unique when running multiple versions
           name: coverage-report-node-${{ matrix.node-version }}
+          # Path to upload (relative to workspace root)
           path: coverage/
+          # What to do if the path doesn't exist:
+          #   warn (default): Log warning but succeed
+          #   error: Fail the step
+          #   ignore: Silently succeed
           if-no-files-found: warn

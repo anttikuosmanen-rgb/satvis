@@ -19,19 +19,59 @@ import "./util/CesiumSampledPositionRawValueAccess";
 import { CesiumCallbackHelper } from "./util/CesiumCallbackHelper";
 
 export class SatelliteProperties {
+  /**
+   * Extract canonical name from a satellite name (strip all prefixes/suffixes)
+   * Used for lookups and comparisons
+   * @param {string} name - Raw satellite name (may include [Snapshot], [Custom], or * suffix)
+   * @returns {string} Canonical name without decorations
+   */
+  static extractCanonicalName(name) {
+    return name
+      .trim()
+      .replace(/^\[Snapshot\]\s*/i, "")
+      .replace(/^\[Custom\]\s*/i, "")
+      .replace(/\s*\*\s*$/, "")
+      .trim();
+  }
+
+  /**
+   * Extract display prefix from a satellite name
+   * @param {string} name - Raw satellite name
+   * @returns {string} The prefix (e.g., "[Snapshot] ", "[Custom] ") or empty string
+   */
+  static extractPrefix(name) {
+    const match = name.match(/^(\[(?:Snapshot|Custom)\]\s*)/i);
+    return match ? match[1] : "";
+  }
+
   constructor(tle, tags = []) {
-    this.name = tle.split("\n")[0].trim();
+    // Parse raw name from TLE (first line)
+    let rawName = tle.split("\n")[0].trim();
     if (tle.startsWith("0 ")) {
-      this.name = this.name.substring(2);
+      rawName = rawName.substring(2);
     }
-    this.orbit = new Orbit(this.name, tle);
+
+    // Extract canonical name (strip all prefixes/suffixes) - used for lookups
+    this.canonicalName = SatelliteProperties.extractCanonicalName(rawName);
+
+    // Store display decorations separately
+    this.displayPrefix = SatelliteProperties.extractPrefix(rawName);
+    this.displaySuffix = ""; // Will be set to " *" if epoch is in future
+
+    // Set initial name (will be updated with suffix if prelaunch)
+    this.name = rawName;
+
+    this.orbit = new Orbit(this.canonicalName, tle);
     this.satnum = this.orbit.satnum;
     this.tags = tags;
     this.overpassMode = "elevation";
 
+    // TLE signature for duplicate detection (lines 1+2, the actual orbital elements)
+    this.tleSignature = this.computeTleSignature(tle);
+
     // Check if epoch is in the future and add asterisk to name if so
-    this.baseName = this.name;
     if (this.isEpochInFuture()) {
+      this.displaySuffix = " *";
       this.name = `${this.name} *`;
     }
 
@@ -56,6 +96,31 @@ export class SatelliteProperties {
     this.tags = [...new Set(this.tags.concat(tags))];
   }
 
+  /**
+   * Compute TLE signature for duplicate detection
+   * Uses lines 1 and 2 (the actual orbital elements) to identify unique TLEs
+   * @param {string} tle - The TLE string
+   * @returns {string} Signature string for comparison
+   */
+  computeTleSignature(tle) {
+    const lines = tle.split("\n");
+    // Use lines 1 and 2 (the actual orbital elements)
+    // Line 0 is the name, which may differ for the same satellite
+    if (lines.length >= 3) {
+      return `${lines[1].trim()}|${lines[2].trim()}`;
+    }
+    // Fallback for 2-line TLE format
+    return lines.map((l) => l.trim()).join("|");
+  }
+
+  /**
+   * Get the full display name (prefix + canonical name + suffix)
+   * @returns {string} Full display name with all decorations
+   */
+  get displayName() {
+    return `${this.displayPrefix}${this.canonicalName}${this.displaySuffix}`;
+  }
+
   isEpochInFuture() {
     const { julianDate } = this.orbit;
     const julianDayNumber = Math.floor(julianDate);
@@ -65,14 +130,77 @@ export class SatelliteProperties {
     return JulianDate.compare(tleDate, now) > 0;
   }
 
+  getEpochJulianDate() {
+    const { julianDate } = this.orbit;
+    const julianDayNumber = Math.floor(julianDate);
+    const secondsOfDay = (julianDate - julianDayNumber) * 60 * 60 * 24;
+    return new JulianDate(julianDayNumber, secondsOfDay);
+  }
+
+  /**
+   * Get pre-launch position if satellite should be locked to launch site
+   * Returns position if: hasTag("Prelaunch") AND isEpochInFuture() AND time in [epoch-1h, epoch]
+   * @param {JulianDate} time - Current simulation time
+   * @param {LaunchSiteManager} launchSiteManager - Reference to launch site manager
+   * @returns {Cartesian3|null} Launch site position or null
+   */
+  getPreLaunchPosition(time, launchSiteManager) {
+    // Check if satellite has Prelaunch tag and epoch in future
+    if (!this.hasTag("Prelaunch") || !this.isEpochInFuture()) {
+      return null;
+    }
+
+    if (!launchSiteManager) {
+      return null;
+    }
+
+    const epochJD = this.getEpochJulianDate();
+    const epochMinus1h = JulianDate.addSeconds(epochJD, -3600, new JulianDate());
+    const epochMinus3days = JulianDate.addDays(epochJD, -3, new JulianDate());
+
+    // Don't show prelaunch satellite more than 3 days before epoch
+    if (JulianDate.compare(time, epochMinus3days) < 0) {
+      return "hidden";
+    }
+
+    // Lock to launch site until 1 hour before epoch, then follow orbit
+    if (JulianDate.compare(time, epochMinus1h) < 0) {
+      // Cache nearest launch site on first call
+      if (!this._cachedLaunchSite) {
+        // Use position at epoch minus 1 hour (first orbital position)
+        const firstPos = this.computePosition(epochMinus1h);
+        this._cachedLaunchSite = launchSiteManager.findNearestLaunchSite(firstPos.positionFixed);
+      }
+      return this._cachedLaunchSite?.cartesian;
+    }
+
+    return null;
+  }
+
   position(time) {
+    // Check for pre-launch override
+    if (this._launchSiteManager) {
+      const preLaunchPos = this.getPreLaunchPosition(time, this._launchSiteManager);
+      if (preLaunchPos === "hidden") {
+        // Don't show satellite more than 3 days before epoch
+        return undefined;
+      }
+      if (preLaunchPos) {
+        return preLaunchPos;
+      }
+    }
     return this.sampledPosition.fixed.getValue(time);
   }
 
   getSampledPositionsForNextOrbit(start, reference = "inertial", loop = true) {
     const end = JulianDate.addSeconds(start, this.orbit.orbitalPeriod * 60, new JulianDate());
-    const positions = this.sampledPosition[reference].getRawValues(start, end);
-    if (loop) {
+    const rawPositions = this.sampledPosition[reference].getRawValues(start, end);
+    // Filter out undefined positions (e.g., pre-launch satellites that are hidden)
+    const positions = rawPositions.filter((p) => p !== undefined);
+    if (positions.length === 0) {
+      return [];
+    }
+    if (loop && positions.length > 0) {
       // Readd the first position to the end of the array to close the loop
       return [...positions, positions[0]];
     }
@@ -104,7 +232,7 @@ export class SatelliteProperties {
 
     // Calculate desired sampling range (half orbit back, 1.5 orbits forward)
     let requestedStart = JulianDate.addSeconds(time, -orbitalPeriod / 2, new JulianDate());
-    const requestedStop = JulianDate.addSeconds(time, orbitalPeriod * 1.5, new JulianDate());
+    let requestedStop = JulianDate.addSeconds(time, orbitalPeriod * 1.5, new JulianDate());
 
     // For satellites with future epochs, don't try to sample before the epoch
     // SGP4 propagation is unreliable before the TLE epoch time
@@ -117,6 +245,11 @@ export class SatelliteProperties {
 
     if (JulianDate.compare(requestedStart, epochMinus1Hour) < 0) {
       requestedStart = epochMinus1Hour;
+      // When start is clamped to future epoch, ensure stop is also after start
+      // This allows prelaunch satellites to have valid samples when time jumps to after epoch
+      if (JulianDate.compare(requestedStop, requestedStart) <= 0) {
+        requestedStop = JulianDate.addSeconds(requestedStart, orbitalPeriod * 2, new JulianDate());
+      }
     }
 
     const request = new TimeInterval({
@@ -189,6 +322,7 @@ export class SatelliteProperties {
     });
     this.sampledPosition.fixed = new SampledPositionProperty();
     this.sampledPosition.fixed.backwardExtrapolationType = ExtrapolationType.HOLD;
+    this.sampledPosition.valid = true; // Initialize as valid
     this.sampledPosition.fixed.forwardExtrapolationType = ExtrapolationType.HOLD;
     this.sampledPosition.fixed.setInterpolationOptions({
       interpolationDegree: 5,
@@ -238,6 +372,13 @@ export class SatelliteProperties {
       return Cartesian3.ZERO;
     }
 
+    // Reset valid flag to true when we successfully compute a valid position
+    // This allows orbit components to be recreated after temporary invalidity
+    // (e.g., pre-launch satellites when scrubbing backwards in time before epoch)
+    if (this.sampledPosition.valid === false) {
+      this.sampledPosition.valid = true;
+    }
+
     return new Cartesian3(eci.x * 1000, eci.y * 1000, eci.z * 1000);
   }
 
@@ -246,13 +387,13 @@ export class SatelliteProperties {
 
     const temeToFixed = Transforms.computeTemeToPseudoFixedMatrix(timestamp);
     if (!defined(temeToFixed)) {
-      console.error("Reference frame transformation data failed to load");
+      return { positionFixed: positionInertialTEME, positionInertial: positionInertialTEME };
     }
     const positionFixed = Matrix3.multiplyByVector(temeToFixed, positionInertialTEME, new Cartesian3());
 
     const fixedToIcrf = Transforms.computeFixedToIcrfMatrix(timestamp);
     if (!defined(fixedToIcrf)) {
-      console.error("Reference frame transformation data failed to load");
+      return { positionFixed, positionInertial: positionFixed };
     }
     const positionInertialICRF = Matrix3.multiplyByVector(fixedToIcrf, positionFixed, new Cartesian3());
 
@@ -433,8 +574,8 @@ export class SatelliteProperties {
   }
 
   get swath() {
-    // Use baseName (without asterisk) for matching
-    const nameToMatch = this.baseName;
+    // Use canonicalName (without prefixes/suffixes) for matching
+    const nameToMatch = this.canonicalName;
 
     // Hardcoded swath for certain satellites
     if (["SUOMI NPP", "NOAA 20 (JPSS-1)", "NOAA 21 (JPSS-2)"].includes(nameToMatch)) {

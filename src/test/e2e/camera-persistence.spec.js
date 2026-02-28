@@ -104,9 +104,15 @@ test.describe("Camera Persistence", () => {
 
     // Verify camera offset storage is initialized
     await page.keyboard.press("Space"); // Go to GS
-    await page.waitForTimeout(200);
+    await page.waitForFunction(
+      () => {
+        const tracked = window.cc?.viewer?.trackedEntity;
+        return tracked && !tracked.name?.includes("ISS");
+      },
+      { timeout: 5000 },
+    );
     await page.keyboard.press("Space"); // Back to satellite
-    await page.waitForTimeout(200);
+    await page.waitForFunction(() => window.cc?._savedCameraOffsets?.size > 0, { timeout: 5000 });
 
     // Check that saved camera offsets exist
     const hasOffsets = await page.evaluate(() => {
@@ -234,13 +240,13 @@ test.describe("ESC Key Globe Reset", () => {
 
     // Verify no menu or info box is open
     await page.keyboard.press("Escape"); // Close any menu
-    await page.waitForTimeout(100);
+    await page.waitForFunction(() => !window.cc?.viewer?.selectedEntity, { timeout: 5000 }).catch(() => {});
 
     // Close info box if open
     const hasSelectedEntity = await page.evaluate(() => !!window.cc.viewer.selectedEntity);
     if (hasSelectedEntity) {
       await page.keyboard.press("Escape");
-      await page.waitForTimeout(100);
+      await page.waitForFunction(() => !window.cc?.viewer?.selectedEntity, { timeout: 5000 });
     }
 
     // Now press ESC - should reset to globe view
@@ -298,7 +304,7 @@ test.describe("ESC Key Globe Reset", () => {
 
     // First ESC should close info box
     await page.keyboard.press("Escape");
-    await page.waitForTimeout(100);
+    await page.waitForFunction(() => !window.cc?.viewer?.selectedEntity, { timeout: 5000 });
 
     let state = await page.evaluate(() => ({
       trackedEntity: window.cc.viewer.trackedEntity?.name,

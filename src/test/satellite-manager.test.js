@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SatelliteManager } from "../modules/SatelliteManager";
-import { ISS_TLE, ISS_TLE_FRESH, ISS_TLE_UPDATED, STARLINK_TLE, DUPLICATE_NAME_SAT1, DUPLICATE_NAME_SAT2, DUPLICATE_NAME_SAT3 } from "./fixtures/tle-data";
+import { ISS_TLE, ISS_TLE_FRESH, ISS_TLE_UPDATED, STARLINK_TLE, DUPLICATE_NAME_SAT1, DUPLICATE_NAME_SAT2, DUPLICATE_NAME_SAT3, FUTURE_EPOCH_TLE } from "./fixtures/tle-data";
 
 // Mock Cesium viewer
 const createMockViewer = () => ({
@@ -154,9 +154,10 @@ describe("SatelliteManager - TLE Parsing and Loading", () => {
     expect(names).toContain("StarSh [55001]");
     expect(names).toContain("StarSh [55002]");
 
-    // satellitesByName should have both satellites indexed correctly
-    expect(manager.satellitesByName.get("StarSh [55001]")).toBeDefined();
-    expect(manager.satellitesByName.get("StarSh [55002]")).toBeDefined();
+    // satellitesByCanonical should have both satellites indexed under same canonical name
+    const canonicalGroup = manager.satellitesByCanonical.get("StarSh");
+    expect(canonicalGroup).toBeDefined();
+    expect(canonicalGroup.length).toBe(2);
 
     // Add third satellite also named "StarSh" with NORAD 55003
     manager.addFromTle(DUPLICATE_NAME_SAT3, ["Classified"], false);
@@ -332,3 +333,121 @@ describe("SatelliteManager - Satellite Counting", () => {
     expect(manager.availableComponents).toContain("Orbit");
   });
 });
+
+describe("SatelliteManager - Future Epoch Satellites", () => {
+  let manager;
+  let mockViewer;
+
+  beforeEach(() => {
+    mockViewer = createMockViewer();
+    manager = new SatelliteManager(mockViewer);
+  });
+
+  it("should add asterisk suffix to satellite name when epoch is in future", () => {
+    manager.addFromTle(FUTURE_EPOCH_TLE, ["Prelaunch"], false);
+
+    const sat = manager.satellites[0];
+    // Future epoch satellites get " *" appended to their name
+    expect(sat.props.name).toBe("PRELAUNCH-SAT *");
+  });
+
+  it("should find future epoch satellite by name with asterisk suffix", () => {
+    manager.addFromTle(FUTURE_EPOCH_TLE, ["Prelaunch"], false);
+
+    const sat = manager.getSatellite("PRELAUNCH-SAT *");
+    expect(sat).toBeDefined();
+    expect(sat.props.name).toBe("PRELAUNCH-SAT *");
+  });
+
+  it("should find future epoch satellite by base name without asterisk (canonical lookup)", () => {
+    manager.addFromTle(FUTURE_EPOCH_TLE, ["Prelaunch"], false);
+
+    // Canonical lookup finds satellite regardless of * suffix
+    const sat = manager.getSatellite("PRELAUNCH-SAT");
+    expect(sat).toBeDefined();
+    expect(sat.props.canonicalName).toBe("PRELAUNCH-SAT");
+  });
+
+  it("should not mark future epoch satellite as stale", () => {
+    manager.addFromTle(FUTURE_EPOCH_TLE, ["Prelaunch"], false);
+
+    const sat = manager.satellites[0];
+    // Future epoch satellites should not be stale
+    expect(sat.props.isStale).toBe(false);
+  });
+});
+
+describe("SatelliteManager - Custom Satellite Naming", () => {
+  let manager;
+  let mockViewer;
+
+  beforeEach(() => {
+    mockViewer = createMockViewer();
+    manager = new SatelliteManager(mockViewer);
+  });
+
+  it("should create satellite with [Custom] prefix when TLE name starts with [Custom]", () => {
+    const customTle = `[Custom] MY SATELLITE
+1 99999U 99999A   ${generateFreshEpochForTest()}  .00000000  00000-0  00000-0 0  9999
+2 99999  45.0000 123.4567 0001234  67.8901 292.1234 15.12345678901234`;
+
+    manager.addFromTle(customTle, ["Custom"], false);
+
+    const sat = manager.satellites[0];
+    expect(sat.props.name).toBe("[Custom] MY SATELLITE");
+  });
+
+  it("should create future epoch custom satellite with both [Custom] prefix and * suffix", () => {
+    // Create a TLE with future epoch and [Custom] prefix
+    const futureEpoch = generateFutureEpochForTest();
+    const customFutureTle = `[Custom] FUTURE CUSTOM SAT
+1 99999U 99999A   ${futureEpoch}  .00000000  00000-0  00000-0 0  9999
+2 99999  45.0000 123.4567 0001234  67.8901 292.1234 15.12345678901234`;
+
+    manager.addFromTle(customFutureTle, ["Custom"], false);
+
+    const sat = manager.satellites[0];
+    // Should have both [Custom] prefix and * suffix
+    expect(sat.props.name).toBe("[Custom] FUTURE CUSTOM SAT *");
+  });
+
+  it("should find custom future epoch satellite by various name formats (canonical lookup)", () => {
+    const futureEpoch = generateFutureEpochForTest();
+    const customFutureTle = `[Custom] TEST SAT
+1 99999U 99999A   ${futureEpoch}  .00000000  00000-0  00000-0 0  9999
+2 99999  45.0000 123.4567 0001234  67.8901 292.1234 15.12345678901234`;
+
+    manager.addFromTle(customFutureTle, ["Custom"], false);
+
+    // Should be found by full name with asterisk
+    const sat = manager.getSatellite("[Custom] TEST SAT *");
+    expect(sat).toBeDefined();
+
+    // Canonical lookup also finds satellite without asterisk
+    const satWithoutAsterisk = manager.getSatellite("[Custom] TEST SAT");
+    expect(satWithoutAsterisk).toBeDefined();
+
+    // Canonical lookup finds satellite by base name only
+    const satByBaseName = manager.getSatellite("TEST SAT");
+    expect(satByBaseName).toBeDefined();
+    expect(satByBaseName.props.canonicalName).toBe("TEST SAT");
+  });
+});
+
+// Helper functions for generating TLE epochs in tests
+function generateFreshEpochForTest() {
+  const now = new Date();
+  const year = now.getUTCFullYear() % 100;
+  const startOfYear = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+  const dayOfYear = Math.floor((now - startOfYear) / (24 * 60 * 60 * 1000)) + 1;
+  return `${year.toString().padStart(2, "0")}${dayOfYear.toFixed(8).padStart(12, "0")}`;
+}
+
+function generateFutureEpochForTest() {
+  const future = new Date();
+  future.setDate(future.getDate() + 30);
+  const year = future.getUTCFullYear() % 100;
+  const startOfYear = new Date(Date.UTC(future.getUTCFullYear(), 0, 1));
+  const dayOfYear = Math.floor((future - startOfYear) / (24 * 60 * 60 * 1000)) + 1;
+  return `${year.toString().padStart(2, "0")}${dayOfYear.toFixed(8).padStart(12, "0")}`;
+}

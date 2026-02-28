@@ -56,7 +56,7 @@ export async function resumeAnimation(page) {
  * @param {boolean} [options.waitForEvent=false] - If true, only wait for the event, don't check existing passes
  */
 export async function waitForPassCalculation(page, options = {}) {
-  const { timeout = 60000, waitForEvent = false } = options;
+  const { timeout = 15000, waitForEvent = false } = options;
 
   // Set up the event listener once, outside of the polling loop
   // This prevents event listener leaks from waitForFunction polling

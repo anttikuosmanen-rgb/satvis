@@ -10,17 +10,23 @@ import {
   KeyboardEventModifier,
   LabelStyle,
   Math as CesiumMath,
+  Matrix4,
+  Ray,
   ScreenSpaceEventType,
+  Transforms,
   VerticalOrigin,
 } from "@cesium/engine";
 import { useSatStore } from "../stores/sat";
 import { SatelliteComponentCollection } from "./SatelliteComponentCollection";
+import { SatelliteProperties } from "./SatelliteProperties";
 import { GroundStationEntity } from "./GroundStationEntity";
 
 import { CesiumCleanupHelper } from "./util/CesiumCleanupHelper";
 import { CesiumTimelineHelper } from "./util/CesiumTimelineHelper";
 import { filterAndSortPasses } from "./util/PassFilter";
+import { GroundStationConditions } from "./util/GroundStationConditions";
 import { LoadingSpinner } from "./util/LoadingSpinner";
+import { formatZenithTooltip, formatSunTooltip } from "./util/zenithViewHelper";
 
 export class SatelliteManager {
   #enabledComponents = ["Point", "Label"];
@@ -41,8 +47,8 @@ export class SatelliteManager {
     this.viewer = viewer;
 
     this.satellites = [];
-    this.satellitesByName = new Map(); // O(1) lookup by name
-    this.availableComponents = ["Point", "Label", "Orbit", "Orbit track", "Visibility area", "Height stick", "3D model"];
+    this.satellitesByCanonical = new Map(); // O(1) lookup by canonical name -> sat[]
+    this.availableComponents = ["Point", "Label", "Orbit", "Orbit track", "Visibility area", "Height stick"];
 
     // Track whether initial TLE loading is complete
     // This prevents showing satellites before TLE data is loaded (race condition fix)
@@ -552,6 +558,10 @@ export class SatelliteManager {
 
   addFromTle(tle, tags, updateStore = true) {
     const sat = new SatelliteComponentCollection(this.viewer, tle, tags);
+    // Wire launchSiteManager reference to satellite for pre-launch position override
+    if (this.launchSiteManager) {
+      sat.props._launchSiteManager = this.launchSiteManager;
+    }
     this.#add(sat);
     if (updateStore) {
       this.updateStore();
@@ -559,76 +569,85 @@ export class SatelliteManager {
   }
 
   #add(newSat) {
-    const existingSat = this.satellitesByName.get(newSat.props.name);
-    if (existingSat && existingSat.props.satnum === newSat.props.satnum) {
-      // When TLE data is reloaded for an existing satellite, we need to:
-      // 1. Clean up the old satellite's entities
-      // 2. Merge tags from both old and new
-      // 3. Remove the old satellite
-      // 4. Add the new satellite with fresh TLE data
-      // This ensures orbital elements are updated when TLE files are refreshed
+    const canonical = newSat.props.canonicalName;
 
-      // Merge tags from existing satellite into new satellite
-      newSat.props.addTags(existingSat.props.tags);
+    // Initialize array for this canonical name if needed
+    if (!this.satellitesByCanonical.has(canonical)) {
+      this.satellitesByCanonical.set(canonical, []);
+    }
+
+    const existing = this.satellitesByCanonical.get(canonical);
+
+    // Check for true duplicate (same canonical name AND same TLE signature AND same prefix)
+    // Prefix check ensures [Snapshot] satellites aren't merged with originals even if TLE matches
+    const exactDuplicate = existing.find((s) => s.props.tleSignature === newSat.props.tleSignature && s.props.displayPrefix === newSat.props.displayPrefix);
+
+    if (exactDuplicate) {
+      // True duplicate - just merge tags, no need to replace
+      exactDuplicate.props.addTags(newSat.props.tags);
+      return;
+    }
+
+    // Check for TLE update (same canonical name AND same NORAD number, but different TLE)
+    // This handles the case where TLE files are refreshed with updated orbital elements
+    const samePhysicalSatellite = existing.find((s) => s.props.satnum === newSat.props.satnum && s.props.displayPrefix === newSat.props.displayPrefix);
+
+    if (samePhysicalSatellite) {
+      // Same physical satellite (same satnum and prefix) - update with newer TLE
+      // Merge tags from existing satellite into new one
+      newSat.props.addTags(samePhysicalSatellite.props.tags);
 
       // Clean up old satellite entities from Cesium viewer
-      if (existingSat.hide) {
-        existingSat.hide();
+      if (samePhysicalSatellite.hide) {
+        samePhysicalSatellite.hide();
       }
 
-      // Invalidate pass cache for old satellite
-      if (existingSat.invalidatePassCache) {
-        existingSat.invalidatePassCache();
+      // Invalidate pass cache
+      if (samePhysicalSatellite.invalidatePassCache) {
+        samePhysicalSatellite.invalidatePassCache();
       }
 
       // Remove old satellite from collections
-      const satIndex = this.satellites.indexOf(existingSat);
+      const satIndex = this.satellites.indexOf(samePhysicalSatellite);
       if (satIndex !== -1) {
         this.satellites.splice(satIndex, 1);
       }
-      this.satellitesByName.delete(newSat.props.name);
+      const existingIndex = existing.indexOf(samePhysicalSatellite);
+      if (existingIndex !== -1) {
+        existing.splice(existingIndex, 1);
+      }
 
       // Continue to add the new satellite with updated TLE data below
-    } else if (existingSat && existingSat.props.satnum !== newSat.props.satnum) {
-      // Duplicate name with different NORAD ID - disambiguate both satellites
+    } else if (existing.some((s) => s.props.displayPrefix === newSat.props.displayPrefix)) {
+      // Same canonical name and same prefix but different NORAD ID - disambiguate
       // This handles cases like multiple "StarSh" satellites in classified catalogs
+      // Skip disambiguation when prefixes differ (e.g., original vs [Snapshot] version)
 
-      // Rename the existing satellite if it doesn't already have NORAD ID appended
-      const existingName = existingSat.props.name;
-      if (!existingName.includes(`[${existingSat.props.satnum}]`)) {
-        const newExistingName = `${existingSat.props.baseName} [${existingSat.props.satnum}]`;
-        this.satellitesByName.delete(existingName);
-        existingSat.props.name = newExistingName;
-        existingSat.props.orbit.name = newExistingName; // Update orbit name for pass calculations
-        this.satellitesByName.set(newExistingName, existingSat);
-
-        // Update entity name if it exists (satellite is currently shown)
-        if (existingSat.components?.Point) {
-          existingSat.components.Point.name = newExistingName;
+      // Rename existing satellites with same prefix that don't already have NORAD ID appended
+      for (const sat of existing) {
+        if (sat.props.displayPrefix === newSat.props.displayPrefix && sat.props.satnum !== newSat.props.satnum && !sat.props.name.includes(`[${sat.props.satnum}]`)) {
+          const newName = `${sat.props.canonicalName} [${sat.props.satnum}]`;
+          sat.props.name = newName;
+          sat.props.orbit.name = newName;
+          if (sat.components?.Point) {
+            sat.components.Point.name = newName;
+          }
         }
       }
 
       // Rename the new satellite to include its NORAD ID
-      newSat.props.name = `${newSat.props.baseName} [${newSat.props.satnum}]`;
-      newSat.props.orbit.name = newSat.props.name; // Update orbit name for pass calculations
-    } else if (!existingSat) {
-      // Check if there are other satellites with the same baseName (already renamed)
-      // This handles the case when 3rd+ satellite with same name is added
-      const baseName = newSat.props.baseName;
-      const hasRenamedDuplicate = this.satellites.some((sat) => sat.props.baseName === baseName && sat.props.name !== baseName);
-      if (hasRenamedDuplicate) {
-        // Another satellite with this baseName was already renamed, so rename this one too
-        newSat.props.name = `${baseName} [${newSat.props.satnum}]`;
-        newSat.props.orbit.name = newSat.props.name; // Update orbit name for pass calculations
-      }
+      newSat.props.name = `${newSat.props.canonicalName} [${newSat.props.satnum}]`;
+      newSat.props.orbit.name = newSat.props.name;
     }
+
+    // New satellite or TLE update - add to collections
     if (this.groundStationAvailable) {
       newSat.groundStations = this.#groundStations;
     }
     // Set overpass mode for newly added satellite
     newSat.props.overpassMode = this.#overpassMode;
     this.satellites.push(newSat);
-    this.satellitesByName.set(newSat.props.name, newSat); // Add to index
+    existing.push(newSat);
 
     if (this.satIsActive(newSat)) {
       newSat.show(this.#enabledComponents);
@@ -735,8 +754,49 @@ export class SatelliteManager {
     return this.satellites.map((sat) => sat.props.name);
   }
 
+  /**
+   * Primary lookup method - handles any name format (with or without prefixes/suffixes)
+   * @param {string} name - Satellite name (can include [Snapshot], [Custom] prefix or * suffix)
+   * @returns {SatelliteComponentCollection|undefined} The satellite or undefined if not found
+   */
   getSatellite(name) {
-    return this.satellitesByName.get(name);
+    // Extract canonical name from search term
+    const canonical = SatelliteProperties.extractCanonicalName(name);
+
+    // Look up by canonical name
+    const matches = this.satellitesByCanonical.get(canonical) || [];
+    if (matches.length === 0) return undefined;
+    if (matches.length === 1) return matches[0];
+
+    // Multiple satellites with same canonical name (e.g., original + snapshot)
+    // First try exact display name match
+    const exactMatch = matches.find((s) => s.props.name === name);
+    if (exactMatch) return exactMatch;
+
+    // Otherwise return the one without prefix (original), or first match
+    return matches.find((s) => !s.props.displayPrefix) || matches[0];
+  }
+
+  /**
+   * Find satellite with specific prefix (e.g., for snapshot restore)
+   * @param {string} canonicalName - Canonical name (may include decorations - will be stripped)
+   * @param {string} prefix - The prefix to match (e.g., "[Snapshot] ")
+   * @returns {SatelliteComponentCollection|undefined} The satellite with matching prefix
+   */
+  getSatelliteWithPrefix(canonicalName, prefix) {
+    const canonical = SatelliteProperties.extractCanonicalName(canonicalName);
+    const matches = this.satellitesByCanonical.get(canonical) || [];
+    return matches.find((s) => s.props.displayPrefix === prefix);
+  }
+
+  /**
+   * Get all satellites with same canonical name
+   * @param {string} canonicalName - Canonical name (may include decorations - will be stripped)
+   * @returns {SatelliteComponentCollection[]} Array of satellites with matching canonical name
+   */
+  getSatellitesByCanonical(canonicalName) {
+    const canonical = SatelliteProperties.extractCanonicalName(canonicalName);
+    return this.satellitesByCanonical.get(canonical) || [];
   }
 
   refreshLabels() {
@@ -1406,6 +1466,173 @@ export class SatelliteManager {
 
     // Add custom mouse wheel handler for FOV zoom
     const canvas = this.viewer.scene.canvas;
+
+    // ── Zenith view interaction: Alt/Az tooltip + sun symbol ──────────────────
+    const R2D = 180 / Math.PI;
+    const gsCartesian = Cartesian3.fromDegrees(position.longitude, position.latitude, position.height);
+    const enuMatrix = Transforms.eastNorthUpToFixedFrame(gsCartesian);
+
+    // Helper: screen position → Alt/Az
+    const screenToAltAz = (mousePos) => {
+      const ray = this.viewer.camera.getPickRay(mousePos, new Ray());
+      if (!ray) return null;
+      const invEnu = Matrix4.inverseTransformation(enuMatrix, new Matrix4());
+      const d = Matrix4.multiplyByPointAsVector(invEnu, ray.direction, new Cartesian3());
+      const alt = Math.atan2(d.z, Math.hypot(d.x, d.y)) * R2D;
+      const az = (Math.atan2(d.x, d.y) * R2D + 360) % 360;
+      return { alt, az };
+    };
+
+    // Helper: project sun's actual position to screen.
+    // Uses manual perspective projection (camera vectors + trig) instead of
+    // cartesianToCanvasCoordinates which is unreliable near the FOV boundary.
+    // Returns screen {x, y} if the sun is on-screen, null if behind camera or off-screen.
+    const sunDirToScreen = (sunAltDeg, sunAzDeg) => {
+      const cam = this.viewer.camera;
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
+
+      // Sun direction in ENU at its actual altitude
+      const altR = (sunAltDeg * Math.PI) / 180;
+      const azR = (sunAzDeg * Math.PI) / 180;
+      const sunENU = new Cartesian3(Math.cos(altR) * Math.sin(azR), Math.cos(altR) * Math.cos(azR), Math.sin(altR));
+
+      // ENU → world (ECEF)
+      const sunWorld = Matrix4.multiplyByPointAsVector(enuMatrix, sunENU, new Cartesian3());
+      Cartesian3.normalize(sunWorld, sunWorld);
+
+      // Project onto camera axes
+      const dotFwd = Cartesian3.dot(sunWorld, cam.direction);
+      if (dotFwd <= 0.01) return null; // behind camera or at extreme edge
+
+      const dotRight = Cartesian3.dot(sunWorld, cam.right);
+      const dotUp = Cartesian3.dot(sunWorld, cam.up);
+
+      // Perspective projection
+      const fov = cam.frustum.fov;
+      const f = w >= h ? w / 2 / Math.tan(fov / 2) : h / 2 / Math.tan(fov / 2);
+
+      const sx = w / 2 + (dotRight / dotFwd) * f;
+      const sy = h / 2 - (dotUp / dotFwd) * f;
+
+      // Only show if on screen
+      if (sx < -10 || sx > w + 10 || sy < -10 || sy > h + 10) return null;
+      return { x: sx, y: sy };
+    };
+
+    // Tooltip div
+    const tooltip = document.createElement("div");
+    tooltip.dataset.testid = "zenith-tooltip";
+    tooltip.style.cssText = `
+      position: absolute; pointer-events: none; display: none;
+      background: rgba(0,0,0,0.75); color: #fff; padding: 5px 10px;
+      border-radius: 4px; font-family: monospace; font-size: 13px;
+      z-index: 1001; white-space: pre; line-height: 1.5;
+    `;
+    this.viewer.container.appendChild(tooltip);
+
+    // Sun symbol div — needs z-index > canvas (z-index:0) to be visible.
+    // Cesium UI chrome (toolbar, animation, timeline) is given z-index:1002 via injected CSS
+    // during zenith view so it renders on top of the symbol.
+    const sunSymbol = document.createElement("div");
+    sunSymbol.dataset.testid = "zenith-sun-symbol";
+    sunSymbol.textContent = "☀";
+    sunSymbol.style.cssText = `
+      position: absolute; font-size: 20px; display: none; cursor: default;
+      z-index: 1001; transform: translate(-50%, -50%);
+      filter: drop-shadow(0 0 3px rgba(255,180,0,0.9));
+      pointer-events: auto;
+    `;
+    this.viewer.container.appendChild(sunSymbol);
+
+    // Elevate Cesium UI chrome above the sun symbol while zenith view is active.
+    const zenithUiCss = document.createElement("style");
+    zenithUiCss.textContent = `
+      .cesium-viewer-toolbar,
+      .cesium-viewer-animationContainer,
+      .cesium-viewer-timelineContainer,
+      .cesium-viewer-fullscreenContainer,
+      .cesium-viewer-vrContainer { z-index: 1002 !important; }
+    `;
+    document.head.appendChild(zenithUiCss);
+
+    // Mouse move: hide tooltip immediately, show after 1.5 s of stillness
+    let tooltipTimer = null;
+    const mouseMoveHandler = (event) => {
+      tooltip.style.display = "none";
+      clearTimeout(tooltipTimer);
+      const rect = canvas.getBoundingClientRect();
+      const mousePos = new Cartesian2(event.clientX - rect.left, event.clientY - rect.top);
+      tooltipTimer = setTimeout(() => {
+        const altAz = screenToAltAz(mousePos);
+        if (!altAz) return;
+        const picked = this.viewer.scene.pick(mousePos);
+        const state = picked?.id?._smartPathState;
+        tooltip.textContent = formatZenithTooltip(altAz.alt, altAz.az, state);
+        tooltip.style.left = mousePos.x + 16 + "px";
+        tooltip.style.top = mousePos.y - 8 + "px";
+        tooltip.style.display = "block";
+      }, 1500);
+    };
+
+    const mouseLeaveHandler = () => {
+      clearTimeout(tooltipTimer);
+      tooltip.style.display = "none";
+    };
+
+    canvas.addEventListener("mousemove", mouseMoveHandler);
+    canvas.addEventListener("mouseleave", mouseLeaveHandler);
+
+    // Sun symbol hover — show tooltip immediately (no delay for explicit hover)
+    sunSymbol.addEventListener("mouseenter", (e) => {
+      clearTimeout(tooltipTimer);
+      const sunPos = cachedSunPos || GroundStationConditions.getSunPosition(position, JulianDate.toDate(this.viewer.clock.currentTime));
+      tooltip.textContent = formatSunTooltip(sunPos.altitude, sunPos.azimuth);
+      const rect = canvas.getBoundingClientRect();
+      tooltip.style.left = e.clientX - rect.left + 16 + "px";
+      tooltip.style.top = e.clientY - rect.top - 8 + "px";
+      tooltip.style.display = "block";
+    });
+    sunSymbol.addEventListener("mousemove", (e) => {
+      const rect = canvas.getBoundingClientRect();
+      tooltip.style.left = e.clientX - rect.left + 16 + "px";
+      tooltip.style.top = e.clientY - rect.top - 8 + "px";
+    });
+    sunSymbol.addEventListener("mouseleave", () => {
+      tooltip.style.display = "none";
+    });
+
+    // Sun position cache — recalculate every 30s of simulated time
+    let cachedSunPos = null;
+    let cachedSunSimTime = 0;
+    const SUN_CACHE_SIM_SEC = 30;
+
+    // Sun symbol position update (runs on each clock tick)
+    const updateSunSymbol = () => {
+      const simTime = JulianDate.toDate(this.viewer.clock.currentTime).getTime() / 1000;
+      if (!cachedSunPos || Math.abs(simTime - cachedSunSimTime) > SUN_CACHE_SIM_SEC) {
+        const time = JulianDate.toDate(this.viewer.clock.currentTime);
+        cachedSunPos = GroundStationConditions.getSunPosition(position, time);
+        cachedSunSimTime = simTime;
+      }
+      const inTwilight = cachedSunPos.altitude < 0 && cachedSunPos.altitude > -18;
+      if (!inTwilight) {
+        sunSymbol.style.display = "none";
+        return;
+      }
+      const screen = sunDirToScreen(cachedSunPos.altitude, cachedSunPos.azimuth);
+      if (!screen) {
+        sunSymbol.style.display = "none";
+        return;
+      }
+      sunSymbol.style.left = screen.x + "px";
+      sunSymbol.style.top = screen.y + "px";
+      sunSymbol.style.display = "block";
+    };
+    const clockTickRemover = this.viewer.clock.onTick.addEventListener(updateSunSymbol);
+    updateSunSymbol(); // Populate immediately on enter
+    // ── end zenith interaction ────────────────────────────────────────────────
+
     const wheelHandler = (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -1432,8 +1659,12 @@ export class SatelliteManager {
 
     // Add post-render event to keep horizon level (roll = 0)
     const postRenderListener = this.viewer.scene.postRender.addEventListener(() => {
-      // Force camera roll to 0 to keep horizon level
-      if (this.viewer.camera.roll !== 0) {
+      // Force camera roll to 0 to keep horizon level.
+      // Skip when near zenith (pitch ≈ 90°): at that angle camera.heading is ambiguous
+      // due to gimbal lock, and calling setView(heading=...) corrupts camera.right,
+      // breaking the sun symbol edge-clamping fallback.
+      const nearZenith = Math.abs(this.viewer.camera.pitch - CesiumMath.PI_OVER_TWO) < 0.2;
+      if (this.viewer.camera.roll !== 0 && !nearZenith) {
         const heading = this.viewer.camera.heading;
         const pitch = this.viewer.camera.pitch;
         this.viewer.camera.setView({
@@ -1475,6 +1706,14 @@ export class SatelliteManager {
       zenithEntities.forEach((entity) => {
         this.viewer.entities.remove(entity);
       });
+      // Remove zenith interaction elements and listeners
+      canvas.removeEventListener("mousemove", mouseMoveHandler);
+      canvas.removeEventListener("mouseleave", mouseLeaveHandler);
+      clearTimeout(tooltipTimer);
+      clockTickRemover();
+      if (tooltip.parentNode) tooltip.parentNode.removeChild(tooltip);
+      if (sunSymbol.parentNode) sunSymbol.parentNode.removeChild(sunSymbol);
+      if (zenithUiCss.parentNode) zenithUiCss.parentNode.removeChild(zenithUiCss);
       // Restore previous camera mode if it was changed
       if (previousCameraMode && window.cc) {
         window.cc.cameraMode = previousCameraMode;
