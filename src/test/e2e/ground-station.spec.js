@@ -15,6 +15,57 @@ import { buildFreshIssUrl } from "./helpers/fresh-tle.js";
  * - Time navigation when selecting passes
  */
 
+/**
+ * Shared setup: load fresh ISS TLE with ground station, widen timeline,
+ * select the ground station entity, and wait for pass highlights to appear.
+ */
+async function setupWithPassHighlights(page) {
+  await page.goto(buildFreshIssUrl({ gs: "48.1351,11.5820", hideLight: false, onlyLit: false }));
+  await expect(page.locator("#cesiumContainer canvas").first()).toBeVisible({ timeout: 15000 });
+  await waitForAppReady(page);
+  await waitForPassCalculation(page);
+
+  // Widen timeline to 4 days (passes may be beyond default 24h view)
+  await page.evaluate(() => {
+    const now = window.cc.viewer.clock.currentTime;
+    window.cc.viewer.timeline.zoomTo({ dayNumber: now.dayNumber - 1, secondsOfDay: now.secondsOfDay }, { dayNumber: now.dayNumber + 3, secondsOfDay: now.secondsOfDay });
+  });
+
+  // Deselect then select GS (wait for event to process)
+  await page.evaluate(() => {
+    return new Promise((resolve) => {
+      const viewer = window.cc.viewer;
+      if (!viewer.selectedEntity) {
+        resolve();
+        return;
+      }
+      viewer.selectedEntityChanged.addEventListener(function handler() {
+        viewer.selectedEntityChanged.removeEventListener(handler);
+        setTimeout(resolve, 200);
+      });
+      viewer.selectedEntity = undefined;
+    });
+  });
+  await page.evaluate(() => {
+    const gs = window.cc?.sats?.groundStations?.[0];
+    if (gs?.components?.Groundstation) {
+      window.cc.viewer.selectedEntity = gs.components.Groundstation;
+    }
+  });
+
+  // Wait for pass highlights (_base === 0) to appear on timeline
+  await expect
+    .poll(
+      async () => {
+        return page.evaluate(() => {
+          return (window.cc?.viewer?.timeline?._highlightRanges || []).filter((h) => h._base === 0).length;
+        });
+      },
+      { timeout: 15000 },
+    )
+    .toBeGreaterThan(0);
+}
+
 test.describe("Ground Station", () => {
   test("should create ground station via pick on map and verify entity is rendered", async ({ page }) => {
     // Start with ISS satellite loaded
@@ -211,7 +262,7 @@ test.describe("Ground Station", () => {
       "STARLINK-1090",
       "STARLINK-1107",
     ];
-    await page.goto(`/?sats=${satellites.join(",")}&gs=48.1351,11.5820,Munich&hideLight=0&onlyLit=0`);
+    await page.goto(`/?sats=${satellites.join(",")}&gs=48.1351,11.5820&hideLight=0&onlyLit=0`);
 
     // Set up pass calculation event listener immediately to avoid race condition
     // When satellites and ground station are in URL, pass calculation starts immediately
@@ -369,160 +420,111 @@ test.describe("Ground Station", () => {
     }
   });
 
-  test("should show pass visibility in timeline", async ({ page }) => {
-    // Start with ISS and ground station
-    await page.goto("/?sats=ISS~(ZARYA)&gs=48.1351,11.5820,Munich");
+  test("should create pass highlights that match actual satellite passes", async ({ page }) => {
+    await setupWithPassHighlights(page);
 
-    await expect(page.locator("#cesiumContainer canvas").first()).toBeVisible({ timeout: 15000 });
+    // Verify each pass highlight matches an actual satellite pass
+    const result = await page.evaluate(() => {
+      const issSat = window.cc?.sats?.satellites?.find((s) => s.props?.name?.includes("ISS (ZARYA)"));
+      const ranges = window.cc?.viewer?.timeline?._highlightRanges || [];
+      const passHighlights = ranges.filter((h) => h._base === 0);
+      const passes = issSat?.props?.passes || [];
 
-    // Wait for full Cesium scene initialization
-    await page.waitForFunction(
-      () => {
-        const viewer = window.cc?.viewer;
-        if (!viewer || !viewer.scene) return false;
-        return viewer.scene.globe && viewer.scene.globe._surface;
-      },
-      { timeout: 20000 },
-    );
+      const julianToSeconds = (jd) => (jd.dayNumber - 2440587.5) * 86400 + jd.secondsOfDay;
+      const dateToSeconds = (d) => new Date(d).getTime() / 1000;
 
-    // Removed unnecessary waitForTimeout
+      // Check all highlights have valid time ranges (start < stop)
+      const allValid = passHighlights.every((h) => {
+        if (!h._start || !h._stop) return false;
+        return julianToSeconds(h._start) < julianToSeconds(h._stop);
+      });
 
-    // Trigger timeline change to force pass calculation
-    await page.evaluate(() => {
-      if (window.cc?.viewer?.timeline) {
-        window.cc.viewer.timeline.updateFromClock();
-      }
-    });
-
-    // Wait for pass calculation to complete
-    await waitForPassCalculation(page, { checkHighlights: false });
-
-    // Verify timeline exists
-    const timeline = page.locator(".cesium-timeline-main");
-    await expect(timeline).toBeVisible({ timeout: 5000 });
-
-    // Check for timeline highlight ranges (pass visualization)
-    const timelineHighlights = await page.evaluate(() => {
-      const viewer = window.cc?.viewer;
-      if (!viewer || !viewer.timeline) return { found: false, count: 0 };
-
-      // Check if timeline has highlight ranges (pass indicators)
-      const highlightRanges = viewer.timeline._highlightRanges || [];
+      // Check each highlight matches an actual pass within 60s tolerance
+      const tolerance = 60;
+      const allMatch = passHighlights.every((h) => {
+        const hStart = julianToSeconds(h._start);
+        const hStop = julianToSeconds(h._stop);
+        return passes.some((p) => {
+          const pStart = dateToSeconds(p.start);
+          const pEnd = dateToSeconds(p.end);
+          return Math.abs(hStart - pStart) < tolerance && Math.abs(hStop - pEnd) < tolerance;
+        });
+      });
 
       return {
-        found: highlightRanges.length > 0,
-        count: highlightRanges.length,
-        highlights: highlightRanges.slice(0, 3).map((h) => ({
-          start: h.start?.toString(),
-          stop: h.stop?.toString(),
-          color: h.color?.toCssColorString?.(),
-        })),
+        passCount: passes.length,
+        highlightCount: passHighlights.length,
+        allValid,
+        allMatch,
       };
     });
 
-    // Timeline should exist and have highlights (day/night cycles are always present)
-    expect(timelineHighlights.found).toBe(true);
-    expect(timelineHighlights.count).toBeGreaterThan(0);
-
-    // Note: Pass-specific highlights depend on pass calculation which depends on
-    // TLE freshness and orbital timing. We verify timeline infrastructure works.
+    expect(result.passCount).toBeGreaterThan(0);
+    expect(result.highlightCount).toBeGreaterThan(0);
+    expect(result.allValid).toBe(true);
+    expect(result.allMatch).toBe(true);
   });
 
-  test("should change time when selecting a pass from timeline", async ({ page }) => {
-    // Start with ISS and ground station
-    // Disable pass filters to test unfiltered passes
-    await page.goto("/?sats=ISS~(ZARYA)&gs=48.1351,11.5820,Munich&hideLight=0&onlyLit=0");
+  test("should jump clock to pass time when clicking a timeline highlight", async ({ page }) => {
+    await setupWithPassHighlights(page);
 
-    await expect(page.locator("#cesiumContainer canvas").first()).toBeVisible({ timeout: 15000 });
+    // Record initial clock time, find first highlight, compute click position
+    const clickData = await page.evaluate(() => {
+      const viewer = window.cc.viewer;
+      const timeline = viewer.timeline;
+      const ranges = timeline._highlightRanges || [];
+      const passHighlights = ranges.filter((h) => h._base === 0);
 
-    // Wait for full Cesium scene initialization
-    await page.waitForFunction(
-      () => {
-        const viewer = window.cc?.viewer;
-        if (!viewer || !viewer.scene) return false;
-        return viewer.scene.globe && viewer.scene.globe._surface;
-      },
-      { timeout: 20000 },
-    );
+      if (passHighlights.length === 0) return null;
 
-    // Removed unnecessary waitForTimeout
+      const julianToSeconds = (jd) => (jd.dayNumber - 2440587.5) * 86400 + jd.secondsOfDay;
 
-    // Set simulation time to current date (matches TLE epoch ~Nov 2025) to ensure passes exist
-    await page.evaluate(() => {
-      if (window.cc?.viewer?.clock && typeof window.Cesium !== "undefined") {
-        const testDate = new Date();
-        const julianDate = window.Cesium.JulianDate.fromDate(testDate);
-        window.cc.viewer.clock.currentTime = julianDate;
-        window.cc.viewer.clock.shouldAnimate = false;
-      }
-    });
+      const h = passHighlights[0];
+      const hMidSec = (julianToSeconds(h._start) + julianToSeconds(h._stop)) / 2;
+      const tlStartSec = julianToSeconds(timeline._startJulian);
+      const tlStopSec = julianToSeconds(timeline._endJulian);
+      const ratio = (hMidSec - tlStartSec) / (tlStopSec - tlStartSec);
 
-    // Removed unnecessary waitForTimeout
-
-    // Trigger timeline change to force pass calculation
-    await page.evaluate(() => {
-      if (window.cc?.viewer?.timeline) {
-        window.cc.viewer.timeline.updateFromClock();
-      }
-    });
-
-    // Wait for pass calculation to complete
-    await waitForPassCalculation(page, { checkHighlights: false });
-
-    // Get initial clock time
-    const initialTime = await page.evaluate(() => {
-      return window.cc?.viewer?.clock?.currentTime?.toString();
-    });
-
-    // Get first pass start time
-    const firstPassTime = await page.evaluate(() => {
-      const sats = window.cc?.sats?.satellites;
-      if (!sats || sats.length === 0) return null;
-
-      const issSat = sats.find((s) => s.props?.name === "ISS (ZARYA)");
-      if (!issSat || !issSat.props?.passes || issSat.props.passes.length === 0) {
-        return null;
-      }
-
-      const firstPass = issSat.props.passes[0];
       return {
-        start: firstPass.start,
-        end: firstPass.end,
-        name: firstPass.name,
+        initialTimeSec: julianToSeconds(viewer.clock.currentTime),
+        highlightStartSec: julianToSeconds(h._start),
+        highlightStopSec: julianToSeconds(h._stop),
+        ratio,
       };
     });
 
-    // With simulation time set to current date (matching TLE epoch), passes MUST exist
-    expect(firstPassTime).not.toBeNull();
+    expect(clickData).not.toBeNull();
+    expect(clickData.ratio).toBeGreaterThan(0);
+    expect(clickData.ratio).toBeLessThan(1);
 
-    // Try to click on timeline to jump to pass
-    // This tests timeline interaction
-    const timeline = page.locator(".cesium-timeline-main");
-    if (await timeline.isVisible()) {
-      const box = await page.evaluate(() => {
-        const el = document.querySelector(".cesium-timeline-main");
-        if (!el) return null;
-        const rect = el.getBoundingClientRect();
-        return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
-      });
-      if (box) {
-        // Click near the start of timeline (where first pass might be)
-        await page.mouse.click(box.x + 100, box.y + box.height / 2);
-        // Removed unnecessary waitForTimeout
+    // Get timeline bounding box and click at the highlight position
+    const timelineBoundingBox = await page.evaluate(() => {
+      const el = document.querySelector(".cesium-viewer-timelineContainer");
+      if (!el) return null;
+      const rect = el.getBoundingClientRect();
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    });
+    expect(timelineBoundingBox).not.toBeNull();
 
-        const newTime = await page.evaluate(() => {
-          return window.cc?.viewer?.clock?.currentTime?.toString();
-        });
+    const clickX = timelineBoundingBox.x + timelineBoundingBox.width * clickData.ratio;
+    const clickY = timelineBoundingBox.y + timelineBoundingBox.height / 2;
+    await page.mouse.click(clickX, clickY);
 
-        // Verify time changed (might not exactly match pass time, but should be different)
-        expect(newTime).not.toBe(initialTime);
-      }
-    }
+    // Verify clock jumped to within the highlight's time range (±60s tolerance)
+    const newTimeSec = await page.evaluate(() => {
+      const jd = window.cc.viewer.clock.currentTime;
+      return (jd.dayNumber - 2440587.5) * 86400 + jd.secondsOfDay;
+    });
+
+    const tolerance = 60;
+    expect(newTimeSec).not.toBe(clickData.initialTimeSec);
+    expect(newTimeSec).toBeGreaterThanOrEqual(clickData.highlightStartSec - tolerance);
+    expect(newTimeSec).toBeLessThanOrEqual(clickData.highlightStopSec + tolerance);
   });
 
   test("should update ground station link when satellite is selected @critical", async ({ page }) => {
     // Start with ISS and ground station
-    await page.goto("/?sats=ISS~(ZARYA)&gs=48.1351,11.5820,Munich");
+    await page.goto("/?sats=ISS~(ZARYA)&gs=48.1351,11.5820");
 
     await expect(page.locator("#cesiumContainer canvas").first()).toBeVisible({ timeout: 15000 });
     // Removed unnecessary waitForTimeout
@@ -554,10 +556,9 @@ test.describe("Ground Station", () => {
     expect(linkEntity).toBeDefined();
   });
 
-  test("should skip to pass time when clicking on timeline highlight", async ({ page }) => {
-    // Start with ISS and ground station using fresh TLE to avoid staleness
-    // Disable pass filters to test unfiltered passes
-    await page.goto(buildFreshIssUrl({ gs: "48.1351,11.5820,Munich", hideLight: false, onlyLit: false }));
+  test("should recalculate passes and highlights after zooming out and clicking timeline 24h ahead", async ({ page }) => {
+    // Start with ISS and ground station using fresh TLE
+    await page.goto(buildFreshIssUrl({ gs: "48.1351,11.5820", hideLight: false, onlyLit: false }));
 
     await expect(page.locator("#cesiumContainer canvas").first()).toBeVisible({ timeout: 15000 });
     await waitForAppReady(page);
@@ -989,25 +990,32 @@ test.describe("Ground Station", () => {
     // Wait for pass calculation to complete
     await waitForPassCalculation(page, { timeout: 30000 });
 
-    // Verify initial passes exist
+    // Verify initial passes and pass highlights exist
     const initialState = await page.evaluate(() => {
       const viewer = window.cc?.viewer;
-      const issSat = window.cc?.sats?.satellites?.find((s) => s.props?.name === "ISS (ZARYA)");
+      const issSat = window.cc?.sats?.satellites?.find((s) => s.props?.name?.includes("ISS (ZARYA)"));
+      const ranges = viewer?.timeline?._highlightRanges || [];
       return {
         time: viewer?.clock?.currentTime?.toString(),
         passCount: issSat?.props?.passes?.length || 0,
         hasTimeline: !!viewer?.timeline,
-        totalHighlights: (viewer?.timeline?._highlightRanges || []).length,
+        passHighlightCount: ranges.filter((h) => h._base === 0).length,
       };
     });
 
     expect(initialState.passCount).toBeGreaterThan(0);
     expect(initialState.hasTimeline).toBe(true);
-    // Timeline should at least have day/night highlights
-    expect(initialState.totalHighlights).toBeGreaterThan(0);
+    expect(initialState.passHighlightCount).toBeGreaterThan(0);
 
-    // Pause animation before interacting with timeline
-    await pauseAnimation(page);
+    // Select the ground station entity so that the recalculation path
+    // (updatePassHighlightsAfterTimelineChange) runs after the time jump.
+    // ClockMonitor fires cesium:clockTimeJumped which triggers a debounced recalculation.
+    await page.evaluate(() => {
+      const gs = window.cc?.sats?.groundStations?.[0];
+      if (gs?.components?.Groundstation) {
+        window.cc.viewer.selectedEntity = gs.components.Groundstation;
+      }
+    });
 
     // Click the zoom-out button ("-") three times to widen the timeline
     const zoomOutButton = page.locator('button.timeline-button:has-text("-")');
@@ -1017,7 +1025,7 @@ test.describe("Ground Station", () => {
       await zoomOutButton.click({ force: true });
     }
 
-    // Calculate timeline position 24 hours in the future and click it
+    // Calculate timeline position 24 hours in the future
     const futureClickData = await page.evaluate(() => {
       const viewer = window.cc?.viewer;
       if (!viewer || !viewer.timeline) return { success: false };
@@ -1044,41 +1052,43 @@ test.describe("Ground Station", () => {
     });
     expect(timelineBoundingBox).not.toBeNull();
 
-    const clickX = timelineBoundingBox.x + timelineBoundingBox.width * futureClickData.futureRatio;
-    const clickY = timelineBoundingBox.y + timelineBoundingBox.height / 2;
-
-    // Click on the timeline to jump 24h ahead
-    await page.mouse.click(clickX, clickY);
-
-    // Wait for passes to be recalculated after the time jump
-    await waitForPassCalculation(page, { timeout: 30000 });
-
-    // Verify the time jump and pass recalculation
-    const newState = await page.evaluate(() => {
-      const viewer = window.cc?.viewer;
-      const issSat = window.cc?.sats?.satellites?.find((s) => s.props?.name === "ISS (ZARYA)");
-      return {
-        time: viewer?.clock?.currentTime?.toString(),
-        passCount: issSat?.props?.passes?.length || 0,
-      };
+    // Tag existing highlights before clicking so we can verify new ones are created
+    await page.evaluate(() => {
+      const ranges = window.cc.viewer.timeline._highlightRanges.filter((h) => h._base === 0);
+      ranges.forEach((h) => {
+        h._preJump = true;
+      });
     });
 
-    // Verify time changed
-    expect(newState.time).not.toBe(initialState.time);
+    // Click on the timeline to jump 24h ahead.
+    // Animation is running so ClockMonitor detects the jump and triggers recalculation.
+    const clickX = timelineBoundingBox.x + timelineBoundingBox.width * futureClickData.futureRatio;
+    const clickY = timelineBoundingBox.y + timelineBoundingBox.height / 2;
+    await page.mouse.click(clickX, clickY);
 
     // Verify time jumped approximately 24 hours
-    const initialDate = new Date(initialState.time);
-    const newDate = new Date(newState.time);
-    const diffHours = (newDate.getTime() - initialDate.getTime()) / (1000 * 60 * 60);
+    const newTime = await page.evaluate(() => window.cc?.viewer?.clock?.currentTime?.toString());
+    expect(newTime).not.toBe(initialState.time);
+    const diffHours = (new Date(newTime).getTime() - new Date(initialState.time).getTime()) / (1000 * 60 * 60);
     expect(Math.abs(diffHours - 24)).toBeLessThan(1);
 
-    // Verify passes were recalculated
-    expect(newState.passCount).toBeGreaterThan(0);
+    // Wait for new (untagged) pass highlights to appear.
+    // The debounced recalculation (3s) clears old highlights and adds new ones.
+    await expect
+      .poll(
+        async () => {
+          return page.evaluate(() => {
+            return (window.cc?.viewer?.timeline?._highlightRanges || []).filter((h) => h._base === 0 && !h._preJump).length;
+          });
+        },
+        { timeout: 15000 },
+      )
+      .toBeGreaterThan(0);
   });
 
   test("should recalculate daylight highlights after navigating timeline past initial range", async ({ page }) => {
     // Load with ISS and a ground station (Munich) to trigger daylight highlights
-    await page.goto("/?sats=ISS~(ZARYA)&gs=48.1351,11.5820,Munich");
+    await page.goto("/?sats=ISS~(ZARYA)&gs=48.1351,11.5820");
 
     await expect(page.locator("#cesiumContainer canvas").first()).toBeVisible({ timeout: 15000 });
     await waitForAppReady(page);

@@ -446,53 +446,40 @@ export class SatelliteProperties {
   }
 
   /**
-   * Calculate the visible area width from satellite altitude
-   * This represents the diameter of the area on Earth's surface from which
-   * the satellite can be seen above the horizon (minimum 10° elevation)
+   * Compute the ground visibility radius for a satellite at a given altitude.
+   * Uses the Earth central angle formula: λ = arccos(R·cos(ε) / (R+h)) − ε
+   *
+   * @param {number} altitudeKm - Satellite altitude in kilometers
+   * @param {number} minElevation - Minimum elevation angle in degrees (default: 10°)
+   * @returns {number} Ground visibility radius in kilometers (arc distance)
+   */
+  static computeVisibilityRadius(altitudeKm, minElevation = 10) {
+    const earthRadiusKm = 6371;
+    const minElevationRad = minElevation * (Math.PI / 180);
+    const ratio = (earthRadiusKm * Math.cos(minElevationRad)) / (earthRadiusKm + altitudeKm);
+    if (ratio >= 1) return 0;
+    const lambda = Math.acos(ratio) - minElevationRad;
+    if (lambda <= 0) return 0;
+    return earthRadiusKm * lambda; // arc distance in km
+  }
+
+  /**
+   * Calculate the visibility radius from satellite altitude at a given time.
    *
    * @param {Cesium.JulianDate} time - Time for satellite position calculation
    * @param {number} minElevation - Minimum elevation angle in degrees (default: 10°)
-   * @returns {number} Visible area diameter in kilometers
+   * @returns {number} Visibility radius in kilometers
    */
-  getVisibleAreaWidth(time, minElevation = 10) {
-    // Get satellite position at given time
+  getVisibleAreaRadius(time, minElevation = 10) {
     const satellitePosition = this.position(time);
     if (!satellitePosition) return 0;
 
-    // Calculate satellite altitude above Earth's surface
     const ellipsoid = Ellipsoid.WGS84;
     const cartographic = ellipsoid.cartesianToCartographic(satellitePosition);
     if (!cartographic) return 0;
 
-    const altitudeKm = cartographic.height / 1000; // Convert to kilometers
-    const earthRadiusKm = 6371; // Average Earth radius in km
-
-    // Calculate satellite visibility radius using simple geometric approach
-    // For 10° minimum elevation, use the horizon distance formula with elevation correction
-
-    const minElevationRad = minElevation * (Math.PI / 180);
-
-    // For 10° minimum elevation, use a more accurate geometric calculation
-    // The key insight: lower satellites have smaller visibility circles at high elevation angles
-
-    // Maximum slant range from observer to satellite at minimum elevation
-    // Using geometry: range = (R + h) * sin(arccos(R/(R+h)) - elevation_angle)
-    const satelliteDistance = earthRadiusKm + altitudeKm;
-    const nadir_angle = Math.acos(earthRadiusKm / satelliteDistance);
-    const effective_angle = nadir_angle - minElevationRad;
-
-    let visibleRadiusKm;
-    if (effective_angle <= 0) {
-      // Satellite too low for this elevation angle
-      visibleRadiusKm = 0;
-    } else {
-      // Ground range is approximately slant_range * cos(elevation)
-      const slant_range = satelliteDistance * Math.sin(effective_angle);
-      visibleRadiusKm = slant_range * Math.cos(minElevationRad);
-    }
-    const visibleDiameterKm = 2 * visibleRadiusKm;
-
-    return visibleDiameterKm;
+    const altitudeKm = cartographic.height / 1000;
+    return SatelliteProperties.computeVisibilityRadius(altitudeKm, minElevation);
   }
 
   get groundStationAvailable() {
