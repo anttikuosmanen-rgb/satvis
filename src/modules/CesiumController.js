@@ -760,11 +760,11 @@ export class CesiumController {
         }
       }
 
-      if (this.sats.lastTrackedSatelliteName) {
-        const sat = this.sats.getSatellite(this.sats.lastTrackedSatelliteName);
+      if (this.sats.lastTrackedSatellite) {
+        const sat = this.sats.lastTrackedSatellite;
         if (sat) {
           // Set viewFrom on satellite entity BEFORE tracking if we have a saved offset
-          const satOffset = this._savedCameraOffsets.get(this.sats.lastTrackedSatelliteName);
+          const satOffset = this._savedCameraOffsets.get(sat);
           if (satOffset && sat.defaultEntity) {
             sat.defaultEntity.viewFrom = satOffset.viewFrom;
           }
@@ -784,10 +784,10 @@ export class CesiumController {
     } else {
       // Not at GS -> save satellite camera offset and focus GS
       const trackedEntity = this.viewer.trackedEntity;
-      if (trackedEntity && this.sats.lastTrackedSatelliteName) {
+      if (trackedEntity && this.sats.lastTrackedSatellite) {
         const satOffset = this.captureTrackedEntityCameraOffset();
         if (satOffset) {
-          this._savedCameraOffsets.set(this.sats.lastTrackedSatelliteName, satOffset);
+          this._savedCameraOffsets.set(this.sats.lastTrackedSatellite, satOffset);
         }
       }
 
@@ -813,8 +813,8 @@ export class CesiumController {
 
   // Helper: Point camera at last tracked satellite (for zenith view)
   pointCameraAtLastSatellite() {
-    if (!this.sats?.lastTrackedSatelliteName) return;
-    const sat = this.sats.getSatellite(this.sats.lastTrackedSatelliteName);
+    if (!this.sats?.lastTrackedSatellite) return;
+    const sat = this.sats.lastTrackedSatellite;
     if (!sat) return;
 
     // Get ground station position
@@ -1031,8 +1031,7 @@ export class CesiumController {
         // Check if this is a satellite entity (not ground station)
         if (entity.name && !entity.name.includes("Groundstation")) {
           // Extract satellite name from entity name (format: "SatelliteName - Point")
-          const satelliteName = entity.name.split(" - ")[0];
-          let satellite = this.sats.getSatellite(satelliteName);
+          let satellite = entity._satvisOwner || this.sats.getSatellite(entity.name.split(" - ")[0]);
 
           if (satellite && satellite.props) {
             // Start orbit scrubbing
@@ -1542,8 +1541,8 @@ export class CesiumController {
           if (isDoubleTap) {
             // Double tap in zenith: Exit and track satellite
             this.sats.exitZenithView();
-            if (this.sats.lastTrackedSatelliteName) {
-              const sat = this.sats.getSatellite(this.sats.lastTrackedSatelliteName);
+            if (this.sats.lastTrackedSatellite) {
+              const sat = this.sats.lastTrackedSatellite;
               if (sat) sat.track();
             }
           } else {
@@ -2197,9 +2196,9 @@ export class CesiumController {
 
         // Show highlights for all passes of this satellite
         const satelliteName = pass.satelliteName || pass.name;
+        // Resolve satellite object - prefer direct reference from pass
+        const satellite = pass.satellite || (satelliteName && this.sats ? this.sats.getSatellite(satelliteName) : null);
         if (satelliteName && this.sats) {
-          // Find the satellite object
-          const satellite = this.sats.getSatellite(satelliteName);
           if (satellite) {
             // If this satellite has Smart Path mode enabled, regenerate the path for the new time
             // This preserves the Smart Path toggle state while updating the visualization for the selected pass
@@ -2212,7 +2211,7 @@ export class CesiumController {
               .updatePasses(this.viewer.clock.currentTime)
               .then(() => {
                 CesiumTimelineHelper.clearHighlightRanges(this.viewer);
-                CesiumTimelineHelper.addHighlightRanges(this.viewer, satellite.props.passes, satelliteName);
+                CesiumTimelineHelper.addHighlightRanges(this.viewer, satellite.props.passes, satellite);
               })
               .catch((err) => {
                 console.warn("Failed to update passes for pass click:", err);
@@ -2220,39 +2219,35 @@ export class CesiumController {
           } else {
             // Fallback to showing just the clicked pass if satellite not found
             CesiumTimelineHelper.clearHighlightRanges(this.viewer);
-            CesiumTimelineHelper.addHighlightRanges(this.viewer, [pass], satelliteName);
+            CesiumTimelineHelper.addHighlightRanges(this.viewer, [pass], satellite);
           }
         } else {
           // Fallback to showing just the clicked pass
           CesiumTimelineHelper.clearHighlightRanges(this.viewer);
-          CesiumTimelineHelper.addHighlightRanges(this.viewer, [pass], pass.satelliteName || pass.name);
+          CesiumTimelineHelper.addHighlightRanges(this.viewer, [pass], satellite);
         }
 
         // Track or point at the satellite for this pass
-        if (pass.satelliteName || pass.name) {
-          const satelliteName = pass.satelliteName || pass.name;
-
+        if (satellite || pass.satelliteName || pass.name) {
           try {
-            // Find the satellite entity with proper error handling
-            const entities = this.viewer.entities.values;
-
-            // Ensure entities is actually an array
-            if (!Array.isArray(entities)) {
-              console.warn("Entities collection is not an array, skipping satellite tracking");
-              return;
-            }
-
-            // Try different naming patterns to find the satellite entity
-            let satelliteEntity = entities.find((entity) => entity && entity.name && entity.name.includes(satelliteName) && entity.name.includes("Point"));
-
-            // If not found with "Point", try just the satellite name
-            if (!satelliteEntity) {
-              satelliteEntity = entities.find((entity) => entity && entity.name && entity.name === satelliteName);
-            }
-
-            // If still not found, try partial match
-            if (!satelliteEntity) {
-              satelliteEntity = entities.find((entity) => entity && entity.name && entity.name.includes(satelliteName));
+            // Resolve satellite entity: prefer direct object reference
+            let satelliteEntity;
+            if (satellite && satellite.defaultEntity) {
+              satelliteEntity = satellite.defaultEntity;
+            } else {
+              const satName = pass.satelliteName || pass.name;
+              const entities = this.viewer.entities.values;
+              if (!Array.isArray(entities)) {
+                console.warn("Entities collection is not an array, skipping satellite tracking");
+                return;
+              }
+              satelliteEntity = entities.find((entity) => entity && entity.name && entity.name.includes(satName) && entity.name.includes("Point"));
+              if (!satelliteEntity) {
+                satelliteEntity = entities.find((entity) => entity && entity.name && entity.name === satName);
+              }
+              if (!satelliteEntity) {
+                satelliteEntity = entities.find((entity) => entity && entity.name && entity.name.includes(satName));
+              }
             }
 
             if (satelliteEntity) {
@@ -2261,7 +2256,6 @@ export class CesiumController {
 
               if (isInZenithView) {
                 // In zenith view: point camera at satellite without moving position, and select it
-                // Use a small delay to ensure satellite position is calculated at the new time
                 setTimeout(() => {
                   const satellitePosition = satelliteEntity.position.getValue(this.viewer.clock.currentTime);
                   if (satellitePosition) {
@@ -2269,9 +2263,7 @@ export class CesiumController {
                     const direction = Cartesian3.subtract(satellitePosition, cameraPosition, new Cartesian3());
                     Cartesian3.normalize(direction, direction);
                     this.viewer.camera.direction = direction;
-                    // Select the satellite to show its info
                     this.viewer.selectedEntity = satelliteEntity;
-                    // Request render to update the view
                     this.viewer.scene.requestRender();
                   }
                 }, 100);
@@ -2279,10 +2271,15 @@ export class CesiumController {
                 // Normal mode: track the satellite
                 this.viewer.trackedEntity = null;
 
-                // Also try to select satellite through satellite manager
-                if (this.sats) {
+                if (satellite && this.sats) {
                   try {
-                    this.sats.trackedSatellite = satelliteName;
+                    this.sats.trackSatellite(satellite);
+                  } catch (error) {
+                    console.warn("Could not use satellite manager:", error);
+                  }
+                } else if (this.sats) {
+                  try {
+                    this.sats.trackedSatellite = pass.satelliteName || pass.name;
                   } catch (error) {
                     console.warn("Could not use satellite manager:", error);
                   }
@@ -2527,7 +2524,7 @@ export class CesiumController {
                   // Filter passes based on time and user preferences (sunlight/eclipse filters)
                   const filteredPasses = filterAndSortPasses(satellite.props.passes, JulianDate.toDate(currentTime));
                   if (filteredPasses && filteredPasses.length > 0) {
-                    CesiumTimelineHelper.addHighlightRanges(this.viewer, filteredPasses, satellite.props.name);
+                    CesiumTimelineHelper.addHighlightRanges(this.viewer, filteredPasses, satellite);
                   }
                 })
                 .catch((err) => {

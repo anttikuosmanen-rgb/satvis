@@ -564,24 +564,28 @@ test.describe("Ground Station", () => {
 
     // Set simulation time and widen timeline window to ensure passes are visible
     await page.evaluate(() => {
-      if (window.cc?.viewer?.clock && typeof window.Cesium !== "undefined") {
-        const testDate = new Date();
-        const julianDate = window.Cesium.JulianDate.fromDate(testDate);
+      const clock = window.cc?.viewer?.clock;
+      if (!clock) return;
 
-        window.cc.viewer.clock.currentTime = julianDate;
-        window.cc.viewer.clock.shouldAnimate = false;
+      // Access JulianDate via the clock's existing JulianDate instance
+      const JulianDate = clock.currentTime.constructor;
 
-        // Widen timeline window: 2 days before to 7 days after
-        const startTime = window.Cesium.JulianDate.addDays(julianDate, -2, new window.Cesium.JulianDate());
-        const stopTime = window.Cesium.JulianDate.addDays(julianDate, 7, new window.Cesium.JulianDate());
+      const testDate = new Date();
+      const julianDate = JulianDate.fromDate(testDate);
 
-        window.cc.viewer.clock.startTime = startTime;
-        window.cc.viewer.clock.stopTime = stopTime;
+      clock.currentTime = julianDate;
+      clock.shouldAnimate = false;
 
-        if (window.cc.viewer.timeline) {
-          window.cc.viewer.timeline.zoomTo(startTime, stopTime);
-          window.cc.viewer.timeline.updateFromClock();
-        }
+      // Widen timeline window: 2 days before to 7 days after
+      const startTime = JulianDate.addDays(julianDate, -2, new JulianDate());
+      const stopTime = JulianDate.addDays(julianDate, 7, new JulianDate());
+
+      clock.startTime = startTime;
+      clock.stopTime = stopTime;
+
+      if (window.cc.viewer.timeline) {
+        window.cc.viewer.timeline.zoomTo(startTime, stopTime);
+        window.cc.viewer.timeline.updateFromClock();
       }
     });
 
@@ -748,9 +752,10 @@ test.describe("Ground Station", () => {
 
     expect(stateAndHighlight.highlightClick.success).toBe(true);
 
-    // Click on the timeline at the highlight location
+    // Click on the timeline at the highlight location to jump to that time
+    // Cesium's timeline processes mousedown to scrub the clock time
     const timelineBox = await page.evaluate(() => {
-      const el = document.querySelector(".cesium-timeline-main");
+      const el = document.querySelector(".cesium-timeline-bar");
       if (!el) return null;
       const rect = el.getBoundingClientRect();
       return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
@@ -761,7 +766,10 @@ test.describe("Ground Station", () => {
       const clickX = timelineBox.x + timelineBox.width * stateAndHighlight.highlightClick.highlightRatio;
       const clickY = timelineBox.y + timelineBox.height / 2;
 
-      await page.mouse.click(clickX, clickY);
+      // Use mousedown + small move + mouseup to trigger Cesium's scrub behavior
+      await page.mouse.move(clickX, clickY);
+      await page.mouse.down();
+      await page.mouse.up();
     } else {
       throw new Error("Timeline bounding box not found");
     }
@@ -802,13 +810,13 @@ test.describe("Ground Station", () => {
     if (newState.highlightCount === 0) {
       await page.evaluate(() => {
         const viewer = window.cc?.viewer;
-        const Cesium = window.Cesium;
-        if (!viewer || !Cesium) return;
+        if (!viewer) return;
 
+        const JulianDate = viewer.clock.currentTime.constructor;
         const currentTime = viewer.clock.currentTime;
         // Widen to 5 days before and 14 days after current time
-        const startTime = Cesium.JulianDate.addDays(currentTime, -5, new Cesium.JulianDate());
-        const stopTime = Cesium.JulianDate.addDays(currentTime, 14, new Cesium.JulianDate());
+        const startTime = JulianDate.addDays(currentTime, -5, new JulianDate());
+        const stopTime = JulianDate.addDays(currentTime, 14, new JulianDate());
 
         viewer.clock.startTime = startTime;
         viewer.clock.stopTime = stopTime;

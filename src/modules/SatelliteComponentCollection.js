@@ -47,6 +47,7 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
   constructor(viewer, tle, tags) {
     super(viewer);
     this.props = new SatelliteProperties(tle, tags);
+    this.props.owner = this;
     this.eventListeners = {};
     // Track individual path mode: null (off), "Smart Path" (colored visibility/lighting), or "Orbit track"
     this.individualOrbitMode = null;
@@ -211,8 +212,7 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
 
           // Filter passes based on current filter settings (sunlight/eclipse)
           const filteredPasses = filterAndSortPasses(this.props.passes, this.viewer.clock.currentTime);
-          // Use canonicalName to match the name in pass objects (without prefixes/suffixes)
-          CesiumTimelineHelper.updateHighlightRanges(this.viewer, filteredPasses, this.props.canonicalName);
+          CesiumTimelineHelper.updateHighlightRanges(this.viewer, filteredPasses, this);
 
           // Request a render to update the UI
           if (this.viewer && this.viewer.scene) {
@@ -229,8 +229,7 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
             .then(() => {
               // Filter passes based on current filter settings (sunlight/eclipse)
               const filteredPasses = filterAndSortPasses(this.props.passes, this.viewer.clock.currentTime);
-              // Use canonicalName to match the name in pass objects (without prefixes/suffixes)
-              CesiumTimelineHelper.updateHighlightRanges(this.viewer, filteredPasses, this.props.canonicalName);
+              CesiumTimelineHelper.updateHighlightRanges(this.viewer, filteredPasses, this);
 
               // Request a render to update the UI
               if (this.viewer && this.viewer.scene) {
@@ -315,16 +314,18 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
     const passes = await groundStation.passesAsync(this.viewer.clock.currentTime);
 
     if (passes.length > 0) {
-      // Show highlights for all passes from this ground station, grouped by satellite
-      const passesBySatellite = passes.reduce((acc, pass) => {
-        const satelliteName = pass.name || pass.satelliteName;
-        if (!acc[satelliteName]) acc[satelliteName] = [];
-        acc[satelliteName].push(pass);
-        return acc;
-      }, {});
+      // Group passes by satellite object for highlight rendering
+      const satelliteMap = new Map();
+      passes.forEach((pass) => {
+        const sat = pass.satellite;
+        if (!sat) return;
+        if (!satelliteMap.has(sat)) satelliteMap.set(sat, []);
+        satelliteMap.get(sat).push(pass);
+      });
+      const satellitePasses = Array.from(satelliteMap, ([satellite, passList]) => ({ satellite, passes: passList }));
 
       // Add highlights asynchronously to avoid blocking
-      await CesiumTimelineHelper.addHighlightRangesAsync(this.viewer, passesBySatellite);
+      await CesiumTimelineHelper.addHighlightRangesAsync(this.viewer, satellitePasses);
     }
   }
 
@@ -1120,8 +1121,7 @@ export class SatelliteComponentCollection extends CesiumComponentCollection {
           if (this.isSelected) {
             // Filter passes based on current filter settings (sunlight/eclipse)
             const filteredPasses = filterAndSortPasses(this.props.passes, this.viewer.clock.currentTime);
-            // Use canonicalName to match the name in pass objects (without prefixes/suffixes)
-            CesiumTimelineHelper.updateHighlightRanges(this.viewer, filteredPasses, this.props.canonicalName);
+            CesiumTimelineHelper.updateHighlightRanges(this.viewer, filteredPasses, this);
           }
         })
         .catch((err) => {

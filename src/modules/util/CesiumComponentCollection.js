@@ -254,6 +254,8 @@ export class CesiumComponentCollection {
     }
 
     entity[entityKey] = entityValue;
+    // Non-enumerable to avoid circular reference in JSON serialization
+    Object.defineProperty(entity, "_satvisOwner", { value: this, writable: true, enumerable: false });
     this.components[componentName] = entity;
   }
 }

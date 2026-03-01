@@ -82,6 +82,7 @@ export class SatelliteProperties {
       console.warn(`Stale TLE for ${this.name}: ${this.stalenessInfo.reason}`);
     }
 
+    this.owner = null;
     this.groundStations = [];
     this.passes = [];
     this.passInterval = undefined;
@@ -536,6 +537,8 @@ export class SatelliteProperties {
         passes = await this.orbit.computePassesElevation(groundStation.position, JulianDate.toDate(this.passInterval.start), JulianDate.toDate(this.passInterval.stopPrediction));
       }
       passes.forEach((pass) => {
+        // Non-enumerable to avoid circular reference in JSON.stringify(pass)
+        Object.defineProperty(pass, "satellite", { value: this.owner, writable: true, enumerable: false });
         pass.groundStationName = groundStation.name;
         pass.epochInFuture = epochInFuture;
         pass.epochTime = epochTime;

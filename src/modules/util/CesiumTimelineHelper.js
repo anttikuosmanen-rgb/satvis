@@ -106,7 +106,67 @@ export class CesiumTimelineHelper {
     this.scheduleTimelineUpdate(viewer);
   }
 
-  static addHighlightRanges(viewer, ranges, satelliteName, options = {}) {
+  static _createHighlightClickHandler(viewer, satellite, satelliteName) {
+    return () => {
+      // Resolve satellite entity: prefer direct object reference, fall back to entity search
+      let satelliteEntity;
+      if (satellite && satellite.defaultEntity) {
+        satelliteEntity = satellite.defaultEntity;
+      } else {
+        const entities = viewer.entities.values;
+        satelliteEntity = entities.find((entity) => entity.name && entity.name.includes(satelliteName) && entity.name.includes("Point"));
+        if (!satelliteEntity) {
+          satelliteEntity = entities.find((entity) => entity.name && entity.name.includes(satelliteName));
+        }
+      }
+
+      if (!satelliteEntity) return;
+
+      // Check if we're in zenith view
+      const isInZenithView = window.cc && window.cc.sats && window.cc.sats.isInZenithView;
+
+      if (isInZenithView) {
+        // In zenith view: point camera at satellite without moving position
+        const satellitePosition = satelliteEntity.position.getValue(viewer.clock.currentTime);
+        if (satellitePosition) {
+          const cameraPosition = viewer.camera.positionWC;
+          const direction = Cartesian3.subtract(satellitePosition, cameraPosition, new Cartesian3());
+          Cartesian3.normalize(direction, direction);
+          viewer.camera.direction = direction;
+        }
+      } else {
+        // Normal mode: track the satellite
+        viewer.trackedEntity = null;
+
+        if (satellite && window.cc && window.cc.sats) {
+          try {
+            window.cc.sats.trackSatellite(satellite);
+          } catch (error) {
+            console.warn("Could not use satellite manager:", error);
+          }
+        } else if (window.cc && window.cc.sats) {
+          try {
+            window.cc.sats.trackedSatellite = satelliteName;
+          } catch (error) {
+            console.warn("Could not use satellite manager:", error);
+          }
+        }
+
+        // Small delay to ensure the selection is processed
+        setTimeout(() => {
+          viewer.trackedEntity = satelliteEntity;
+        }, 100);
+      }
+    };
+  }
+
+  /**
+   * @param {Object} viewer - Cesium viewer
+   * @param {Array} ranges - Pass objects with start/end times
+   * @param {Object} satellite - SatelliteComponentCollection instance (used for click handler and display name)
+   * @param {Object} [options]
+   */
+  static addHighlightRanges(viewer, ranges, satellite, options = {}) {
     if (!viewer.timeline) {
       return;
     }
@@ -115,27 +175,15 @@ export class CesiumTimelineHelper {
       return;
     }
 
-    // Get VISIBLE timeline range (use timeline's zoomed view, not clock bounds)
-    // timeline._startJulian/_endJulian reflect the user's zoomed view
-    const timeline = viewer.timeline;
-    const timelineStart = timeline?._startJulian ? JulianDate.toDate(timeline._startJulian) : JulianDate.toDate(viewer.clock.startTime);
-    const timelineStop = timeline?._endJulian ? JulianDate.toDate(timeline._endJulian) : JulianDate.toDate(viewer.clock.stopTime);
-
-    // Filter ranges to only those visible in current timeline (with some overlap)
-    const timelineStartMs = timelineStart.getTime();
-    const timelineStopMs = timelineStop.getTime();
-
-    const visibleRanges = ranges.filter((range) => {
-      const rangeStart = new Date(range.start).getTime();
-      const rangeEnd = new Date(range.end).getTime();
-      // Include range if it overlaps with timeline at all
-      return rangeEnd >= timelineStartMs && rangeStart <= timelineStopMs;
-    });
+    const displayName = satellite?.props?.name || "";
 
     // Limit to 8 passes per satellite for performance (unless skipPerSatelliteLimit is set)
     // When caller has already done global prioritization, skip this limit
-    const maxPasses = options.skipPerSatelliteLimit ? visibleRanges.length : 8;
-    const limitedRanges = visibleRanges.slice(0, maxPasses);
+    // Note: no timeline-range filtering here — callers (filterAndSortPasses, updatePassHighlightsAfterTimelineChange)
+    // already limit passes to a reasonable window. Filtering here caused highlights to be silently
+    // dropped when passes fell outside the initial narrow timeline range, with no recalculation on zoom.
+    const maxPasses = options.skipPerSatelliteLimit ? ranges.length : 8;
+    const limitedRanges = ranges.slice(0, maxPasses);
 
     limitedRanges.forEach((range) => {
       const startJulian = JulianDate.fromDate(new Date(range.start));
@@ -144,62 +192,16 @@ export class CesiumTimelineHelper {
       highlightRange.setRange(startJulian, endJulian);
 
       // Add click functionality to focus on satellite when pass is clicked
-      if (satelliteName && highlightRange._element) {
+      if (displayName && highlightRange._element) {
         highlightRange._element.style.cursor = "pointer";
-        highlightRange._element.title = `Click to track ${satelliteName} during this pass`;
+        highlightRange._element.title = `Click to track ${displayName} during this pass`;
 
         // Remove any existing click listeners
         if (highlightRange._clickListener) {
           highlightRange._element.removeEventListener("click", highlightRange._clickListener);
         }
 
-        // Add click listener to track the satellite
-        highlightRange._clickListener = () => {
-          // Find the satellite entity by name
-          const entities = viewer.entities.values;
-
-          // Try to find the main satellite entity (usually the Point component)
-          let satelliteEntity = entities.find((entity) => entity.name && entity.name.includes(satelliteName) && entity.name.includes("Point"));
-
-          // If not found with "Point", try any entity with the satellite name
-          if (!satelliteEntity) {
-            satelliteEntity = entities.find((entity) => entity.name && entity.name.includes(satelliteName));
-          }
-
-          if (satelliteEntity) {
-            // Check if we're in zenith view
-            const isInZenithView = window.cc && window.cc.sats && window.cc.sats.isInZenithView;
-
-            if (isInZenithView) {
-              // In zenith view: point camera at satellite without moving position
-              const satellitePosition = satelliteEntity.position.getValue(viewer.clock.currentTime);
-              if (satellitePosition) {
-                const cameraPosition = viewer.camera.positionWC;
-                const direction = Cartesian3.subtract(satellitePosition, cameraPosition, new Cartesian3());
-                Cartesian3.normalize(direction, direction);
-                viewer.camera.direction = direction;
-              }
-            } else {
-              // Normal mode: track the satellite
-              viewer.trackedEntity = null;
-
-              // Also try to trigger tracking through the satellite manager
-              if (window.cc && window.cc.sats) {
-                try {
-                  window.cc.sats.trackedSatellite = satelliteName;
-                } catch (error) {
-                  console.warn("Could not use satellite manager:", error);
-                }
-              }
-
-              // Small delay to ensure the selection is processed
-              setTimeout(() => {
-                viewer.trackedEntity = satelliteEntity;
-              }, 100);
-            }
-          }
-        };
-
+        highlightRange._clickListener = this._createHighlightClickHandler(viewer, satellite, displayName);
         highlightRange._element.addEventListener("click", highlightRange._clickListener);
       }
     });
@@ -208,34 +210,36 @@ export class CesiumTimelineHelper {
     this.scheduleTimelineUpdate(viewer);
   }
 
-  static updateHighlightRanges(viewer, ranges, satelliteName) {
+  static updateHighlightRanges(viewer, ranges, satellite) {
     this.clearHighlightRanges(viewer);
-    this.addHighlightRanges(viewer, ranges, satelliteName);
+    this.addHighlightRanges(viewer, ranges, satellite);
   }
 
-  static async addHighlightRangesAsync(viewer, passesBySatellite) {
+  /**
+   * @param {Object} viewer - Cesium viewer
+   * @param {Array<{satellite: Object, passes: Array}>} satellitePasses - Array of {satellite, passes} pairs
+   */
+  static async addHighlightRangesAsync(viewer, satellitePasses) {
     if (!viewer.timeline) {
       return;
     }
 
-    const satellites = Object.entries(passesBySatellite);
-    if (satellites.length === 0) {
+    if (satellitePasses.length === 0) {
       return;
     }
 
     // Process satellites in chunks to avoid blocking
     const chunkSize = 3;
-    for (let i = 0; i < satellites.length; i += chunkSize) {
-      const chunk = satellites.slice(i, i + chunkSize);
+    for (let i = 0; i < satellitePasses.length; i += chunkSize) {
+      const chunk = satellitePasses.slice(i, i + chunkSize);
 
       // Add highlights for this chunk (without resize to avoid redundant calls)
-      chunk.forEach(([satelliteName, satellitePasses]) => {
-        // Call addHighlightRanges without its internal resize
-        this._addHighlightRangesWithoutResize(viewer, satellitePasses, satelliteName);
+      chunk.forEach(({ satellite, passes }) => {
+        this._addHighlightRangesWithoutResize(viewer, passes, satellite);
       });
 
       // Yield to browser after each chunk
-      if (i + chunkSize < satellites.length) {
+      if (i + chunkSize < satellitePasses.length) {
         await new Promise((resolve) => setTimeout(resolve, 0));
       }
     }
@@ -244,27 +248,16 @@ export class CesiumTimelineHelper {
     this.scheduleTimelineUpdate(viewer);
   }
 
-  static _addHighlightRangesWithoutResize(viewer, ranges, satelliteName) {
+  static _addHighlightRangesWithoutResize(viewer, ranges, satellite) {
     if (!viewer.timeline || ranges.length === 0) {
       return;
     }
 
-    // Get VISIBLE timeline range (use timeline's zoomed view, not clock bounds)
-    const timeline = viewer.timeline;
-    const timelineStart = timeline?._startJulian ? JulianDate.toDate(timeline._startJulian) : JulianDate.toDate(viewer.clock.startTime);
-    const timelineStop = timeline?._endJulian ? JulianDate.toDate(timeline._endJulian) : JulianDate.toDate(viewer.clock.stopTime);
-    const timelineStartMs = timelineStart.getTime();
-    const timelineStopMs = timelineStop.getTime();
-
-    const visibleRanges = ranges.filter((range) => {
-      const rangeStart = new Date(range.start).getTime();
-      const rangeEnd = new Date(range.end).getTime();
-      return rangeEnd >= timelineStartMs && rangeStart <= timelineStopMs;
-    });
+    const displayName = satellite?.props?.name || "";
 
     // Limit to 8 passes per satellite for performance
     const maxPasses = 8;
-    const limitedRanges = visibleRanges.slice(0, maxPasses);
+    const limitedRanges = ranges.slice(0, maxPasses);
 
     limitedRanges.forEach((range) => {
       const startJulian = JulianDate.fromDate(new Date(range.start));
@@ -273,50 +266,15 @@ export class CesiumTimelineHelper {
       highlightRange.setRange(startJulian, endJulian);
 
       // Add click functionality
-      if (satelliteName && highlightRange._element) {
+      if (displayName && highlightRange._element) {
         highlightRange._element.style.cursor = "pointer";
-        highlightRange._element.title = `Click to track ${satelliteName} during this pass`;
+        highlightRange._element.title = `Click to track ${displayName} during this pass`;
 
         if (highlightRange._clickListener) {
           highlightRange._element.removeEventListener("click", highlightRange._clickListener);
         }
 
-        highlightRange._clickListener = () => {
-          const entities = viewer.entities.values;
-          let satelliteEntity = entities.find((entity) => entity.name && entity.name.includes(satelliteName) && entity.name.includes("Point"));
-          if (!satelliteEntity) {
-            satelliteEntity = entities.find((entity) => entity.name && entity.name.includes(satelliteName));
-          }
-          if (satelliteEntity) {
-            // Check if we're in zenith view
-            const isInZenithView = window.cc && window.cc.sats && window.cc.sats.isInZenithView;
-
-            if (isInZenithView) {
-              // In zenith view: point camera at satellite without moving position
-              const satellitePosition = satelliteEntity.position.getValue(viewer.clock.currentTime);
-              if (satellitePosition) {
-                const cameraPosition = viewer.camera.positionWC;
-                const direction = Cartesian3.subtract(satellitePosition, cameraPosition, new Cartesian3());
-                Cartesian3.normalize(direction, direction);
-                viewer.camera.direction = direction;
-              }
-            } else {
-              // Normal mode: track the satellite
-              viewer.trackedEntity = null;
-              if (window.cc && window.cc.sats) {
-                try {
-                  window.cc.sats.trackedSatellite = satelliteName;
-                } catch (error) {
-                  console.warn("Could not use satellite manager:", error);
-                }
-              }
-              setTimeout(() => {
-                viewer.trackedEntity = satelliteEntity;
-              }, 100);
-            }
-          }
-        };
-
+        highlightRange._clickListener = this._createHighlightClickHandler(viewer, satellite, displayName);
         highlightRange._element.addEventListener("click", highlightRange._clickListener);
       }
     });
