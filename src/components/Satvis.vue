@@ -804,7 +804,7 @@ export default {
       const selectedEntity = cc.viewer.selectedEntity;
       if (selectedEntity && this.showPassCountdown) {
         // Check if selected entity is a different satellite or a ground station
-        const isGroundStation = selectedEntity.name && selectedEntity.name.includes("Groundstation");
+        const isGroundStation = this.cc.sats.isGroundStationEntity(selectedEntity);
         const isDifferentSatellite = selectedEntity.name && selectedEntity.name !== this.trackedSatelliteName;
 
         if (isGroundStation || isDifferentSatellite) {
@@ -1195,8 +1195,7 @@ export default {
       const currentTrackedEntity = this.cc.viewer.trackedEntity;
 
       // Check if we're currently tracking a ground station
-      // Ground stations now have names like "Groundstation [60.81°, 23.95°]"
-      const isTrackingGroundStation = currentTrackedEntity && currentTrackedEntity.name && currentTrackedEntity.name.includes("Groundstation");
+      const isTrackingGroundStation = this.cc.sats.isGroundStationEntity(currentTrackedEntity);
 
       if (isTrackingGroundStation) {
         // Return to normal view focused on center of Earth
@@ -1255,7 +1254,7 @@ export default {
 
       // Refresh highlights if a ground station is currently selected/tracked
       const selectedEntity = this.cc.viewer.selectedEntity;
-      if (selectedEntity && selectedEntity.name && selectedEntity.name.includes("Groundstation")) {
+      if (this.cc.sats.isGroundStationEntity(selectedEntity)) {
         // Trigger a refresh by setting the selected entity again
         this.cc.viewer.selectedEntity = undefined;
         setTimeout(() => {
@@ -1284,7 +1283,7 @@ export default {
 
       // Check if we're currently tracking a ground station and unfocus first
       const currentTrackedEntity = this.cc.viewer.trackedEntity;
-      const isTrackingGroundStation = currentTrackedEntity && currentTrackedEntity.name && currentTrackedEntity.name.includes("Groundstation");
+      const isTrackingGroundStation = this.cc.sats.isGroundStationEntity(currentTrackedEntity);
 
       if (isTrackingGroundStation) {
         // Return to normal view focused on center of Earth
@@ -1317,7 +1316,7 @@ export default {
       // This handles cases where entities might not be properly tracked by the component system
       const entitiesToRemove = [];
       this.cc.viewer.entities.values.forEach((entity) => {
-        if (entity.name && entity.name.includes("Groundstation")) {
+        if (this.cc.sats.isGroundStationEntity(entity)) {
           entitiesToRemove.push(entity);
         }
       });

@@ -314,7 +314,7 @@ export class SatelliteManager {
 
     // For ground stations, invalidate the ground station pass cache and trigger async pass updates
     // This ensures fresh passes are calculated from the new timeline position
-    if (selectedEntity.name && selectedEntity.name.includes("Groundstation")) {
+    if (this.isGroundStationEntity(selectedEntity)) {
       this.#debugLog("[updatePassHighlightsAfterTimelineChange] Invalidating ground station cache and updating passes");
 
       // First, invalidate caches
@@ -1035,7 +1035,7 @@ export class SatelliteManager {
 
     // Refresh highlights if a ground station is currently selected
     const selectedEntity = this.viewer.selectedEntity;
-    if (selectedEntity && selectedEntity.name && selectedEntity.name.includes("Groundstation")) {
+    if (selectedEntity && this.isGroundStationEntity(selectedEntity)) {
       // Trigger recalculation by temporarily clearing and restoring selection
       setTimeout(() => {
         const entity = selectedEntity;
@@ -1731,7 +1731,7 @@ export class SatelliteManager {
     // Additional safety cleanup: remove any remaining ground station entities
     const entitiesToRemove = [];
     this.viewer.entities.values.forEach((entity) => {
-      if (entity.name && entity.name.includes("Groundstation")) {
+      if (this.isGroundStationEntity(entity)) {
         entitiesToRemove.push(entity);
       }
     });
@@ -1741,6 +1741,15 @@ export class SatelliteManager {
 
     const groundStation = this.createGroundstation(position, name);
     this.groundStations = [groundStation]; // Replace with single station
+  }
+
+  /**
+   * Check if a Cesium entity belongs to a ground station
+   * Uses component lookup instead of fragile name-based matching
+   */
+  isGroundStationEntity(entity) {
+    if (!entity) return false;
+    return this.#groundStations.some((gs) => gs.components && Object.values(gs.components).includes(entity));
   }
 
   get groundStations() {
