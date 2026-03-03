@@ -132,15 +132,18 @@ export class NeoManager {
       // Step 3: Create combined NEO objects (preserve SBDB-searched objects)
       this._clearNeoWsObjects();
       const loadedDesignations = new Set(this.neos.map((n) => n.neoData.designation));
+      const newEntries = [];
       for (const neo of closeNeos) {
         const elements = elementsMap.get(neo.designation);
         if (elements && !loadedDesignations.has(neo.designation)) {
-          this.neos.push({ neoData: neo, elements });
+          const entry = { neoData: neo, elements };
+          this.neos.push(entry);
+          newEntries.push(entry);
         }
       }
 
-      // Step 4: Create entities
-      this.createEntities();
+      // Step 4: Create entities only for newly added NeoWs objects
+      this.createEntities(newEntries);
       this.enabled = true;
 
       const cachedCount = closeNeos.length - uncachedDesignations.length;
