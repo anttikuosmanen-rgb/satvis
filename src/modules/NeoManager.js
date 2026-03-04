@@ -1,5 +1,6 @@
 import {
   CallbackProperty,
+  Cartesian2,
   Cartesian3,
   Color,
   JulianDate,
@@ -25,6 +26,7 @@ const DENSE_ORBIT_SAMPLES = 200; // Sample count for dense orbit segment near dr
 const FULL_ORBIT_SAMPLES = 200; // Sample count for full orbit / sparse arc
 const TWO_PI = 2 * Math.PI;
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const AU_TO_METERS = 1.496e11;
 
 // Ecliptic normal in ICRF (equatorial J2000): obliquity = 23.4392911°
 const OBLIQUITY_RAD = 23.4392911 * (Math.PI / 180);
@@ -59,11 +61,16 @@ export class NeoManager {
       }
     });
 
-    // Console command to set frustum far plane
+    // Debug: Earth position checker state
+    this._debugEntities = [];
+    this._debugPrimitives = [];
+
+    // Console commands
     window.setFrustumFar = (value) => {
       this.viewer.camera.frustum.far = value;
       console.log(`Frustum far set to ${value.toExponential()}`);
     };
+    window.debugEarthPosition = () => this._debugEarthFromHorizons();
   }
 
   /**
@@ -319,14 +326,26 @@ export class NeoManager {
 
   /**
    * Compute full orbit positions by sampling uniformly in eccentric anomaly.
+   * For hyperbolic orbits, samples uniformly in H over a range centered on perihelion.
    * @param {Object} elements - Orbital elements
    * @returns {Cartesian3[]}
    */
   _computeFullOrbitPositions(elements) {
     const positions = [];
-    for (let i = 0; i <= FULL_ORBIT_SAMPLES; i++) {
-      const E = (i / FULL_ORBIT_SAMPLES) * TWO_PI;
-      positions.push(KeplerPropagator.computeHeliocentricICRFByE(elements, E));
+
+    if (elements.e >= 1) {
+      // Hyperbolic orbit: sample H from -H_max to +H_max
+      // Limit arc to where distance < ~10 AU from Sun
+      const H_max = Math.acosh(Math.min(1000 / Math.abs(elements.a_au) / elements.e + 1 / elements.e, 50));
+      for (let i = 0; i <= FULL_ORBIT_SAMPLES; i++) {
+        const H = -H_max + (i / FULL_ORBIT_SAMPLES) * 2 * H_max;
+        positions.push(KeplerPropagator.computeHeliocentricICRFByH(elements, H));
+      }
+    } else {
+      for (let i = 0; i <= FULL_ORBIT_SAMPLES; i++) {
+        const E = (i / FULL_ORBIT_SAMPLES) * TWO_PI;
+        positions.push(KeplerPropagator.computeHeliocentricICRFByE(elements, E));
+      }
     }
     return positions;
   }
@@ -404,7 +423,9 @@ export class NeoManager {
       this._trackedEntityListener();
       this._trackedEntityListener = null;
     }
+    this._clearDebugViz();
     delete window.setFrustumFar;
+    delete window.debugEarthPosition;
   }
 
   /**
@@ -654,21 +675,25 @@ export class NeoManager {
    * @returns {Cartesian3[]}
    */
   _computeDenseOrbitPositions(elements, minTime, maxTime) {
-    let E_min = KeplerPropagator.timeToEccentricAnomaly(elements, minTime);
-    let E_max = KeplerPropagator.timeToEccentricAnomaly(elements, maxTime);
+    const A_min = KeplerPropagator.timeToEccentricAnomaly(elements, minTime);
+    const A_max = KeplerPropagator.timeToEccentricAnomaly(elements, maxTime);
+    const isHyperbolic = elements.e >= 1;
 
-    // Ensure E_max > E_min (handle wrapping past 2π)
-    if (E_max <= E_min) {
-      E_max += TWO_PI;
+    let start = A_min;
+    let end = A_max;
+    if (!isHyperbolic && end <= start) {
+      end += TWO_PI;
     }
 
-    const span = E_max - E_min;
-    if (span <= 0) return [];
+    const span = end - start;
+    if (span <= 0 && !isHyperbolic) return [];
 
     const positions = [];
+    const computeFn = isHyperbolic ? (a) => KeplerPropagator.computeHeliocentricICRFByH(elements, a) : (a) => KeplerPropagator.computeHeliocentricICRFByE(elements, a);
+
     for (let i = 0; i <= DENSE_ORBIT_SAMPLES; i++) {
-      const E = E_min + (i / DENSE_ORBIT_SAMPLES) * span;
-      positions.push(KeplerPropagator.computeHeliocentricICRFByE(elements, E));
+      const anomaly = start + (i / DENSE_ORBIT_SAMPLES) * span;
+      positions.push(computeFn(anomaly));
     }
     return positions;
   }
@@ -682,6 +707,35 @@ export class NeoManager {
    * @returns {Cartesian3[]}
    */
   _computeSparseOrbitPositions(elements, minTime, maxTime) {
+    if (elements.e >= 1) {
+      // Hyperbolic orbits: sparse arc covers the full orbit minus the dense region
+      // Use H range from full orbit limits
+      const H_max = Math.acosh(Math.min(1000 / Math.abs(elements.a_au) / elements.e + 1 / elements.e, 50));
+      const H_denseMin = KeplerPropagator.timeToEccentricAnomaly(elements, minTime);
+      const H_denseMax = KeplerPropagator.timeToEccentricAnomaly(elements, maxTime);
+
+      const positions = [];
+      // Before dense region
+      const spanBefore = H_denseMin - -H_max;
+      if (spanBefore > 0) {
+        const count = Math.round((FULL_ORBIT_SAMPLES * spanBefore) / (2 * H_max));
+        for (let i = 0; i <= count; i++) {
+          const H = -H_max + (i / Math.max(count, 1)) * spanBefore;
+          positions.push(KeplerPropagator.computeHeliocentricICRFByH(elements, H));
+        }
+      }
+      // After dense region
+      const spanAfter = H_max - H_denseMax;
+      if (spanAfter > 0) {
+        const count = Math.round((FULL_ORBIT_SAMPLES * spanAfter) / (2 * H_max));
+        for (let i = 0; i <= count; i++) {
+          const H = H_denseMax + (i / Math.max(count, 1)) * spanAfter;
+          positions.push(KeplerPropagator.computeHeliocentricICRFByH(elements, H));
+        }
+      }
+      return positions;
+    }
+
     let E_min = KeplerPropagator.timeToEccentricAnomaly(elements, minTime);
     let E_max = KeplerPropagator.timeToEccentricAnomaly(elements, maxTime);
 
@@ -775,6 +829,166 @@ export class NeoManager {
         Color.clone(origRenderColor, orbitEntry.primitive._renderColor);
       }
     }, 1500);
+  }
+
+  /**
+   * Clear debug visualization entities and primitives.
+   */
+  _clearDebugViz() {
+    for (const entity of this._debugEntities) {
+      this.viewer.entities.remove(entity);
+    }
+    this._debugEntities = [];
+    for (const primitive of this._debugPrimitives) {
+      this.viewer.scene.primitives.remove(primitive);
+    }
+    this._debugPrimitives = [];
+  }
+
+  /**
+   * Fetch Earth's position from JPL Horizons API and compare with astronomy-engine.
+   * Creates diagnostic billboards showing the position error.
+   */
+  async _debugEarthFromHorizons() {
+    this._clearDebugViz();
+    const time = this.viewer.clock.currentTime;
+    const simDate = JulianDate.toDate(time);
+
+    // Format dates for Horizons API
+    const fmt = (d) => d.toISOString().split("T")[0];
+    const startDate = fmt(simDate);
+    const endDate = fmt(new Date(simDate.getTime() + 86400000));
+
+    console.log(`[DebugEarth] Fetching Horizons data for ${startDate}...`);
+
+    try {
+      // Fetch from Horizons API
+      const params = new URLSearchParams({
+        format: "json",
+        COMMAND: "'399'",
+        EPHEM_TYPE: "'VECTORS'",
+        CENTER: "'@sun'",
+        START_TIME: `'${startDate}'`,
+        STOP_TIME: `'${endDate}'`,
+        STEP_SIZE: "'1d'",
+        OUT_UNITS: "'AU-D'",
+        REF_SYSTEM: "'ICRF'",
+        REF_PLANE: "'FRAME'", // Equatorial plane of ICRF (not ecliptic default)
+        VEC_TABLE: "'1'",
+      });
+
+      const response = await fetch(`/api/horizons?${params}`);
+      if (!response.ok) {
+        throw new Error(`Horizons API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const result = data.result;
+
+      // Parse XYZ from $$SOE...$$SOE block
+      const soeIdx = result.indexOf("$$SOE");
+      const eoeIdx = result.indexOf("$$EOE");
+      if (soeIdx < 0 || eoeIdx < 0) {
+        throw new Error("Could not find $$SOE/$$EOE markers in Horizons response");
+      }
+
+      const block = result.substring(soeIdx + 5, eoeIdx);
+      const xMatch = block.match(/X\s*=\s*([^\s]+)/);
+      const yMatch = block.match(/Y\s*=\s*([^\s]+)/);
+      const zMatch = block.match(/Z\s*=\s*([^\s]+)/);
+      if (!xMatch || !yMatch || !zMatch) {
+        throw new Error("Could not parse XYZ from Horizons response");
+      }
+
+      const horizonsAU = {
+        x: parseFloat(xMatch[1]),
+        y: parseFloat(yMatch[1]),
+        z: parseFloat(zMatch[1]),
+      };
+
+      // Convert to meters (heliocentric ICRF)
+      const horizonsICRF = new Cartesian3(horizonsAU.x * AU_TO_METERS, horizonsAU.y * AU_TO_METERS, horizonsAU.z * AU_TO_METERS);
+
+      // Get astronomy-engine position for same time
+      const astroICRF = getEarthHelioVectorMeters(time);
+
+      // Compute delta (error vector in ICRF meters)
+      const deltaICRF = new Cartesian3(horizonsICRF.x - astroICRF.x, horizonsICRF.y - astroICRF.y, horizonsICRF.z - astroICRF.z);
+      const errorMeters = Cartesian3.magnitude(deltaICRF);
+      const errorKm = errorMeters / 1000;
+
+      // Convert delta to ECEF for entity positioning
+      const icrfToFixed = Transforms.computeIcrfToFixedMatrix(time);
+      let deltaECEF;
+      if (defined(icrfToFixed)) {
+        deltaECEF = Matrix3.multiplyByVector(icrfToFixed, deltaICRF, new Cartesian3());
+      } else {
+        deltaECEF = Cartesian3.clone(deltaICRF);
+      }
+
+      // Console output: comparison table
+      console.log("[DebugEarth] Heliocentric ICRF comparison (AU):");
+      console.table({
+        Horizons: { X: horizonsAU.x, Y: horizonsAU.y, Z: horizonsAU.z },
+        "astronomy-engine": {
+          X: astroICRF.x / AU_TO_METERS,
+          Y: astroICRF.y / AU_TO_METERS,
+          Z: astroICRF.z / AU_TO_METERS,
+        },
+        "Delta (AU)": {
+          X: deltaICRF.x / AU_TO_METERS,
+          Y: deltaICRF.y / AU_TO_METERS,
+          Z: deltaICRF.z / AU_TO_METERS,
+        },
+      });
+      console.log(`[DebugEarth] Position error: ${errorKm.toFixed(3)} km (${errorMeters.toFixed(1)} m)`);
+
+      // Create diagnostic entity at error offset from Earth center
+      const labelText = `Error: ${errorKm.toFixed(3)} km\nHorizons: [${horizonsAU.x.toFixed(8)}, ${horizonsAU.y.toFixed(8)}, ${horizonsAU.z.toFixed(8)}] AU`;
+
+      const entity = this.viewer.entities.add({
+        id: `debug-earth-horizons-${Date.now()}`,
+        name: "Horizons Earth Position Error",
+        position: deltaECEF,
+        point: {
+          pixelSize: 10,
+          color: Color.YELLOW,
+          outlineColor: Color.BLACK,
+          outlineWidth: 2,
+        },
+        label: {
+          text: labelText,
+          font: "13px monospace",
+          fillColor: Color.YELLOW,
+          outlineColor: Color.BLACK,
+          outlineWidth: 2,
+          style: 2, // FILL_AND_OUTLINE
+          pixelOffset: new Cartesian2(0, -20),
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          show: true,
+        },
+      });
+      this._debugEntities.push(entity);
+
+      // Draw error line from Earth center (0,0,0) to error position
+      if (errorMeters > 0.1) {
+        const linePositions = [new Cartesian3(0, 0, 0), Cartesian3.clone(deltaECEF)];
+        const linePrimitive = new OrbitLinePrimitive({
+          positions: linePositions,
+          color: Color.YELLOW.withAlpha(0.8),
+          modelMatrix: Matrix4.IDENTITY,
+          show: true,
+          depthTestEnabled: false,
+          primitiveType: PrimitiveType.LINES,
+        });
+        this.viewer.scene.primitives.add(linePrimitive);
+        this._debugPrimitives.push(linePrimitive);
+      }
+
+      console.log("[DebugEarth] Debug visualization created. Yellow marker shows position error offset from Earth center.");
+    } catch (error) {
+      console.error("[DebugEarth] Failed:", error);
+    }
   }
 
   /**

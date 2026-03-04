@@ -15,10 +15,10 @@ const sinObl = Math.sin(OBLIQUITY_J2000);
  */
 export class KeplerPropagator {
   /**
-   * Solve Kepler's equation M = E - e*sin(E) for eccentric anomaly E.
+   * Solve Kepler's equation M = E - e*sin(E) for eccentric anomaly E (elliptical).
    * Uses Newton-Raphson iteration.
    * @param {number} M - Mean anomaly in radians
-   * @param {number} e - Eccentricity
+   * @param {number} e - Eccentricity (must be < 1)
    * @param {number} tolerance - Convergence tolerance
    * @returns {number} Eccentric anomaly E in radians
    */
@@ -33,6 +33,27 @@ export class KeplerPropagator {
       }
     }
     return E;
+  }
+
+  /**
+   * Solve hyperbolic Kepler's equation M = e*sinh(H) - H for hyperbolic anomaly H.
+   * Uses Newton-Raphson iteration.
+   * @param {number} M - Mean anomaly in radians
+   * @param {number} e - Eccentricity (must be > 1)
+   * @param {number} tolerance - Convergence tolerance
+   * @returns {number} Hyperbolic anomaly H
+   */
+  static solveHyperbolicKepler(M, e, tolerance = 1e-12) {
+    // Initial guess: for large M, H ≈ sign(M)*ln(2|M|/e)
+    let H = Math.abs(M) > 1 ? Math.sign(M) * Math.log((2 * Math.abs(M)) / e) : M;
+    for (let i = 0; i < 50; i++) {
+      const dH = (e * Math.sinh(H) - H - M) / (e * Math.cosh(H) - 1);
+      H -= dH;
+      if (Math.abs(dH) < tolerance) {
+        return H;
+      }
+    }
+    return H;
   }
 
   /**
@@ -56,16 +77,23 @@ export class KeplerPropagator {
     const dt = julianDate - epoch_jd; // days
     const M = (ma_deg + n_deg_day * dt) * DEG_TO_RAD;
 
-    // Solve Kepler's equation
-    const E = KeplerPropagator.solveKeplerEquation(M % (2 * Math.PI), e);
+    let v, r;
 
-    // True anomaly
-    const sinV = (Math.sqrt(1 - e * e) * Math.sin(E)) / (1 - e * Math.cos(E));
-    const cosV = (Math.cos(E) - e) / (1 - e * Math.cos(E));
-    const v = Math.atan2(sinV, cosV);
-
-    // Heliocentric distance
-    const r = a_au * (1 - e * Math.cos(E));
+    if (e < 1) {
+      // Elliptical orbit
+      const E = KeplerPropagator.solveKeplerEquation(((M % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI), e);
+      const sinV = (Math.sqrt(1 - e * e) * Math.sin(E)) / (1 - e * Math.cos(E));
+      const cosV = (Math.cos(E) - e) / (1 - e * Math.cos(E));
+      v = Math.atan2(sinV, cosV);
+      r = a_au * (1 - e * Math.cos(E));
+    } else {
+      // Hyperbolic orbit (e > 1, a_au is negative)
+      const H = KeplerPropagator.solveHyperbolicKepler(M, e);
+      const sqrtEm1 = Math.sqrt(e - 1);
+      const sqrtEp1 = Math.sqrt(e + 1);
+      v = 2 * Math.atan2(sqrtEp1 * Math.sinh(H / 2), sqrtEm1 * Math.cosh(H / 2));
+      r = a_au * (1 - e * Math.cosh(H)); // a_au < 0, e*cosh(H) > 1, so r > 0
+    }
 
     // Position in orbital plane
     const xOrb = r * Math.cos(v);
@@ -165,9 +193,9 @@ export class KeplerPropagator {
   }
 
   /**
-   * Compute heliocentric ICRF position directly from eccentric anomaly E.
-   * Produces more uniform arc-length sampling than time-based methods for eccentric orbits.
-   * @param {Object} elements - Orbital elements
+   * Compute heliocentric ICRF position directly from eccentric anomaly E (elliptical only).
+   * For hyperbolic orbits, use computeHeliocentricICRFByH instead.
+   * @param {Object} elements - Orbital elements (must have e < 1)
    * @param {number} E - Eccentric anomaly in radians
    * @returns {Cartesian3} Heliocentric ICRF position in meters
    */
@@ -212,16 +240,69 @@ export class KeplerPropagator {
   }
 
   /**
-   * Convert a Cesium JulianDate to eccentric anomaly E for given orbital elements.
+   * Compute heliocentric ICRF position from hyperbolic anomaly H (hyperbolic orbits).
+   * @param {Object} elements - Orbital elements (must have e > 1, a_au < 0)
+   * @param {number} H - Hyperbolic anomaly
+   * @returns {Cartesian3} Heliocentric ICRF position in meters
+   */
+  static computeHeliocentricICRFByH(elements, H) {
+    const { e, a_au, i_deg, om_deg, w_deg } = elements;
+
+    // True anomaly from hyperbolic anomaly
+    const sqrtEm1 = Math.sqrt(e - 1);
+    const sqrtEp1 = Math.sqrt(e + 1);
+    const v = 2 * Math.atan2(sqrtEp1 * Math.sinh(H / 2), sqrtEm1 * Math.cosh(H / 2));
+
+    // Heliocentric distance (a_au < 0, e*cosh(H) > 1, so r > 0)
+    const r = a_au * (1 - e * Math.cosh(H));
+
+    // Position in orbital plane
+    const xOrb = r * Math.cos(v);
+    const yOrb = r * Math.sin(v);
+
+    // Rotation angles
+    const w = w_deg * DEG_TO_RAD;
+    const om = om_deg * DEG_TO_RAD;
+    const i = i_deg * DEG_TO_RAD;
+
+    const cosW = Math.cos(w);
+    const sinW = Math.sin(w);
+    const cosOm = Math.cos(om);
+    const sinOm = Math.sin(om);
+    const cosI = Math.cos(i);
+    const sinI = Math.sin(i);
+
+    // Rotate to ecliptic J2000 frame
+    const xEcl = (cosOm * cosW - sinOm * sinW * cosI) * xOrb + (-cosOm * sinW - sinOm * cosW * cosI) * yOrb;
+    const yEcl = (sinOm * cosW + cosOm * sinW * cosI) * xOrb + (-sinOm * sinW + cosOm * cosW * cosI) * yOrb;
+    const zEcl = sinW * sinI * xOrb + cosW * sinI * yOrb;
+
+    // Ecliptic → equatorial (ICRF), AU → meters
+    const x = xEcl * AU_TO_METERS;
+    const y = (cosObl * yEcl - sinObl * zEcl) * AU_TO_METERS;
+    const z = (sinObl * yEcl + cosObl * zEcl) * AU_TO_METERS;
+
+    return new Cartesian3(x, y, z);
+  }
+
+  /**
+   * Convert a Cesium JulianDate to eccentric/hyperbolic anomaly for given orbital elements.
+   * For elliptical orbits returns E normalized to [0, 2π).
+   * For hyperbolic orbits returns H (not normalized — can be any real number).
    * @param {Object} elements - Orbital elements
    * @param {JulianDate} cesiumJulianDate - Cesium JulianDate
-   * @returns {number} Eccentric anomaly E in radians, normalized to [0, 2π)
+   * @returns {number} Anomaly value
    */
   static timeToEccentricAnomaly(elements, cesiumJulianDate) {
     const { e, ma_deg, n_deg_day, epoch_jd } = elements;
     const jd = cesiumJulianDate.dayNumber + cesiumJulianDate.secondsOfDay / 86400;
     const dt = jd - epoch_jd;
     const M = (ma_deg + n_deg_day * dt) * DEG_TO_RAD;
+
+    if (e >= 1) {
+      return KeplerPropagator.solveHyperbolicKepler(M, e);
+    }
+
     const TWO_PI = 2 * Math.PI;
     const Mnorm = ((M % TWO_PI) + TWO_PI) % TWO_PI;
     const E = KeplerPropagator.solveKeplerEquation(Mnorm, e);
