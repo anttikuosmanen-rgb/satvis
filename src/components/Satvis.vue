@@ -183,51 +183,41 @@
       <div v-show="menu.dbg" class="toolbarSwitches">
         <div class="toolbarTitle">Debug</div>
         <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 0) }">
-          <input v-model="debugConsoleLog" type="checkbox" />
-          <span class="slider"></span>
-          Console Logging
-        </label>
-        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 1) }">
           <input v-model="showFps" type="checkbox" />
           <span class="slider"></span>
           FPS
         </label>
-        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 2) }">
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 1) }">
           <input v-model="showCameraAltitude" type="checkbox" />
           <span class="slider"></span>
           Camera Altitude
         </label>
-        <label v-if="isIos" class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 3) }">
+        <label v-if="isIos" class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 2) }">
           <input v-model="showIosClock" type="checkbox" />
           <span class="slider"></span>
           Show iOS Clock
         </label>
-        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 4) }">
-          <input v-model="cc.viewer.scene.requestRenderMode" type="checkbox" />
-          <span class="slider"></span>
-          RequestRender
-        </label>
-        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 5) }">
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 3) }">
           <input v-model="qualityPreset" true-value="high" false-value="low" type="checkbox" />
           <span class="slider"></span>
           High Quality
         </label>
-        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 6) }">
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 4) }">
           <input v-model="cc.viewer.scene.fog.enabled" type="checkbox" />
           <span class="slider"></span>
           Fog
         </label>
-        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 7) }">
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 5) }">
           <input v-model="cc.viewer.scene.globe.enableLighting" type="checkbox" />
           <span class="slider"></span>
           Lighting
         </label>
-        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 8) }">
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 6) }">
           <input v-model="cc.viewer.scene.highDynamicRange" type="checkbox" />
           <span class="slider"></span>
           HDR
         </label>
-        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 9) }">
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 7) }">
           <input v-model="cc.viewer.scene.globe.showGroundAtmosphere" type="checkbox" />
           <span class="slider"></span>
           Atmosphere
@@ -254,13 +244,6 @@
             <span class="slider"></span>
             Moon orbit
           </label>
-          <template v-if="enabledComponents.includes('Moon orbit')">
-            <label class="toolbarSwitch">
-              <input v-model="moonOrbitHeliocentric" type="checkbox" @change="toggleMoonOrbitMode" />
-              <span class="slider"></span>
-              Heliocentric Moon orbit
-            </label>
-          </template>
           <label class="toolbarSwitch">
             <input v-model="enabledComponents" type="checkbox" value="Earth orbit" />
             <span class="slider"></span>
@@ -272,36 +255,18 @@
             Planet orbits
           </label>
         </template>
-        <div class="toolbarTitle">Overpass calculation</div>
-        <label class="toolbarSwitch">
-          <input v-model="enableSwathPasses" type="checkbox" />
-          <span class="slider"></span>
-          Enable swath passes
-        </label>
-        <template v-if="enableSwathPasses">
-          <label class="toolbarSwitch">
-            <input v-model="overpassMode" type="radio" value="elevation" />
-            <span class="slider"></span>
-            Elevation
-          </label>
-          <label class="toolbarSwitch">
-            <input v-model="overpassMode" type="radio" value="swath" />
-            <span class="slider"></span>
-            Swath
-          </label>
-        </template>
         <div class="toolbarTitle">Launch Sites</div>
-        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 11) }">
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 8) }">
           <input v-model="showLaunchSitesProminent" type="checkbox" />
           <span class="slider"></span>
           Prominent launch sites
         </label>
         <div class="toolbarTitle">Snapshot</div>
-        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 12) }">
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 9) }">
           <input type="button" @click="copySnapshotUrl(false)" />
           Copy snapshot URL
         </label>
-        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 13) }">
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 10) }">
           <input type="button" @click="copySnapshotUrl(true)" />
           Copy snapshot URL (with TLEs)
         </label>
@@ -354,7 +319,6 @@ export default {
       zenithViewActive: false, // Local reactive state for zenith view
       planetsEnabled: true, // Planet rendering enabled state
       planetRenderMode: "billboard", // 'billboard' or 'point'
-      moonOrbitHeliocentric: true, // Toggle for Moon orbit mode (heliocentric vs Earth-centric)
       showCameraAltitude: false,
       cameraAltitude: 0,
       showPassCountdown: false, // Toggle for pass countdown timer visibility
@@ -373,11 +337,9 @@ export default {
     ...mapWritableState(useSatStore, [
       "enabledComponents",
       "groundStations",
-      "overpassMode",
       "hideSunlightPasses",
       "showOnlyLitPasses",
       "useLocalTime",
-      "enableSwathPasses",
       "trackedSatellite",
       "debugConsoleLog",
       "customSatellites",
@@ -566,9 +528,6 @@ export default {
       if (newGroundStations.length === 0 && this.useLocalTime) {
         this.useLocalTime = false;
       }
-    },
-    overpassMode(newMode) {
-      cc.sats.overpassMode = newMode;
     },
     hideSunlightPasses() {
       // Invalidate pass cache and refresh highlights when filter changes
@@ -1080,7 +1039,6 @@ export default {
         return items;
       } else if (menuKey === "dbg") {
         const items = [
-          { type: "checkbox", model: "debugConsoleLog" },
           { type: "checkbox", model: "showFps" },
           { type: "checkbox", model: "showCameraAltitude" },
         ];
@@ -1088,7 +1046,6 @@ export default {
           items.push({ type: "checkbox", model: "showIosClock" });
         }
         items.push(
-          { type: "cesium-checkbox", path: "viewer.scene.requestRenderMode" },
           { type: "quality-checkbox", model: "qualityPreset" },
           { type: "cesium-checkbox", path: "viewer.scene.fog.enabled" },
           { type: "cesium-checkbox", path: "viewer.scene.globe.enableLighting" },
@@ -1436,12 +1393,6 @@ export default {
         this.cc.planets.setRenderMode(this.planetRenderMode);
         // Also update Earth/Moon render mode
         this.cc.earthMoon.setRenderMode(this.planetRenderMode);
-      }
-    },
-    toggleMoonOrbitMode() {
-      // Toggle Moon orbit between heliocentric and Earth-centric modes
-      if (this.cc.earthMoon) {
-        this.cc.earthMoon.setMoonOrbitMode(this.moonOrbitHeliocentric);
       }
     },
     togglePassCountdown() {

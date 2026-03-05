@@ -12,8 +12,12 @@ export class LoadingSpinner {
   /**
    * Show the loading spinner
    */
-  show() {
+  show(message) {
+    // Update text if spinner already visible and message changed
     if (this.isVisible) {
+      if (message && this.textElement) {
+        this.textElement.textContent = message;
+      }
       return;
     }
 
@@ -59,11 +63,11 @@ export class LoadingSpinner {
       spinner.appendChild(circle);
 
       // Create text element
-      const text = document.createElement("span");
-      text.textContent = "Loading satellites...";
+      this.textElement = document.createElement("span");
+      this.textElement.textContent = message || "Loading satellites...";
 
       this.spinnerElement.appendChild(spinner);
-      this.spinnerElement.appendChild(text);
+      this.spinnerElement.appendChild(this.textElement);
 
       // Add CSS animation for spinner rotation
       const style = document.createElement("style");
@@ -77,6 +81,9 @@ export class LoadingSpinner {
       this.viewer.container.appendChild(this.spinnerElement);
     }
 
+    if (this.textElement) {
+      this.textElement.textContent = message || "Loading satellites...";
+    }
     this.spinnerElement.style.display = "flex";
     this.isVisible = true;
   }

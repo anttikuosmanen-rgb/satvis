@@ -45,7 +45,6 @@ export const presets = {
       sat: {
         enabledTags: ["OT"],
         enabledComponents: ["Point", "Label", "Orbit", "Sensor cone", "Ground track"],
-        overpassMode: "swath",
       },
       cesium: {
         layers: ["ArcGis"],

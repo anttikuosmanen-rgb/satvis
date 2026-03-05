@@ -37,8 +37,6 @@ export class SatelliteManager {
 
   #groundStations = [];
 
-  #overpassMode = "elevation";
-
   // Pass calculation state tracking to prevent race conditions
   #passCalculationInProgress = false;
   #currentPassCalculation = null;
@@ -619,8 +617,6 @@ export class SatelliteManager {
     if (this.groundStationAvailable) {
       newSat.groundStations = this.#groundStations;
     }
-    // Set overpass mode for newly added satellite
-    newSat.props.overpassMode = this.#overpassMode;
     this.satellites.push(newSat);
     existing.push(newSat);
 
@@ -932,13 +928,17 @@ export class SatelliteManager {
       }
 
       const batch = list.slice(index, index + batchSize);
-      batch.forEach((sat) => {
-        if (operation === "show") {
-          sat.show(this.#enabledComponents);
-        } else {
-          sat.hide();
-        }
-      });
+      try {
+        batch.forEach((sat) => {
+          if (operation === "show") {
+            sat.show(this.#enabledComponents);
+          } else {
+            sat.hide();
+          }
+        });
+      } catch (error) {
+        console.warn(`Error during satellite ${operation}:`, error);
+      }
 
       // Request render after this batch
       if (this.viewer && this.viewer.scene) {
@@ -1115,38 +1115,45 @@ export class SatelliteManager {
       return Promise.resolve();
     });
 
-    Promise.all(passPromises).then(() => {
-      // Always mark calculation as complete and reset flags
-      // This must happen regardless of cancellation to prevent deadlocks
-      this.#passCalculationInProgress = false;
-      this.#currentPassCalculation = null;
+    Promise.all(passPromises)
+      .then(() => {
+        // Always mark calculation as complete and reset flags
+        // This must happen regardless of cancellation to prevent deadlocks
+        this.#passCalculationInProgress = false;
+        this.#currentPassCalculation = null;
 
-      // Hide loading spinner
-      this.loadingSpinner.hide();
+        // Hide loading spinner
+        this.loadingSpinner.hide();
 
-      // Check if this calculation was cancelled by a newer calculation
-      if (calculationId.cancelled) {
-        return;
-      }
-
-      // Dispatch event: pass calculation completed
-      // This event is used by E2E tests to wait for calculation completion
-      window.dispatchEvent(
-        new CustomEvent("satvis:passCalculationComplete", {
-          detail: {
-            satelliteCount: activeSatellites.length,
-          },
-        }),
-      );
-
-      // Force an immediate timeline update after all passes are loaded
-      if (this.viewer.timeline) {
-        this.viewer.timeline.updateFromClock();
-        if (this.viewer.timeline._makeTics) {
-          this.viewer.timeline._makeTics();
+        // Check if this calculation was cancelled by a newer calculation
+        if (calculationId.cancelled) {
+          return;
         }
-      }
-    });
+
+        // Dispatch event: pass calculation completed
+        // This event is used by E2E tests to wait for calculation completion
+        window.dispatchEvent(
+          new CustomEvent("satvis:passCalculationComplete", {
+            detail: {
+              satelliteCount: activeSatellites.length,
+            },
+          }),
+        );
+
+        // Force an immediate timeline update after all passes are loaded
+        if (this.viewer.timeline) {
+          this.viewer.timeline.updateFromClock();
+          if (this.viewer.timeline._makeTics) {
+            this.viewer.timeline._makeTics();
+          }
+        }
+      })
+      .catch((error) => {
+        console.warn("Pass calculation failed:", error);
+        this.#passCalculationInProgress = false;
+        this.#currentPassCalculation = null;
+        this.loadingSpinner.hide();
+      });
   }
 
   focusGroundStation() {
@@ -1797,31 +1804,10 @@ export class SatelliteManager {
     }));
   }
 
-  get overpassMode() {
-    return this.#overpassMode;
-  }
-
-  set overpassMode(newMode) {
-    this.#overpassMode = newMode;
-    // Update overpass mode for all satellites
-    this.satellites.forEach((sat) => {
-      sat.props.overpassMode = newMode;
-    });
-    // Clear passes immediately to show old data is stale
-    this.satellites.forEach((sat) => {
-      if (sat.props.groundStationAvailable) {
-        sat.props.clearPasses();
-      }
-    });
-
-    // Invalidate ground station caches
-    this.invalidateGroundStationCaches();
-
-    // Recalculate passes asynchronously in batches to avoid blocking UI
-    this.recalculatePassesAsync();
-  }
-
   async recalculatePassesAsync() {
+    // Don't calculate passes while initial TLE loading is still in progress
+    if (!this._initialTleLoadComplete) return;
+
     // Only recalculate for active satellites (enabled by tag or name) that have a ground station
     const satellitesWithGS = this.activeSatellites.filter((sat) => sat.props.groundStationAvailable);
     if (satellitesWithGS.length === 0) return;
