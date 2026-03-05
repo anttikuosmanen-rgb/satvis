@@ -189,6 +189,59 @@ a.cesium-toolbar-button {
     margin-left: 2px;
 }
 
+.neo-fetch-button {
+    background: rgba(68, 170, 204, 0.3);
+    border: 1px solid rgba(68, 170, 204, 0.5);
+    color: #eee;
+    padding: 4px 10px;
+    cursor: pointer;
+    border-radius: 3px;
+    font-size: 12px;
+    width: 100%;
+}
+
+.neo-fetch-button:hover:not(:disabled) {
+    background: rgba(68, 170, 204, 0.5);
+}
+
+.neo-fetch-button:disabled {
+    opacity: 0.5;
+    cursor: wait;
+}
+
+.neo-search-row {
+    display: flex;
+    gap: 4px;
+    padding: 2px 4px;
+}
+
+.neo-search-input {
+    background: rgba(68, 170, 204, 0.15);
+    border: 1px solid rgba(68, 170, 204, 0.5);
+    color: #eee;
+    padding: 4px 6px;
+    border-radius: 3px;
+    font-size: 12px;
+    flex: 1;
+    min-width: 0;
+}
+
+.neo-search-input::placeholder {
+    color: #888;
+}
+
+.neo-search-button {
+    flex-shrink: 0;
+    width: auto !important;
+    padding: 4px 8px !important;
+}
+
+.neo-count {
+    color: #aaa;
+    font-size: 11px;
+    padding: 2px 6px;
+}
+
 .cesium-infoBox {
     width: calc(100% - 10px);
     max-width: 540px;

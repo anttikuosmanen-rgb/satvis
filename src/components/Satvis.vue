@@ -36,6 +36,9 @@
         >
           <font-awesome-icon icon="fas fa-stopwatch" />
         </button>
+        <button v-tooltip="'Near Earth Objects (n)'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('neo')">
+          <font-awesome-icon icon="fas fa-meteor" />
+        </button>
         <button v-tooltip="'Debug (Shift+D)'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('dbg')">
           <font-awesome-icon icon="fas fa-hammer" />
         </button>
@@ -178,6 +181,27 @@
         <label class="toolbarSwitch">
           <input type="button" @click="$router.go({ path: '', force: true })" />
           Reload
+        </label>
+      </div>
+      <div v-show="menu.neo" class="toolbarSwitches">
+        <div class="toolbarTitle">Near Earth Objects</div>
+        <label class="toolbarSwitch">
+          <button class="neo-fetch-button" :disabled="neoLoading" @click="fetchNeos">
+            {{ neoLoading ? "Loading..." : "Fetch NEOs (7 days)" }}
+          </button>
+        </label>
+        <div class="neo-search-row">
+          <input v-model="neoDesignation" type="text" class="neo-search-input" placeholder="e.g. Apophis, 2024 YR4" @keyup.enter="fetchNeoByDesignation" />
+          <button class="neo-fetch-button neo-search-button" :disabled="neoLoading" @click="fetchNeoByDesignation">Search</button>
+        </div>
+        <div v-if="neoCount > 0" class="neo-count">{{ neoCount }} NEOs loaded</div>
+        <label v-if="neoCount > 0" class="toolbarSwitch">
+          <input v-model="neoShowOrbits" type="checkbox" @change="toggleNeoOrbits" />
+          <span class="slider"></span>
+          Show orbits
+        </label>
+        <label v-if="neoCount > 0" class="toolbarSwitch">
+          <button class="neo-fetch-button" @click="clearNeos">Clear NEOs</button>
         </label>
       </div>
       <div v-show="menu.dbg" class="toolbarSwitches">
@@ -348,9 +372,14 @@ export default {
         gs: false,
         map: false,
         ios: false,
+        neo: false,
         dbg: false,
       },
       showUI: true,
+      neoLoading: false,
+      neoCount: 0,
+      neoShowOrbits: false,
+      neoDesignation: "",
       zenithViewActive: false, // Local reactive state for zenith view
       planetsEnabled: true, // Planet rendering enabled state
       planetRenderMode: "billboard", // 'billboard' or 'point'
@@ -726,6 +755,12 @@ export default {
     };
     window.addEventListener("openMenu", this.openMenuHandler);
 
+    // Listen for NEO count changes
+    this.neoCountHandler = (event) => {
+      this.neoCount = event.detail;
+    };
+    window.addEventListener("neoCountChanged", this.neoCountHandler);
+
     // Listen for GS menu close event (after GS placement)
     this.closeGsMenuHandler = () => {
       if (this.menu.gs) {
@@ -859,6 +894,10 @@ export default {
     // Clean up menu open listener
     if (this.openMenuHandler) {
       window.removeEventListener("openMenu", this.openMenuHandler);
+    }
+    // Clean up NEO count listener
+    if (this.neoCountHandler) {
+      window.removeEventListener("neoCountChanged", this.neoCountHandler);
     }
     // Clean up GS menu close listener
     if (this.closeGsMenuHandler) {
@@ -1443,6 +1482,36 @@ export default {
       if (this.cc.earthMoon) {
         this.cc.earthMoon.setMoonOrbitMode(this.moonOrbitHeliocentric);
       }
+    },
+    async fetchNeos() {
+      /* global __SATVIS_NASA_API_KEY__ */
+      if (!this.cc.neo || this.neoLoading) return;
+      this.neoLoading = true;
+      const apiKey = typeof __SATVIS_NASA_API_KEY__ !== "undefined" ? __SATVIS_NASA_API_KEY__ : "DEMO_KEY";
+      await this.cc.neo.fetchAndDisplayNeos(apiKey);
+      this.neoLoading = this.cc.neo.loading;
+      this.neoCount = this.cc.neo.neos.length;
+    },
+    toggleNeoOrbits() {
+      if (!this.cc.neo) return;
+      if (this.neoShowOrbits) {
+        this.cc.neo.enableOrbits();
+      } else {
+        this.cc.neo.disableOrbits();
+      }
+    },
+    async fetchNeoByDesignation() {
+      if (!this.cc.neo || !this.neoDesignation.trim()) return;
+      this.neoLoading = true;
+      await this.cc.neo.fetchByDesignation(this.neoDesignation.trim());
+      this.neoLoading = false;
+      this.neoCount = this.cc.neo.neos.length;
+    },
+    clearNeos() {
+      if (!this.cc.neo) return;
+      this.cc.neo.clear();
+      this.neoCount = 0;
+      this.neoShowOrbits = false;
     },
     togglePassCountdown() {
       // Toggle the pass countdown timer visibility

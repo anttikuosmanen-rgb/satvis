@@ -21,6 +21,9 @@ terraform.tfstate
 terraform.tfstate.backup
 *.tfvars
 
+# Environment variables
+.env
+
 # Claude Code files
 .claude/
 .claude.json

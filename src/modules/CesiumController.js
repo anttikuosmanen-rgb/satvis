@@ -52,6 +52,7 @@ import { TimeFormatHelper } from "./util/TimeFormatHelper";
 import { PlanetManager } from "./PlanetManager";
 import { EarthManager } from "./EarthManager";
 import { LaunchSiteManager } from "./LaunchSiteManager";
+import { NeoManager } from "./NeoManager";
 import { filterAndSortPasses } from "./util/PassFilter";
 import { ClockMonitor } from "./util/ClockMonitor";
 import { DescriptionHelper } from "./util/DescriptionHelper";
@@ -212,6 +213,9 @@ export class CesiumController {
 
     // Wire LaunchSiteManager to SatelliteManager for pre-launch satellite positioning
     this.sats.launchSiteManager = this.launchSites;
+
+    // Create NEO Manager
+    this.neo = new NeoManager(this.viewer);
 
     // Add event listener for ground station selection
     this.setupGroundStationSelectionListener();
@@ -1594,6 +1598,11 @@ export class CesiumController {
         // l - Layers menu (only when not shift)
         if (event.key === "l" && !event.shiftKey) {
           window.dispatchEvent(new CustomEvent("openMenu", { detail: "map" }));
+          return;
+        }
+        // n - NEO menu (only when not shift)
+        if (event.key === "n" && !event.shiftKey) {
+          window.dispatchEvent(new CustomEvent("openMenu", { detail: "neo" }));
           return;
         }
         // Shift+D - Debug menu
