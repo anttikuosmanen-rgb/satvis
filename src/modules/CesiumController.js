@@ -1477,25 +1477,14 @@ export class CesiumController {
     // Right-click handler for individual satellite path mode toggle
     // Cycles through: Plain (off) → Smart Path (colored visibility/lighting)
     // Works independently of global Orbit/Orbit track components
-    handler.setInputAction(() => {
-      // Get the currently selected satellite
-      const selectedEntity = this.viewer.selectedEntity;
-      if (!selectedEntity || !selectedEntity.name) {
-        return;
-      }
-
-      // Find the satellite from the selected entity
-      // Entity names follow pattern: "SatelliteName - Point", "SatelliteName - Label", etc.
-      const entityName = selectedEntity.name;
-      const satelliteName = entityName.split(" - ")[0];
-
-      // Get the satellite object
-      const satellite = this.sats.getSatellite(satelliteName);
+    handler.setInputAction((event) => {
+      const pickedObject = this.viewer.scene.pick(event.position);
+      if (!defined(pickedObject) || !defined(pickedObject.id)) return;
+      const entity = pickedObject.id;
+      if (this.sats.isGroundStationEntity(entity)) return;
+      const satellite = entity._satvisOwner || this.sats.getSatellite(entity.name?.split(" - ")[0]);
       if (satellite) {
-        // Toggle the path mode (null ↔ Smart Path)
         satellite.cyclePathMode();
-
-        // Request render to update the view
         this.viewer.scene.requestRender();
       }
     }, ScreenSpaceEventType.RIGHT_CLICK);

@@ -56,11 +56,6 @@ export const satStoreUrlSyncConfig = [
     default: "",
   },
   {
-    name: "overpassMode",
-    url: "overpass",
-    default: "elevation",
-  },
-  {
     name: "hideSunlightPasses",
     url: "hideLight",
     serialize: (v) => (v ? "1" : "0"),
@@ -158,11 +153,9 @@ export const useSatStore = defineStore("sat", {
     enabledTags: [],
     groundStations: [],
     trackedSatellite: "",
-    overpassMode: "elevation",
     hideSunlightPasses: true,
     showOnlyLitPasses: true,
     useLocalTime: false,
-    enableSwathPasses: false,
     debugConsoleLog: false,
     customSatellite: null,
   }),
