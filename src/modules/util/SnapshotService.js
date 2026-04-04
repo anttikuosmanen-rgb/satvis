@@ -287,14 +287,14 @@ export class SnapshotService {
       snapshotNames = await this.restoreTleSnapshot(state.tle);
     }
 
-    // Restore NEOs (after TLEs, before camera)
-    if (state.neo) {
-      await this.restoreNeoState(state.neo);
-    }
-
-    // Restore time state
+    // Restore time state before NEOs so ephemeris fetch uses the snapshot's sim time
     if (state.t) {
       this.restoreTimeState(state.t);
+    }
+
+    // Restore NEOs (after time + TLEs, before camera)
+    if (state.neo) {
+      await this.restoreNeoState(state.neo);
     }
 
     // Restore individual orbit modes (Smart Path) after satellites are created
