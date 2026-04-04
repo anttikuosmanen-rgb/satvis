@@ -132,21 +132,21 @@ test.describe("NEO Fetch and Display", () => {
     await neoButton.click();
 
     // Verify menu is open with title and fetch button
-    await expect(page.locator('.toolbarSwitches:has-text("Near Earth Objects")')).toBeVisible();
-    await expect(page.locator("button.neo-fetch-button")).toBeVisible();
-    await expect(page.locator("button.neo-fetch-button")).toHaveText("Fetch NEOs (7 days)");
+    await expect(page.locator('.toolbarSwitches:has-text("Ephemeris search")')).toBeVisible();
+    await expect(page.locator("button.neo-fetch-button").first()).toBeVisible();
+    await expect(page.locator("button.neo-fetch-button").first()).toHaveText("Fetch NEOs (7 days)");
   });
 
   test("should open NEO menu with 'n' keyboard shortcut", async ({ page }) => {
     await page.keyboard.press("n");
 
-    await expect(page.locator('.toolbarSwitches:has-text("Near Earth Objects")')).toBeVisible();
+    await expect(page.locator('.toolbarSwitches:has-text("Ephemeris search")')).toBeVisible();
   });
 
   test("should fetch and display NEO entities @critical", async ({ page }) => {
     // Open NEO menu
     await page.keyboard.press("n");
-    await expect(page.locator('.toolbarSwitches:has-text("Near Earth Objects")')).toBeVisible();
+    await expect(page.locator('.toolbarSwitches:has-text("Ephemeris search")')).toBeVisible();
 
     // Click fetch button
     const fetchButton = page.locator("button.neo-fetch-button").first();
@@ -184,9 +184,9 @@ test.describe("NEO Fetch and Display", () => {
     await fetchButton.click();
     await expect(page.locator(".neo-count")).toBeVisible({ timeout: 15000 });
 
-    // Verify orbits checkbox and clear button appear
-    const orbitsCheckbox = page.locator('.toolbarSwitches:has-text("Near Earth Objects") input[type="checkbox"]');
-    await expect(orbitsCheckbox).toBeVisible();
+    // Verify orbits toggle label and clear button appear
+    const orbitsLabel = page.locator('label.toolbarSwitch:has-text("Show orbits")');
+    await expect(orbitsLabel).toBeVisible();
 
     const clearButton = page.locator('button.neo-fetch-button:has-text("Clear NEOs")');
     await expect(clearButton).toBeVisible();
@@ -198,18 +198,18 @@ test.describe("NEO Fetch and Display", () => {
     await page.locator("button.neo-fetch-button").first().click();
     await expect(page.locator(".neo-count")).toBeVisible({ timeout: 15000 });
 
-    // Enable orbits
-    const orbitsCheckbox = page.locator('.toolbarSwitches:has-text("Near Earth Objects") input[type="checkbox"]');
-    await orbitsCheckbox.check();
+    // Enable orbits via the toggle label (input is display:none inside .toolbarSwitch)
+    const orbitsLabel = page.locator('label.toolbarSwitch:has-text("Show orbits")');
+    await orbitsLabel.click();
 
-    // Verify orbits were added to the orbit renderer
+    // Verify orbits were added via _fullOrbitMap
     const orbitsEnabled = await page.evaluate(() => {
       const neo = window.cc?.neo;
       if (!neo) return { error: "no neo manager" };
       return {
         showOrbits: neo.showOrbits,
-        hasOrbit1: neo.orbitRenderer.hasOrbit("neo-orbit-2099942"),
-        hasOrbit2: neo.orbitRenderer.hasOrbit("neo-orbit-3542519"),
+        hasOrbit1: neo._fullOrbitMap.has("neo-orbit-2099942"),
+        hasOrbit2: neo._fullOrbitMap.has("neo-orbit-3542519"),
       };
     });
 
@@ -218,14 +218,14 @@ test.describe("NEO Fetch and Display", () => {
     expect(orbitsEnabled.hasOrbit2).toBe(true);
 
     // Disable orbits
-    await orbitsCheckbox.uncheck();
+    await orbitsLabel.click();
 
     const orbitsDisabled = await page.evaluate(() => {
       const neo = window.cc?.neo;
       return {
         showOrbits: neo.showOrbits,
-        hasOrbit1: neo.orbitRenderer.hasOrbit("neo-orbit-2099942"),
-        hasOrbit2: neo.orbitRenderer.hasOrbit("neo-orbit-3542519"),
+        hasOrbit1: neo._fullOrbitMap.has("neo-orbit-2099942"),
+        hasOrbit2: neo._fullOrbitMap.has("neo-orbit-3542519"),
       };
     });
 
