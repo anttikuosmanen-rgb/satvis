@@ -52,6 +52,7 @@ import { TimeFormatHelper } from "./util/TimeFormatHelper";
 import { PlanetManager } from "./PlanetManager";
 import { EarthManager } from "./EarthManager";
 import { LaunchSiteManager } from "./LaunchSiteManager";
+import { NeoManager } from "./NeoManager";
 import { filterAndSortPasses } from "./util/PassFilter";
 import { ClockMonitor } from "./util/ClockMonitor";
 import { DescriptionHelper } from "./util/DescriptionHelper";
@@ -212,6 +213,9 @@ export class CesiumController {
 
     // Wire LaunchSiteManager to SatelliteManager for pre-launch satellite positioning
     this.sats.launchSiteManager = this.launchSites;
+
+    // Create NEO Manager
+    this.neo = new NeoManager(this.viewer);
 
     // Add event listener for ground station selection
     this.setupGroundStationSelectionListener();
@@ -1473,25 +1477,14 @@ export class CesiumController {
     // Right-click handler for individual satellite path mode toggle
     // Cycles through: Plain (off) → Smart Path (colored visibility/lighting)
     // Works independently of global Orbit/Orbit track components
-    handler.setInputAction(() => {
-      // Get the currently selected satellite
-      const selectedEntity = this.viewer.selectedEntity;
-      if (!selectedEntity || !selectedEntity.name) {
-        return;
-      }
-
-      // Find the satellite from the selected entity
-      // Entity names follow pattern: "SatelliteName - Point", "SatelliteName - Label", etc.
-      const entityName = selectedEntity.name;
-      const satelliteName = entityName.split(" - ")[0];
-
-      // Get the satellite object
-      const satellite = this.sats.getSatellite(satelliteName);
+    handler.setInputAction((event) => {
+      const pickedObject = this.viewer.scene.pick(event.position);
+      if (!defined(pickedObject) || !defined(pickedObject.id)) return;
+      const entity = pickedObject.id;
+      if (this.sats.isGroundStationEntity(entity)) return;
+      const satellite = entity._satvisOwner || this.sats.getSatellite(entity.name?.split(" - ")[0]);
       if (satellite) {
-        // Toggle the path mode (null ↔ Smart Path)
         satellite.cyclePathMode();
-
-        // Request render to update the view
         this.viewer.scene.requestRender();
       }
     }, ScreenSpaceEventType.RIGHT_CLICK);
@@ -1594,6 +1587,11 @@ export class CesiumController {
         // l - Layers menu (only when not shift)
         if (event.key === "l" && !event.shiftKey) {
           window.dispatchEvent(new CustomEvent("openMenu", { detail: "map" }));
+          return;
+        }
+        // n - NEO menu (only when not shift)
+        if (event.key === "n" && !event.shiftKey) {
+          window.dispatchEvent(new CustomEvent("openMenu", { detail: "neo" }));
           return;
         }
         // Shift+D - Debug menu

@@ -52,14 +52,25 @@ export class OrbitLinePrimitive {
    * @param {Matrix4} [options.modelMatrix=Matrix4.IDENTITY] - Transform from native frame to ECEF
    * @param {boolean} [options.show=true] - Whether to show the primitive
    * @param {boolean} [options.depthTestEnabled=false] - Enable depth testing against Earth's globe and other geometry
+   * @param {PrimitiveType} [options.primitiveType=PrimitiveType.LINE_STRIP] - GL primitive type (LINE_STRIP or LINES)
    */
-  constructor({ positions, color = Color.WHITE, modelMatrix = Matrix4.IDENTITY, show = true, depthTestEnabled = false, minDistance = 0, fadeRange = 0.2 }) {
+  constructor({
+    positions,
+    color = Color.WHITE,
+    modelMatrix = Matrix4.IDENTITY,
+    show = true,
+    depthTestEnabled = false,
+    minDistance = 0,
+    fadeRange = 0.2,
+    primitiveType = PrimitiveType.LINE_STRIP,
+  }) {
     this._positions = positions;
     this._color = Color.clone(color);
     this._baseAlpha = color.alpha;
     this._renderColor = Color.clone(color); // Mutable copy for per-frame alpha adjustment
     this._modelMatrix = Matrix4.clone(modelMatrix);
     this._depthTestEnabled = depthTestEnabled;
+    this._primitiveType = primitiveType;
     this._minDistance = minDistance;
     this._fadeRange = fadeRange; // Fraction of minDistance over which to fade in (0.2 = 20%)
     this._wasFading = minDistance > 0; // Start as fading if we have a minDistance
@@ -202,7 +213,7 @@ export class OrbitLinePrimitive {
       vertexArray: this._vertexArray,
       shaderProgram: this._shaderProgram,
       renderState: this._renderState,
-      primitiveType: PrimitiveType.LINE_STRIP,
+      primitiveType: this._primitiveType,
       modelMatrix: this._modelMatrix,
       boundingVolume: this._boundingSphere,
       cull: false,

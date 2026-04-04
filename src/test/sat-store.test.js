@@ -38,12 +38,6 @@ describe("Sat Store - Initialization", () => {
     expect(store.enabledTags).toEqual([]);
   });
 
-  it("should set default overpass mode to elevation", () => {
-    const store = useSatStore();
-
-    expect(store.overpassMode).toBe("elevation");
-  });
-
   it("should set default sunlight pass filters", () => {
     const store = useSatStore();
 

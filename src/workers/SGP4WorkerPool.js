@@ -88,24 +88,6 @@ class SGP4WorkerPoolSingleton {
   }
 
   /**
-   * Compute satellite passes using swath width
-   * @param {Array<string>} tle - TLE lines
-   * @param {Object} groundStationPosition - {latitude, longitude, height}
-   * @param {number} swathKm - Swath width in kilometers
-   * @param {number} startDateMs - Start time in milliseconds
-   * @param {number} endDateMs - End time in milliseconds
-   * @param {number} maxPasses - Maximum number of passes to compute
-   * @returns {Promise<Array>} Array of pass objects
-   */
-  async computePassesSwath(tle, groundStationPosition, swathKm, startDateMs, endDateMs, maxPasses = 50) {
-    const pool = this.getPool();
-    if (!pool || !this.enabled) {
-      throw new Error("SGP4 WorkerPool not available");
-    }
-    return pool.computePassesSwath(tle, groundStationPosition, swathKm, startDateMs, endDateMs, maxPasses);
-  }
-
-  /**
    * Clear the satrec cache in all workers
    */
   async clearCache() {

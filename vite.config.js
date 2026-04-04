@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import vue from "@vitejs/plugin-vue";
 import { viteStaticCopy } from "vite-plugin-static-copy";
 import { VitePWA } from "vite-plugin-pwa";
@@ -8,12 +8,32 @@ const cesiumEngineSource = "node_modules/@cesium/engine";
 const cesiumWidgetsSource = "node_modules/@cesium/widgets";
 const cesiumBaseUrl = "cesium";
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  // Load .env files (SATVIS_-prefixed vars are exposed via loadEnv with empty prefix)
+  const env = loadEnv(mode, process.cwd(), "SATVIS_");
+
+  return {
   // Set base path based on deployment target
   // - GitHub Pages: /satvis/
   // - Production server: from SATVIS_BASE_PATH env var
   // - Development: /
   base: process.env.SATVIS_BASE_PATH || (process.env.GITHUB_ACTIONS ? "/satvis/" : ""),
+  server: {
+    proxy: {
+      // Proxy JPL SBDB API requests to bypass CORS restrictions
+      "/api/sbdb": {
+        target: "https://ssd-api.jpl.nasa.gov",
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/api\/sbdb/, "/sbdb.api"),
+      },
+      // Proxy JPL Horizons API requests to bypass CORS restrictions
+      "/api/horizons": {
+        target: "https://ssd.jpl.nasa.gov",
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/api\/horizons/, "/api/horizons.api"),
+      },
+    },
+  },
   build: {
     sourcemap: true,
     chunkSizeWarningLimit: 1000,
@@ -50,6 +70,7 @@ export default defineConfig({
     CESIUM_BASE_URL: JSON.stringify("./cesium"),
     // Local-only sky maps (MilkyWay8K, Starmap8K) are excluded from deployed builds
     __SATVIS_LOCAL_DEV__: JSON.stringify(process.env.SATVIS_LOCAL_DEV !== 'false' && !process.env.GITHUB_ACTIONS && !process.env.SATVIS_BASE_PATH),
+    __SATVIS_NASA_API_KEY__: JSON.stringify(env.SATVIS_NASA_API_KEY || process.env.SATVIS_NASA_API_KEY || "DEMO_KEY"),
   },
   plugins: [
     vue(),
@@ -146,4 +167,5 @@ export default defineConfig({
       },
     }),
   ],
+};
 });
