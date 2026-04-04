@@ -187,7 +187,7 @@
         <div class="toolbarTitle">Ephemeris search</div>
         <label class="toolbarSwitch">
           <button class="neo-fetch-button" :disabled="neoLoading" @click="fetchNeos">
-            {{ neoLoading ? "Loading..." : "Fetch NEOs (7 days)" }}
+            {{ neoLoading ? "Loading..." : "Close approaches (7 days)" }}
           </button>
         </label>
         <div class="neo-search-row">
@@ -205,14 +205,14 @@
             </div>
           </div>
         </div>
-        <div v-if="neoCount > 0" class="neo-count">{{ neoCount }} NEOs loaded</div>
+        <div v-if="neoCount > 0" class="neo-count">{{ neoCount }} {{ neoCount === 1 ? "object" : "objects" }} loaded</div>
         <label v-if="neoCount > 0" class="toolbarSwitch">
           <input v-model="neoShowOrbits" type="checkbox" @change="toggleNeoOrbits" />
           <span class="slider"></span>
           Show orbits
         </label>
         <label v-if="neoCount > 0" class="toolbarSwitch">
-          <button class="neo-fetch-button" @click="clearNeos">Clear NEOs</button>
+          <button class="neo-fetch-button" @click="clearNeos">Clear all</button>
         </label>
       </div>
       <div v-show="menu.dbg" class="toolbarSwitches">

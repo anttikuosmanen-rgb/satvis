@@ -134,7 +134,7 @@ test.describe("NEO Fetch and Display", () => {
     // Verify menu is open with title and fetch button
     await expect(page.locator('.toolbarSwitches:has-text("Ephemeris search")')).toBeVisible();
     await expect(page.locator("button.neo-fetch-button").first()).toBeVisible();
-    await expect(page.locator("button.neo-fetch-button").first()).toHaveText("Fetch NEOs (7 days)");
+    await expect(page.locator("button.neo-fetch-button").first()).toHaveText("Close approaches (7 days)");
   });
 
   test("should open NEO menu with 'n' keyboard shortcut", async ({ page }) => {
@@ -154,7 +154,7 @@ test.describe("NEO Fetch and Display", () => {
 
     // Wait for loading to complete and count to appear
     await expect(page.locator(".neo-count")).toBeVisible({ timeout: 15000 });
-    await expect(page.locator(".neo-count")).toHaveText("2 NEOs loaded");
+    await expect(page.locator(".neo-count")).toHaveText("2 objects loaded");
 
     // Verify entities were created in Cesium
     const entityState = await page.evaluate(() => {
@@ -188,7 +188,7 @@ test.describe("NEO Fetch and Display", () => {
     const orbitsLabel = page.locator('label.toolbarSwitch:has-text("Show orbits")');
     await expect(orbitsLabel).toBeVisible();
 
-    const clearButton = page.locator('button.neo-fetch-button:has-text("Clear NEOs")');
+    const clearButton = page.locator('button.neo-fetch-button:has-text("Clear all")');
     await expect(clearButton).toBeVisible();
   });
 
@@ -241,7 +241,7 @@ test.describe("NEO Fetch and Display", () => {
     await expect(page.locator(".neo-count")).toBeVisible({ timeout: 15000 });
 
     // Click clear button
-    const clearButton = page.locator('button.neo-fetch-button:has-text("Clear NEOs")');
+    const clearButton = page.locator('button.neo-fetch-button:has-text("Clear all")');
     await clearButton.click();
 
     // Verify count is gone and entities removed
