@@ -3,10 +3,14 @@ import {
   Cartesian2,
   Cartesian3,
   Color,
+  ExtrapolationType,
   JulianDate,
+  LagrangePolynomialApproximation,
   Matrix3,
   Matrix4,
   PrimitiveType,
+  ReferenceFrame,
+  SampledPositionProperty,
   ScreenSpaceEventHandler,
   ScreenSpaceEventType,
   Transforms,
@@ -52,6 +56,10 @@ export class NeoManager {
     // Inclination visualization state: Map<neoId, { dropLinesPrimitive, denseOrbitPrimitive, sparseOrbitPrimitive, updateListener, orbitWasManual }>
     this._vizMap = new Map();
     this._clickHandler = null;
+
+    // Horizons ephemeris auto-extension: Map<id, { command, positionProperty, windowStart, windowStop, fetching }>
+    this._horizonsTracking = new Map();
+    this._horizonsExtendListener = null;
 
     // Prevent double-click fly-to on NEO entities
     this._trackedEntityListener = this.viewer.trackedEntityChanged.addEventListener(() => {
@@ -178,6 +186,17 @@ export class NeoManager {
    */
   async fetchByDesignation(designation) {
     const toast = useToastProxy();
+    const input = designation.trim();
+
+    // MB prefix: force Horizons major body / spacecraft lookup (e.g. MB399, MB-234)
+    if (/^MB-?\d+$/i.test(input)) {
+      return this.fetchByHorizonsCommand(input.slice(2));
+    }
+
+    // Pure negative integer → Horizons spacecraft/body ID (SBDB rejects negative designations)
+    if (/^-\d+$/.test(input)) {
+      return this.fetchByHorizonsCommand(input);
+    }
 
     // Check if already loaded — flash the entity and orbit to highlight it
     const existing = this.neos.find((n) => n.neoData.designation === designation || n.neoData.name === designation);
@@ -187,15 +206,18 @@ export class NeoManager {
       return true;
     }
 
-    // Check cache first
+    // Check SBDB cache / API first
     let elements = this._getCachedElements(designation);
     if (!elements) {
       elements = await NeoApiClient.fetchOrbitalElements(designation);
-      if (!elements) {
-        toast.add({ severity: "error", summary: "Not found", detail: `Could not find "${designation}" in SBDB`, life: 5000 });
-        return false;
+      if (elements) {
+        this._cacheElements(elements.designation || designation, elements);
       }
-      this._cacheElements(elements.designation || designation, elements);
+    }
+
+    if (!elements) {
+      // SBDB miss — try Horizons as fallback (handles spacecraft names, Horizons-only IDs)
+      return this.fetchByHorizonsCommand(input);
     }
 
     const neoData = {
@@ -220,6 +242,270 @@ export class NeoManager {
     toast.add({ severity: "success", summary: `Added ${neoData.name}`, detail: elements.orbit_class || "", life: 3000 });
     window.dispatchEvent(new CustomEvent("neoCountChanged", { detail: this.neos.length }));
     return true;
+  }
+
+  /**
+   * Fetch and display a solar system body by JPL Horizons COMMAND string.
+   * Works for planets, spacecraft, and any body with a Horizons numeric ID.
+   * @param {string} command - Horizons COMMAND (e.g. '399', '-234')
+   * @returns {Promise<boolean>} true if successfully added
+   */
+  async fetchByHorizonsCommand(command) {
+    const toast = useToastProxy();
+    const id = `horizons-${command}`;
+
+    // Check if already loaded
+    const existing = this.neos.find((n) => n.neoData.id === id);
+    if (existing) {
+      toast.add({ severity: "info", summary: "Already loaded", detail: command, life: 3000 });
+      this._flashNeo(existing.neoData);
+      return true;
+    }
+
+    const simDate = JulianDate.toDate(this.viewer.clock.currentTime);
+    let result;
+    try {
+      result = await NeoApiClient.fetchEphemerisVectors(command, simDate, 1);
+    } catch (err) {
+      toast.add({ severity: "error", summary: "Horizons error", detail: err.message, life: 5000 });
+      return false;
+    }
+
+    if (!result || result.vectors.length === 0) {
+      toast.add({ severity: "error", summary: "Not found", detail: `No data returned for "${command}"`, life: 5000 });
+      return false;
+    }
+
+    // Build geocentric ICRF SampledPositionProperty (km → m)
+    const position = new SampledPositionProperty(ReferenceFrame.INERTIAL);
+    position.backwardExtrapolationType = ExtrapolationType.HOLD;
+    position.forwardExtrapolationType = ExtrapolationType.HOLD;
+    position.setInterpolationOptions({
+      interpolationDegree: 5,
+      interpolationAlgorithm: LagrangePolynomialApproximation,
+    });
+    for (const vec of result.vectors) {
+      // Convert Julian Date (TDB) to Cesium JulianDate via JS Date
+      const cesiumTime = JulianDate.fromDate(new Date((vec.julianDate - 2440587.5) * 86400000));
+      position.addSample(cesiumTime, new Cartesian3(vec.x * 1000, vec.y * 1000, vec.z * 1000));
+    }
+
+    const neoData = {
+      id,
+      name: result.name,
+      designation: command,
+      magnitude: null,
+      diameter_km: null,
+      is_hazardous: false,
+      close_approach: { date: null, velocity_kms: 0, miss_distance_km: 0, miss_distance_lunar: 0 },
+    };
+
+    this.neos.push({ neoData, elements: null });
+
+    // Set up tracking BEFORE entity creation so path lead/trail CallbackProperties can reference it
+    const jdToDate = (jd) => new Date((jd - 2440587.5) * 86400000);
+    const trackingEntry = {
+      command,
+      positionProperty: position,
+      windowStart: jdToDate(result.vectors[0].julianDate),
+      windowStop: jdToDate(result.vectors[result.vectors.length - 1].julianDate),
+      fetching: false,
+      showPath: false, // Controlled by _addOrbitForNeo/_removeOrbitForNeo
+      entity: null, // Set after entity creation
+      ephemerisStart: null, // Set async by fetchEphemerisSpan
+      ephemerisEnd: null,
+      spanQueried: false, // True once fetchEphemerisSpan has completed
+      backwardBounded: false, // True when backward extension reached the ephemeris start
+      forwardBounded: false, // True when forward extension reached the ephemeris end
+    };
+    this._horizonsTracking.set(id, trackingEntry);
+
+    const entity = this.viewer.entities.add({
+      id: `neo-${id}`,
+      name: result.name,
+      position,
+      point: {
+        pixelSize: 6,
+        color: Color.WHITE,
+        outlineColor: Color.BLACK,
+        outlineWidth: 1,
+      },
+      label: {
+        text: result.name,
+        font: "11px sans-serif",
+        fillColor: Color.WHITE,
+        outlineColor: Color.BLACK,
+        outlineWidth: 1,
+        style: 2,
+        pixelOffset: new Cartesian3(0, -12, 0),
+        show: false,
+      },
+      description: new CallbackProperty(() => {
+        const fmtDate = (d) => d.toISOString().slice(0, 10);
+        let spanText;
+        if (!trackingEntry.spanQueried) {
+          spanText = "<i>querying…</i>";
+        } else if (trackingEntry.ephemerisStart && trackingEntry.ephemerisEnd) {
+          spanText = `${fmtDate(trackingEntry.ephemerisStart)} – ${fmtDate(trackingEntry.ephemerisEnd)} UTC`;
+        } else if (trackingEntry.ephemerisStart) {
+          spanText = `from ${fmtDate(trackingEntry.ephemerisStart)} UTC`;
+        } else if (trackingEntry.ephemerisEnd) {
+          spanText = `until ${fmtDate(trackingEntry.ephemerisEnd)} UTC`;
+        } else {
+          spanText = "unlimited";
+        }
+        const nowMs = JulianDate.toDate(this.viewer.clock.currentTime).getTime();
+        const inRange =
+          (!trackingEntry.ephemerisStart || nowMs >= trackingEntry.ephemerisStart.getTime()) && (!trackingEntry.ephemerisEnd || nowMs <= trackingEntry.ephemerisEnd.getTime());
+        const warning =
+          trackingEntry.ephemerisStart || trackingEntry.ephemerisEnd
+            ? inRange
+              ? ""
+              : `<p style="color:#f90">⚠ Simulation time is outside the ephemeris span. Object is hidden.</p>`
+            : "";
+        return `<h3>${result.name}</h3>
+          <p>Source: JPL Horizons (ID: ${command})</p>
+          <p><b>Ephemeris span:</b> ${spanText}</p>
+          ${warning}`;
+      }, false),
+      path: {
+        // Only render the path when within the loaded ephemeris window.
+        // PathGraphics evaluates ICRF positions via computeIcrfToFixedMatrix at render time;
+        // outside the sample range (HOLD extrapolation) or before EOP data loads, that
+        // conversion returns null → PathGraphics falls back to (0,0,0) → projectTo2D crash.
+        // showPath is toggled by _addOrbitForNeo/_removeOrbitForNeo; we confirm EOP is ready
+        // via _addOrbitWhenEopReady before setting it to true.
+        show: new CallbackProperty((time) => {
+          if (!trackingEntry.showPath) return false;
+          const nowMs = JulianDate.toDate(time).getTime();
+          return nowMs >= trackingEntry.windowStart.getTime() && nowMs <= trackingEntry.windowStop.getTime();
+        }, false),
+        leadTime: new CallbackProperty((time) => {
+          const nowMs = JulianDate.toDate(time).getTime();
+          const stopMs = trackingEntry.windowStop.getTime();
+          return Math.max(0, (stopMs - nowMs) / 1000 - 1800);
+        }, false),
+        trailTime: new CallbackProperty((time) => {
+          const nowMs = JulianDate.toDate(time).getTime();
+          const startMs = trackingEntry.windowStart.getTime();
+          return Math.max(0, (nowMs - startMs) / 1000 - 1800);
+        }, false),
+        width: 1,
+        material: Color.WHITE.withAlpha(0.4),
+      },
+    });
+
+    trackingEntry.entity = entity;
+    this.entities.push(entity);
+    this.enabled = true;
+    this._setupSelectionListener();
+
+    // Fetch full ephemeris span asynchronously; apply visibility once known
+    NeoApiClient.fetchEphemerisSpan(command, simDate)
+      .then((span) => {
+        trackingEntry.ephemerisStart = span.start;
+        trackingEntry.ephemerisEnd = span.end;
+        trackingEntry.spanQueried = true;
+        this._applyHorizonsVisibility(trackingEntry);
+      })
+      .catch(() => {
+        trackingEntry.spanQueried = true;
+      });
+
+    if (this.showOrbits) {
+      this._addOrbitWhenEopReady(neoData);
+    }
+
+    if (!this._horizonsExtendListener) {
+      this._horizonsExtendListener = CesiumCallbackHelper.createPeriodicTimeCallback(this.viewer, 2, (time) => this._extendHorizonsEphemeris(time));
+    }
+
+    toast.add({ severity: "success", summary: `Added ${result.name}`, detail: `Horizons COMMAND=${command}`, life: 3000 });
+    window.dispatchEvent(new CustomEvent("neoCountChanged", { detail: this.neos.length }));
+    return true;
+  }
+
+  /**
+   * Extend Horizons ephemeris windows when sim time approaches the loaded edges.
+   * Fires every 2 real seconds; fetches next/prev 1-day chunk when within 12 hours of edge.
+   */
+  _extendHorizonsEphemeris(time) {
+    const now = JulianDate.toDate(time).getTime();
+    const THRESHOLD_MS = 12 * 3600000; // 12 hours — start fetching next chunk when this close to edge
+    const FAR_JUMP_MS = 2 * 86400000; // 2 days — threshold for "large jump" re-center
+    const WINDOW_DAYS = 1;
+
+    for (const [, tracking] of this._horizonsTracking) {
+      this._applyHorizonsVisibility(tracking);
+
+      if (tracking.fetching) continue;
+
+      const distForward = now - tracking.windowStop.getTime();
+      const distBackward = tracking.windowStart.getTime() - now;
+
+      // Large time jump: sim time is >2 days outside the loaded window.
+      // Re-center around current time instead of incrementally extending — avoids waiting
+      // for many sequential 1-day fetches before the entity reappears at the correct position.
+      if (distForward > FAR_JUMP_MS || distBackward > FAR_JUMP_MS) {
+        // Reset bounded flags — new position may be in a different part of the ephemeris
+        tracking.backwardBounded = false;
+        tracking.forwardBounded = false;
+        tracking.fetching = true;
+        NeoApiClient.fetchEphemerisVectors(tracking.command, new Date(now), WINDOW_DAYS)
+          .then((chunk) => {
+            if (chunk && chunk.vectors.length > 0) {
+              const jdToDate = (jd) => new Date((jd - 2440587.5) * 86400000);
+              for (const vec of chunk.vectors) {
+                const cesiumTime = JulianDate.fromDate(new Date((vec.julianDate - 2440587.5) * 86400000));
+                tracking.positionProperty.addSample(cesiumTime, new Cartesian3(vec.x * 1000, vec.y * 1000, vec.z * 1000));
+              }
+              // Replace window bounds with the new chunk (there is a gap — old samples remain
+              // in the property for interpolation accuracy but the render window is reset)
+              tracking.windowStart = jdToDate(chunk.vectors[0].julianDate);
+              tracking.windowStop = jdToDate(chunk.vectors[chunk.vectors.length - 1].julianDate);
+            }
+            tracking.fetching = false;
+          })
+          .catch(() => {
+            tracking.fetching = false;
+          });
+        continue;
+      }
+
+      // Normal incremental extension: fetch the next/prev 1-day chunk when within 12h of edge.
+      // Skip a direction if we've already hit a hard ephemeris boundary there (no data returned).
+      const needsForward = !tracking.forwardBounded && distForward >= -THRESHOLD_MS;
+      const needsBackward = !tracking.backwardBounded && distBackward >= -THRESHOLD_MS;
+      if (!needsForward && !needsBackward) continue;
+
+      const extendForward = needsForward;
+      tracking.fetching = true;
+      const anchor = extendForward ? tracking.windowStop : tracking.windowStart;
+      const centerDate = new Date(anchor.getTime() + ((extendForward ? 1 : -1) * (WINDOW_DAYS * 86400000)) / 2);
+
+      NeoApiClient.fetchEphemerisVectors(tracking.command, centerDate, WINDOW_DAYS)
+        .then((chunk) => {
+          if (chunk && chunk.vectors.length > 0) {
+            const jdToDate = (jd) => new Date((jd - 2440587.5) * 86400000);
+            for (const vec of chunk.vectors) {
+              const cesiumTime = JulianDate.fromDate(new Date((vec.julianDate - 2440587.5) * 86400000));
+              tracking.positionProperty.addSample(cesiumTime, new Cartesian3(vec.x * 1000, vec.y * 1000, vec.z * 1000));
+            }
+            const newStart = jdToDate(chunk.vectors[0].julianDate);
+            const newStop = jdToDate(chunk.vectors[chunk.vectors.length - 1].julianDate);
+            if (newStart < tracking.windowStart) tracking.windowStart = newStart;
+            if (newStop > tracking.windowStop) tracking.windowStop = newStop;
+          } else {
+            // No data returned — ephemeris boundary reached in this direction; stop extending
+            if (extendForward) tracking.forwardBounded = true;
+            else tracking.backwardBounded = true;
+          }
+          tracking.fetching = false;
+        })
+        .catch(() => {
+          tracking.fetching = false;
+        });
+    }
   }
 
   /**
@@ -285,6 +571,13 @@ export class NeoManager {
    * Samples uniformly in E (0 to 2π) for near-uniform arc-length density.
    */
   _addOrbitForNeo(neoData, elements) {
+    if (!elements) {
+      // Horizons object: show trajectory via PathGraphics.
+      // The path.show CallbackProperty reads showPath, so just toggle the flag.
+      const tracking = this._horizonsTracking.get(neoData.id);
+      if (tracking) tracking.showPath = true;
+      return;
+    }
     const orbitName = `neo-orbit-${neoData.id}`;
     if (this._fullOrbitMap.has(orbitName)) return;
 
@@ -316,12 +609,50 @@ export class NeoManager {
    * Remove a full-orbit primitive for a single NEO.
    */
   _removeOrbitForNeo(neoData) {
+    // Horizons object: hide path via tracking flag
+    if (String(neoData.id).startsWith("horizons-")) {
+      const tracking = this._horizonsTracking.get(neoData.id);
+      if (tracking) tracking.showPath = false;
+      return;
+    }
     const orbitName = `neo-orbit-${neoData.id}`;
     const entry = this._fullOrbitMap.get(orbitName);
     if (!entry) return;
     entry.updateListener();
     this.viewer.scene.primitives.remove(entry.primitive);
     this._fullOrbitMap.delete(orbitName);
+  }
+
+  /**
+   * Show or hide a Horizons entity based on whether the current sim time is within
+   * its known ephemeris span. Called after the span is fetched and on each periodic tick.
+   */
+  _applyHorizonsVisibility(tracking) {
+    if (!tracking.entity) return;
+    const nowMs = JulianDate.toDate(this.viewer.clock.currentTime).getTime();
+    // Hide when outside known ephemeris span (if available)
+    const spanOk = (!tracking.ephemerisStart || nowMs >= tracking.ephemerisStart.getTime()) && (!tracking.ephemerisEnd || nowMs <= tracking.ephemerisEnd.getTime());
+    // Hide when outside the loaded sample window — prevents the entity from freezing at
+    // the HOLD-extrapolated boundary position while extension fetches are in flight
+    const windowOk = nowMs >= tracking.windowStart.getTime() && nowMs <= tracking.windowStop.getTime();
+    const visible = spanOk && windowOk;
+    if (tracking.entity.show !== visible) tracking.entity.show = visible;
+  }
+
+  /**
+   * Enable PathGraphics for a Horizons object once EOP data is confirmed loaded.
+   * computeIcrfToFixedMatrix returns null at app startup before EOP files finish loading —
+   * showing the path immediately would cause PathGraphics to receive undefined positions,
+   * which Cesium falls back to (0,0,0) → GeometryPipeline.projectTo2D crash.
+   */
+  _addOrbitWhenEopReady(neoData, attempt = 0) {
+    if (!Transforms.computeIcrfToFixedMatrix(JulianDate.now(), new Matrix3())) {
+      if (attempt < 20) {
+        setTimeout(() => this._addOrbitWhenEopReady(neoData, attempt + 1), 200);
+      }
+      return;
+    }
+    this._addOrbitForNeo(neoData, null);
   }
 
   /**
@@ -395,6 +726,13 @@ export class NeoManager {
       this._clickHandler = null;
     }
 
+    // Stop Horizons ephemeris auto-extension
+    if (this._horizonsExtendListener) {
+      this._horizonsExtendListener();
+      this._horizonsExtendListener = null;
+    }
+    this._horizonsTracking.clear();
+
     // Remove full orbit primitives
     for (const [, entry] of this._fullOrbitMap) {
       entry.updateListener();
@@ -457,7 +795,7 @@ export class NeoManager {
     if (this._vizMap.has(neoId)) return;
 
     const neoEntry = this.neos.find((n) => String(n.neoData.id) === String(neoId));
-    if (!neoEntry) return;
+    if (!neoEntry || !neoEntry.elements) return; // Horizons-only objects have no Kepler elements
 
     const { neoData, elements } = neoEntry;
 

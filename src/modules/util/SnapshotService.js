@@ -63,6 +63,10 @@ export class SnapshotService {
       state.iom = orbitModes; // iom = individual orbit modes
     }
 
+    // Capture manually-loaded NEO/Horizons objects
+    const neo = this.captureNeoState();
+    if (neo) state.neo = neo;
+
     // Optionally capture TLE data
     if (options.includeTles) {
       const tles = this.captureTleSnapshot();
@@ -209,6 +213,34 @@ export class SnapshotService {
   }
 
   /**
+   * Capture manually-loaded NEO and Horizons objects (excludes transient NeoWs batch).
+   * @returns {{ids: string[], orbits: boolean}|null}
+   */
+  captureNeoState() {
+    if (!this.cc.neo || !this.cc.neo.neos.length) return null;
+    const ids = this.cc.neo.neos
+      .filter((n) => n.neoData.id.startsWith("custom-") || n.neoData.id.startsWith("horizons-"))
+      .map((n) => (n.neoData.id.startsWith("horizons-") ? `MB${n.neoData.designation}` : n.neoData.designation));
+    if (!ids.length) return null;
+    return { ids, orbits: this.cc.neo.showOrbits };
+  }
+
+  /**
+   * Re-fetch and display NEOs from snapshot state.
+   */
+  async restoreNeoState(neoState) {
+    if (!this.cc.neo || !neoState?.ids?.length) return;
+    for (const id of neoState.ids) {
+      await this.cc.neo.fetchByDesignation(id);
+    }
+    if (neoState.orbits && this.cc.neo.neos.length > 0) {
+      this.cc.neo.enableOrbits();
+      window.dispatchEvent(new CustomEvent("neoOrbitsChanged", { detail: true }));
+    }
+    window.dispatchEvent(new CustomEvent("neoCountChanged", { detail: this.cc.neo.neos.length }));
+  }
+
+  /**
    * Serialize snapshot state to URL-safe string
    * Uses LZ-string compression with z: prefix
    */
@@ -253,6 +285,11 @@ export class SnapshotService {
     let snapshotNames = [];
     if (state.tle) {
       snapshotNames = await this.restoreTleSnapshot(state.tle);
+    }
+
+    // Restore NEOs (after TLEs, before camera)
+    if (state.neo) {
+      await this.restoreNeoState(state.neo);
     }
 
     // Restore time state

@@ -160,6 +160,209 @@ export class NeoApiClient {
   }
 
   /**
+   * Fetch state vectors for any Horizons-identifiable body (planets, spacecraft, small bodies).
+   * @param {string} command - Horizons COMMAND string (e.g. '399', '-234', 'Apophis')
+   * @param {Date} centerDate - Center of the time window (default: now)
+   * @param {number} windowDays - Total window size in days (default: 1)
+   * @returns {Promise<{name: string, vectors: Array<{julianDate: number, x: number, y: number, z: number}>}|null>}
+   */
+  static async fetchEphemerisVectors(command, centerDate = new Date(), windowDays = 1) {
+    const halfMs = (windowDays / 2) * 86400000;
+    const start = new Date(centerDate.getTime() - halfMs).toISOString().split("T")[0];
+    const stop = new Date(centerDate.getTime() + halfMs).toISOString().split("T")[0];
+
+    // Ensure start != stop (minimum 1-day window)
+    const stopDate = stop === start ? new Date(centerDate.getTime() + 86400000).toISOString().split("T")[0] : stop;
+
+    const params = new URLSearchParams({
+      format: "json",
+      COMMAND: `'${command}'`,
+      EPHEM_TYPE: "'VECTORS'",
+      CENTER: "'@399'",
+      START_TIME: `'${start}'`,
+      STOP_TIME: `'${stopDate}'`,
+      STEP_SIZE: "'1h'",
+      OUT_UNITS: "'KM-S'",
+      REF_SYSTEM: "'ICRF'",
+      REF_PLANE: "'FRAME'",
+      VEC_TABLE: "'1'",
+    });
+
+    const response = await fetch(`/api/horizons?${params}`);
+    if (!response.ok) {
+      throw new Error(`Horizons API error: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const result = NeoApiClient._parseHorizonsVectors(data);
+
+    // If no vectors returned, check for "no ephemeris prior to" warning and retry
+    if (result && result.vectors.length === 0) {
+      const ephStart = NeoApiClient._parseEphemerisStart(data.result);
+      if (ephStart) {
+        // Add 2-minute buffer so START_TIME is strictly after the ephemeris start
+        const buffered = new Date(ephStart.getTime() + 120000);
+        const retryStart = NeoApiClient._formatHorizonsDate(buffered);
+        const retryStop = NeoApiClient._formatHorizonsDate(new Date(buffered.getTime() + windowDays * 86400000));
+        console.log(`[Horizons] Retrying ${command} with START_TIME='${retryStart}'`);
+        params.set("START_TIME", `'${retryStart}'`);
+        params.set("STOP_TIME", `'${retryStop}'`);
+        const retryResponse = await fetch(`/api/horizons?${params}`);
+        if (retryResponse.ok) {
+          return NeoApiClient._parseHorizonsVectors(await retryResponse.json());
+        }
+      }
+    }
+
+    return result;
+  }
+
+  // Parse "No ephemeris ... prior to A.D. YYYY-MON-DD HH:MM:SS" from Horizons result text
+  static _parseEphemerisStart(text) {
+    if (!text) return null;
+    const months = { JAN: "01", FEB: "02", MAR: "03", APR: "04", MAY: "05", JUN: "06", JUL: "07", AUG: "08", SEP: "09", OCT: "10", NOV: "11", DEC: "12" };
+    const m = text.match(/prior to A\.D\.\s+(\d{4})-([A-Z]{3})-(\d{2})\s+(\d{2}:\d{2}:\d{2})/);
+    if (!m) return null;
+    return new Date(`${m[1]}-${months[m[2]]}-${m[3]}T${m[4]}Z`);
+  }
+
+  /**
+   * Fetch the ephemeris time span for a Horizons body.
+   * Queries ±3 years around the given center date with 30-day steps (≤73 samples).
+   *
+   * Start: detected from "No ephemeris prior to" message (exact) or absence thereof (null = unlimited).
+   * End: Horizons does not emit an "after" message — detected by comparing the last sample
+   *   Julian date against the requested stop time. If the data ends >90 days before the
+   *   stop, the ephemeris is bounded there; otherwise it extends beyond the query window (null = unlimited).
+   *
+   * @param {string} command - Horizons COMMAND string
+   * @param {Date} [centerDate] - Center of the search window (default: now)
+   * @returns {Promise<{start: Date|null, end: Date|null}>}
+   */
+  static async fetchEphemerisSpan(command, centerDate = new Date()) {
+    const THREE_YEARS_MS = 3 * 365.25 * 86400000;
+    const queryStart = new Date(centerDate.getTime() - THREE_YEARS_MS);
+    const queryStop = new Date(centerDate.getTime() + THREE_YEARS_MS);
+
+    const params = new URLSearchParams({
+      format: "json",
+      COMMAND: `'${command}'`,
+      EPHEM_TYPE: "'VECTORS'",
+      CENTER: "'@399'",
+      START_TIME: `'${NeoApiClient._formatHorizonsDate(queryStart)}'`,
+      STOP_TIME: `'${NeoApiClient._formatHorizonsDate(queryStop)}'`,
+      STEP_SIZE: "'30d'",
+      OUT_UNITS: "'KM-S'",
+      REF_SYSTEM: "'ICRF'",
+      REF_PLANE: "'FRAME'",
+      VEC_TABLE: "'1'",
+    });
+
+    const response = await fetch(`/api/horizons?${params}`);
+    if (!response.ok) return { start: null, end: null };
+    const data = await response.json();
+    const text = data.result;
+    if (!text) return { start: null, end: null };
+
+    let start = null;
+    let end = null;
+
+    // "prior to" message → exact start date (only present when query starts before ephemeris)
+    const ephStart = NeoApiClient._parseEphemerisStart(text);
+    if (ephStart) start = ephStart;
+    // No message → ephemeris extends at least to queryStart → start = null (unlimited backward)
+
+    // Detect end from last Julian date in the data block.
+    // Horizons silently stops returning data at the trajectory end without an explicit message.
+    const soeIdx = text.indexOf("$$SOE");
+    const eoeIdx = text.indexOf("$$EOE");
+    if (soeIdx >= 0 && eoeIdx >= 0) {
+      const block = text.substring(soeIdx + 5, eoeIdx);
+      const jdMatches = [...block.matchAll(/(\d{7,}\.\d+)\s*=/g)];
+      if (jdMatches.length > 0) {
+        const lastJd = parseFloat(jdMatches[jdMatches.length - 1][1]);
+        const lastMs = (lastJd - 2440587.5) * 86400000;
+        // If the last sample is >90 days before the stop, the ephemeris ends there
+        if (queryStop.getTime() - lastMs > 90 * 86400000) {
+          end = new Date(lastMs);
+        }
+        // Otherwise ephemeris extends to/beyond the query window → end = null (unlimited)
+      }
+    }
+
+    return { start, end };
+  }
+
+  // Format Date as 'YYYY-MM-DD HH:MM:SS' for Horizons START_TIME/STOP_TIME
+  static _formatHorizonsDate(date) {
+    return date.toISOString().replace("T", " ").substring(0, 19);
+  }
+
+  /**
+   * Fetch the full Horizons major bodies list (planets, moons, spacecraft, etc.).
+   * @returns {Promise<Array<{id: string, name: string}>>}
+   */
+  static async fetchMajorBodies() {
+    const params = new URLSearchParams({ format: "json", COMMAND: "'MB'" });
+    const response = await fetch(`/api/horizons?${params}`);
+    if (!response.ok) {
+      throw new Error(`Horizons API error: ${response.status}`);
+    }
+    const data = await response.json();
+    return NeoApiClient._parseMajorBodies(data.result);
+  }
+
+  static _parseMajorBodies(text) {
+    if (!text) return [];
+    const bodies = [];
+    // Each line: right-aligned ID (may be negative), 2+ spaces, name
+    // e.g.: "      399  Earth                                           Geocenter"
+    const lineRegex = /^\s*(-?\d+)\s{2,}(\S[^\n]*)/gm;
+    let match;
+    while ((match = lineRegex.exec(text)) !== null) {
+      const id = match[1];
+      // Name is everything before a run of 3+ spaces (separates name from designation)
+      const name = match[2].split(/\s{3,}/)[0].trim();
+      if (name) bodies.push({ id, name });
+    }
+    return bodies;
+  }
+
+  static _parseHorizonsVectors(data) {
+    const result = data.result;
+    if (!result) return null;
+
+    // Extract object name from "Target body name:" header line
+    const nameMatch = result.match(/Target body name:\s*([^\n{]+)/);
+    const name = nameMatch ? nameMatch[1].trim() : "Unknown";
+
+    // Parse $$SOE...$$EOE block
+    const soeIdx = result.indexOf("$$SOE");
+    const eoeIdx = result.indexOf("$$EOE");
+    if (soeIdx < 0 || eoeIdx < 0) return { name, vectors: [] };
+
+    const block = result.substring(soeIdx + 5, eoeIdx);
+    const vectors = [];
+
+    // Each record: Julian date line followed by X= Y= Z= line
+    // Format: "2460000.500000000 = A.D. 2023-Feb-25 00:00:00.0000 TDB"
+    //         " X = 1.234E+04 Y = 5.678E+03 Z =-1.234E+02"
+    const recordRegex = /(\d+\.\d+)\s*=.*?\n\s*X\s*=\s*([^\s]+)\s+Y\s*=\s*([^\s]+)\s+Z\s*=\s*([^\s]+)/g;
+    let match;
+    while ((match = recordRegex.exec(block)) !== null) {
+      vectors.push({
+        julianDate: parseFloat(match[1]),
+        x: parseFloat(match[2]),
+        y: parseFloat(match[3]),
+        z: parseFloat(match[4]),
+      });
+    }
+
+    if (vectors.length === 0) return null;
+    return { name, vectors };
+  }
+
+  /**
    * Fetch orbital elements for multiple NEOs with concurrency limiting.
    * @param {Array<string>} designations - Array of NEO designations
    * @param {number} concurrency - Max concurrent requests (default: 3)

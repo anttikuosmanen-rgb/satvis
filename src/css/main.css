@@ -242,6 +242,52 @@ a.cesium-toolbar-button {
     padding: 2px 6px;
 }
 
+.neo-mb-browse-button {
+    width: auto !important;
+    padding: 4px 7px !important;
+    flex-shrink: 0;
+}
+
+.neo-mb-browse-button.active {
+    background: rgba(68, 170, 204, 0.5);
+}
+
+.neo-mb-panel {
+    padding: 2px 4px 4px;
+}
+
+.neo-mb-list {
+    max-height: 200px;
+    overflow-y: auto;
+    margin-top: 4px;
+    border: 1px solid rgba(68, 170, 204, 0.3);
+    border-radius: 3px;
+}
+
+.neo-mb-item {
+    display: flex;
+    gap: 8px;
+    padding: 3px 6px;
+    cursor: pointer;
+    font-size: 11px;
+}
+
+.neo-mb-item:hover {
+    background: rgba(68, 170, 204, 0.2);
+}
+
+.neo-mb-id {
+    color: rgba(68, 170, 204, 0.9);
+    min-width: 44px;
+    text-align: right;
+    font-family: monospace;
+    flex-shrink: 0;
+}
+
+.neo-mb-name {
+    color: #ddd;
+}
+
 .cesium-infoBox {
     width: calc(100% - 10px);
     max-width: 540px;
