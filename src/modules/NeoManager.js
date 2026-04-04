@@ -17,7 +17,7 @@ import {
   defined,
 } from "@cesium/engine";
 import { useToastProxy } from "../composables/useToastProxy";
-import { NeoApiClient } from "./NeoApiClient";
+import { NeoApiClient, ProxyNotAvailableError } from "./NeoApiClient";
 import { KeplerPropagator } from "./KeplerPropagator";
 import { getEarthHelioVectorMeters } from "./CelestialOrbitRenderer";
 import { OrbitLinePrimitive } from "./OrbitLinePrimitive";
@@ -173,7 +173,11 @@ export class NeoManager {
       window.dispatchEvent(new CustomEvent("neoCountChanged", { detail: this.neos.length }));
     } catch (error) {
       console.error("NeoManager: fetch failed", error);
-      toast.add({ severity: "error", summary: "NEO fetch failed", detail: error.message, life: 5000 });
+      if (error instanceof ProxyNotAvailableError) {
+        toast.add({ severity: "warn", summary: "API proxy not available", detail: "This server does not have the JPL API proxy configured", life: 8000 });
+      } else {
+        toast.add({ severity: "error", summary: "NEO fetch failed", detail: error.message, life: 5000 });
+      }
     } finally {
       this.loading = false;
     }
@@ -209,7 +213,15 @@ export class NeoManager {
     // Check SBDB cache / API first
     let elements = this._getCachedElements(designation);
     if (!elements) {
-      elements = await NeoApiClient.fetchOrbitalElements(designation);
+      try {
+        elements = await NeoApiClient.fetchOrbitalElements(designation);
+      } catch (err) {
+        if (err instanceof ProxyNotAvailableError) {
+          toast.add({ severity: "warn", summary: "API proxy not available", detail: "This server does not have the JPL API proxy configured", life: 8000 });
+          return false;
+        }
+        // Other errors: fall through to Horizons fallback
+      }
       if (elements) {
         this._cacheElements(elements.designation || designation, elements);
       }
@@ -267,7 +279,11 @@ export class NeoManager {
     try {
       result = await NeoApiClient.fetchEphemerisVectors(command, simDate, 1);
     } catch (err) {
-      toast.add({ severity: "error", summary: "Horizons error", detail: err.message, life: 5000 });
+      if (err instanceof ProxyNotAvailableError) {
+        toast.add({ severity: "warn", summary: "API proxy not available", detail: "This server does not have the JPL API proxy configured", life: 8000 });
+      } else {
+        toast.add({ severity: "error", summary: "Horizons error", detail: err.message, life: 5000 });
+      }
       return false;
     }
 

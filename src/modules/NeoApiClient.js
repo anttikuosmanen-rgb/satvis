@@ -1,4 +1,23 @@
 /**
+ * Error thrown when the server-side API proxy is not available (e.g. on GitHub Pages).
+ */
+export class ProxyNotAvailableError extends Error {
+  constructor(apiName) {
+    super(`${apiName} API proxy not available on this server. Ephemeris search requires a server with proxy rules for /api/sbdb and /api/horizons.`);
+    this.name = "ProxyNotAvailableError";
+  }
+}
+
+/**
+ * Check a fetch response for proxy-not-available (404 returning HTML instead of JSON).
+ */
+function checkProxyResponse(response, apiName) {
+  if (response.status === 404) {
+    throw new ProxyNotAvailableError(apiName);
+  }
+}
+
+/**
  * API client for NASA NeoWs (Near Earth Object Web Service) and JPL SBDB (Small-Body Database).
  */
 export class NeoApiClient {
@@ -66,6 +85,7 @@ export class NeoApiClient {
 
     for (let attempt = 0; attempt <= retries; attempt++) {
       const response = await fetch(url);
+      checkProxyResponse(response, "SBDB");
 
       if (response.status === 503 || response.status === 429) {
         // JPL API overloaded — wait and retry
@@ -189,6 +209,7 @@ export class NeoApiClient {
     });
 
     const response = await fetch(`/api/horizons?${params}`);
+    checkProxyResponse(response, "Horizons");
     if (!response.ok) {
       throw new Error(`Horizons API error: ${response.status} ${response.statusText}`);
     }
@@ -259,6 +280,7 @@ export class NeoApiClient {
     });
 
     const response = await fetch(`/api/horizons?${params}`);
+    checkProxyResponse(response, "Horizons");
     if (!response.ok) return { start: null, end: null };
     const data = await response.json();
     const text = data.result;
@@ -305,6 +327,7 @@ export class NeoApiClient {
   static async fetchMajorBodies() {
     const params = new URLSearchParams({ format: "json", COMMAND: "'MB'" });
     const response = await fetch(`/api/horizons?${params}`);
+    checkProxyResponse(response, "Horizons");
     if (!response.ok) {
       throw new Error(`Horizons API error: ${response.status}`);
     }

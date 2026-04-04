@@ -331,7 +331,7 @@ import { useCesiumStore } from "../stores/cesium";
 import { useSatStore } from "../stores/sat";
 
 import { DeviceDetect } from "../modules/util/DeviceDetect";
-import { NeoApiClient } from "../modules/NeoApiClient";
+import { NeoApiClient, ProxyNotAvailableError } from "../modules/NeoApiClient";
 import { SnapshotService } from "../modules/util/SnapshotService";
 import SatelliteSelect from "./SatelliteSelect.vue";
 import PassCountdownTimer from "./PassCountdownTimer.vue";
@@ -1521,8 +1521,10 @@ export default {
         this.mbListLoading = true;
         try {
           this.mbList = await NeoApiClient.fetchMajorBodies();
-        } catch {
-          // ignore fetch errors
+        } catch (err) {
+          if (err instanceof ProxyNotAvailableError) {
+            this.cc.toastService.add({ severity: "warn", summary: "API proxy not available", detail: "Major bodies list requires JPL API proxy", life: 8000 });
+          }
         }
         this.mbListLoading = false;
       }
