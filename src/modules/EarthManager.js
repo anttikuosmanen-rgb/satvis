@@ -516,8 +516,8 @@ export class EarthManager {
           color: Color.GRAY,
           width: 3,
           resolution: lunarOrbitalPeriod / 200, // 200 samples for smooth orbit
-          leadTimeFraction: 1.0,
-          trailTimeFraction: 0.0,
+          leadTimeFraction: 0.5,
+          trailTimeFraction: 0.5,
           referenceFrame: ReferenceFrame.INERTIAL,
           usePrimitive: true,
           heliocentric: false, // Geocentric — Moon orbits Earth, not the Sun

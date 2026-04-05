@@ -36,6 +36,9 @@
         >
           <font-awesome-icon icon="fas fa-stopwatch" />
         </button>
+        <button v-tooltip="'Ephemeris search (n)'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('neo')">
+          <font-awesome-icon icon="fas fa-meteor" />
+        </button>
         <button v-tooltip="'Debug (Shift+D)'" type="button" class="cesium-button cesium-toolbar-button" @click="toggleMenu('dbg')">
           <font-awesome-icon icon="fas fa-hammer" />
         </button>
@@ -180,54 +183,76 @@
           Reload
         </label>
       </div>
+      <div v-show="menu.neo" class="toolbarSwitches">
+        <div class="toolbarTitle">Ephemeris search</div>
+        <label class="toolbarSwitch">
+          <button class="neo-fetch-button" :disabled="neoLoading" @click="fetchNeos">
+            {{ neoLoading ? "Loading..." : "Close approaches (7 days)" }}
+          </button>
+        </label>
+        <div class="neo-search-row">
+          <input v-model="neoDesignation" type="text" class="neo-search-input" placeholder="Name, designation, or Horizons ID" @keyup.enter="fetchNeoByDesignation" />
+          <button class="neo-fetch-button neo-search-button" :disabled="neoLoading" @click="fetchNeoByDesignation">Search</button>
+          <button v-tooltip="'Browse major bodies'" class="neo-fetch-button neo-mb-browse-button" :class="{ active: mbListOpen }" @click="toggleMbList">☰</button>
+        </div>
+        <div v-if="mbListOpen" class="neo-mb-panel">
+          <input v-model="mbFilter" class="neo-search-input" placeholder="Filter by name or ID..." />
+          <div class="neo-mb-list">
+            <div v-if="mbListLoading" class="neo-count">Loading...</div>
+            <div v-for="body in filteredMbList" :key="body.id" class="neo-mb-item" @click="selectMbBody(body)">
+              <span class="neo-mb-id">{{ body.id }}</span>
+              <span class="neo-mb-name">{{ body.name }}</span>
+            </div>
+          </div>
+        </div>
+        <div v-if="neoCount > 0" class="neo-count">{{ neoCount }} {{ neoCount === 1 ? "object" : "objects" }} loaded</div>
+        <label v-if="neoCount > 0" class="toolbarSwitch">
+          <input v-model="neoShowOrbits" type="checkbox" @change="toggleNeoOrbits" />
+          <span class="slider"></span>
+          Show orbits
+        </label>
+        <label v-if="neoCount > 0" class="toolbarSwitch">
+          <button class="neo-fetch-button" @click="clearNeos">Clear all</button>
+        </label>
+      </div>
       <div v-show="menu.dbg" class="toolbarSwitches">
         <div class="toolbarTitle">Debug</div>
         <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 0) }">
-          <input v-model="debugConsoleLog" type="checkbox" />
-          <span class="slider"></span>
-          Console Logging
-        </label>
-        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 1) }">
           <input v-model="showFps" type="checkbox" />
           <span class="slider"></span>
           FPS
         </label>
-        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 2) }">
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 1) }">
           <input v-model="showCameraAltitude" type="checkbox" />
           <span class="slider"></span>
           Camera Altitude
         </label>
-        <label v-if="isIos" class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 3) }">
+        <label v-if="isIos" class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 2) }">
           <input v-model="showIosClock" type="checkbox" />
           <span class="slider"></span>
           Show iOS Clock
         </label>
-        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 4) }">
-          <input v-model="cc.viewer.scene.requestRenderMode" type="checkbox" />
-          <span class="slider"></span>
-          RequestRender
-        </label>
-        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 5) }">
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 3) }">
           <input v-model="qualityPreset" true-value="high" false-value="low" type="checkbox" />
           <span class="slider"></span>
           High Quality
         </label>
-        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 6) }">
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 4) }">
           <input v-model="cc.viewer.scene.fog.enabled" type="checkbox" />
           <span class="slider"></span>
           Fog
         </label>
-        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 7) }">
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 5) }">
           <input v-model="cc.viewer.scene.globe.enableLighting" type="checkbox" />
           <span class="slider"></span>
           Lighting
         </label>
-        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 8) }">
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 6) }">
           <input v-model="cc.viewer.scene.highDynamicRange" type="checkbox" />
           <span class="slider"></span>
           HDR
         </label>
-        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 9) }">
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 7) }">
           <input v-model="cc.viewer.scene.globe.showGroundAtmosphere" type="checkbox" />
           <span class="slider"></span>
           Atmosphere
@@ -254,13 +279,6 @@
             <span class="slider"></span>
             Moon orbit
           </label>
-          <template v-if="enabledComponents.includes('Moon orbit')">
-            <label class="toolbarSwitch">
-              <input v-model="moonOrbitHeliocentric" type="checkbox" @change="toggleMoonOrbitMode" />
-              <span class="slider"></span>
-              Heliocentric Moon orbit
-            </label>
-          </template>
           <label class="toolbarSwitch">
             <input v-model="enabledComponents" type="checkbox" value="Earth orbit" />
             <span class="slider"></span>
@@ -272,36 +290,18 @@
             Planet orbits
           </label>
         </template>
-        <div class="toolbarTitle">Overpass calculation</div>
-        <label class="toolbarSwitch">
-          <input v-model="enableSwathPasses" type="checkbox" />
-          <span class="slider"></span>
-          Enable swath passes
-        </label>
-        <template v-if="enableSwathPasses">
-          <label class="toolbarSwitch">
-            <input v-model="overpassMode" type="radio" value="elevation" />
-            <span class="slider"></span>
-            Elevation
-          </label>
-          <label class="toolbarSwitch">
-            <input v-model="overpassMode" type="radio" value="swath" />
-            <span class="slider"></span>
-            Swath
-          </label>
-        </template>
         <div class="toolbarTitle">Launch Sites</div>
-        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 11) }">
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 8) }">
           <input v-model="showLaunchSitesProminent" type="checkbox" />
           <span class="slider"></span>
           Prominent launch sites
         </label>
         <div class="toolbarTitle">Snapshot</div>
-        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 12) }">
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 9) }">
           <input type="button" @click="copySnapshotUrl(false)" />
           Copy snapshot URL
         </label>
-        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 13) }">
+        <label class="toolbarSwitch" :class="{ 'menu-item-focused': isFocused('dbg', 10) }">
           <input type="button" @click="copySnapshotUrl(true)" />
           Copy snapshot URL (with TLEs)
         </label>
@@ -331,6 +331,7 @@ import { useCesiumStore } from "../stores/cesium";
 import { useSatStore } from "../stores/sat";
 
 import { DeviceDetect } from "../modules/util/DeviceDetect";
+import { NeoApiClient } from "../modules/NeoApiClient";
 import { SnapshotService } from "../modules/util/SnapshotService";
 import SatelliteSelect from "./SatelliteSelect.vue";
 import PassCountdownTimer from "./PassCountdownTimer.vue";
@@ -348,13 +349,21 @@ export default {
         gs: false,
         map: false,
         ios: false,
+        neo: false,
         dbg: false,
       },
       showUI: true,
+      neoLoading: false,
+      neoCount: 0,
+      neoShowOrbits: false,
+      neoDesignation: "",
+      mbListOpen: false,
+      mbListLoading: false,
+      mbFilter: "",
+      mbList: [],
       zenithViewActive: false, // Local reactive state for zenith view
       planetsEnabled: true, // Planet rendering enabled state
       planetRenderMode: "billboard", // 'billboard' or 'point'
-      moonOrbitHeliocentric: true, // Toggle for Moon orbit mode (heliocentric vs Earth-centric)
       showCameraAltitude: false,
       cameraAltitude: 0,
       showPassCountdown: false, // Toggle for pass countdown timer visibility
@@ -373,11 +382,9 @@ export default {
     ...mapWritableState(useSatStore, [
       "enabledComponents",
       "groundStations",
-      "overpassMode",
       "hideSunlightPasses",
       "showOnlyLitPasses",
       "useLocalTime",
-      "enableSwathPasses",
       "trackedSatellite",
       "debugConsoleLog",
       "customSatellites",
@@ -484,6 +491,11 @@ export default {
           });
       },
     },
+    filteredMbList() {
+      if (!this.mbFilter) return this.mbList;
+      const f = this.mbFilter.toLowerCase();
+      return this.mbList.filter((b) => b.name.toLowerCase().includes(f) || String(b.id).includes(f));
+    },
   },
   watch: {
     layers: {
@@ -566,9 +578,6 @@ export default {
       if (newGroundStations.length === 0 && this.useLocalTime) {
         this.useLocalTime = false;
       }
-    },
-    overpassMode(newMode) {
-      cc.sats.overpassMode = newMode;
     },
     hideSunlightPasses() {
       // Invalidate pass cache and refresh highlights when filter changes
@@ -726,6 +735,36 @@ export default {
     };
     window.addEventListener("openMenu", this.openMenuHandler);
 
+    // Listen for NEO count changes
+    this.neoCountHandler = (event) => {
+      this.neoCount = event.detail;
+    };
+    window.addEventListener("neoCountChanged", this.neoCountHandler);
+
+    // Listen for orbit toggle changes from snapshot restore
+    this.neoOrbitsChangedHandler = (event) => {
+      this.neoShowOrbits = event.detail;
+    };
+    window.addEventListener("neoOrbitsChanged", this.neoOrbitsChangedHandler);
+
+    // Restore NEOs from URL params (skip if snapshot param present — snapshot handles it)
+    const urlParams = new URLSearchParams(window.location.search);
+    const neosParam = urlParams.get("neos");
+    if (neosParam && cc.neo && !urlParams.get("snap")) {
+      const designations = neosParam.split(",").filter(Boolean);
+      const neoOrbitsParam = urlParams.get("neoOrbits");
+      (async () => {
+        for (const des of designations) {
+          await cc.neo.fetchByDesignation(des.trim());
+        }
+        this.neoCount = cc.neo.neos.length;
+        if (neoOrbitsParam === "1" && cc.neo.neos.length > 0) {
+          this.neoShowOrbits = true;
+          cc.neo.enableOrbits();
+        }
+      })();
+    }
+
     // Listen for GS menu close event (after GS placement)
     this.closeGsMenuHandler = () => {
       if (this.menu.gs) {
@@ -859,6 +898,13 @@ export default {
     // Clean up menu open listener
     if (this.openMenuHandler) {
       window.removeEventListener("openMenu", this.openMenuHandler);
+    }
+    // Clean up NEO count listener
+    if (this.neoCountHandler) {
+      window.removeEventListener("neoCountChanged", this.neoCountHandler);
+    }
+    if (this.neoOrbitsChangedHandler) {
+      window.removeEventListener("neoOrbitsChanged", this.neoOrbitsChangedHandler);
     }
     // Clean up GS menu close listener
     if (this.closeGsMenuHandler) {
@@ -1080,7 +1126,6 @@ export default {
         return items;
       } else if (menuKey === "dbg") {
         const items = [
-          { type: "checkbox", model: "debugConsoleLog" },
           { type: "checkbox", model: "showFps" },
           { type: "checkbox", model: "showCameraAltitude" },
         ];
@@ -1088,7 +1133,6 @@ export default {
           items.push({ type: "checkbox", model: "showIosClock" });
         }
         items.push(
-          { type: "cesium-checkbox", path: "viewer.scene.requestRenderMode" },
           { type: "quality-checkbox", model: "qualityPreset" },
           { type: "cesium-checkbox", path: "viewer.scene.fog.enabled" },
           { type: "cesium-checkbox", path: "viewer.scene.globe.enableLighting" },
@@ -1438,11 +1482,72 @@ export default {
         this.cc.earthMoon.setRenderMode(this.planetRenderMode);
       }
     },
-    toggleMoonOrbitMode() {
-      // Toggle Moon orbit between heliocentric and Earth-centric modes
-      if (this.cc.earthMoon) {
-        this.cc.earthMoon.setMoonOrbitMode(this.moonOrbitHeliocentric);
+    async fetchNeos() {
+      /* global __SATVIS_NASA_API_KEY__ */
+      if (!this.cc.neo || this.neoLoading) return;
+      this.neoLoading = true;
+      const apiKey = typeof __SATVIS_NASA_API_KEY__ !== "undefined" ? __SATVIS_NASA_API_KEY__ : "DEMO_KEY";
+      await this.cc.neo.fetchAndDisplayNeos(apiKey);
+      this.neoLoading = this.cc.neo.loading;
+      this.neoCount = this.cc.neo.neos.length;
+    },
+    toggleNeoOrbits() {
+      if (!this.cc.neo) return;
+      if (this.neoShowOrbits) {
+        this.cc.neo.enableOrbits();
+      } else {
+        this.cc.neo.disableOrbits();
       }
+      this._updateNeoUrlParams();
+    },
+    async fetchNeoByDesignation() {
+      if (!this.cc.neo || !this.neoDesignation.trim()) return;
+      this.neoLoading = true;
+      await this.cc.neo.fetchByDesignation(this.neoDesignation.trim());
+      this.neoLoading = false;
+      this.neoCount = this.cc.neo.neos.length;
+      this._updateNeoUrlParams();
+    },
+    clearNeos() {
+      if (!this.cc.neo) return;
+      this.cc.neo.clear();
+      this.neoCount = 0;
+      this.neoShowOrbits = false;
+      this._updateNeoUrlParams();
+    },
+    async toggleMbList() {
+      this.mbListOpen = !this.mbListOpen;
+      if (this.mbListOpen && this.mbList.length === 0) {
+        this.mbListLoading = true;
+        try {
+          this.mbList = await NeoApiClient.fetchMajorBodies();
+        } catch {
+          // ignore fetch errors
+        }
+        this.mbListLoading = false;
+      }
+    },
+    selectMbBody(body) {
+      this.neoDesignation = `MB${body.id}`;
+      this.mbListOpen = false;
+      this.fetchNeoByDesignation();
+    },
+    _updateNeoUrlParams() {
+      if (!this.cc.neo) return;
+      const url = new URL(window.location.href);
+      const manualNeos = this.cc.neo.neos.filter((n) => n.neoData.id.startsWith("custom-") || n.neoData.id.startsWith("horizons-"));
+      if (manualNeos.length > 0) {
+        const ids = manualNeos.map((n) => (n.neoData.id.startsWith("horizons-") ? `MB${n.neoData.designation}` : n.neoData.designation));
+        url.searchParams.set("neos", ids.join(","));
+      } else {
+        url.searchParams.delete("neos");
+      }
+      if (this.neoShowOrbits) {
+        url.searchParams.set("neoOrbits", "1");
+      } else {
+        url.searchParams.delete("neoOrbits");
+      }
+      history.replaceState(null, "", url.toString());
     },
     togglePassCountdown() {
       // Toggle the pass countdown timer visibility

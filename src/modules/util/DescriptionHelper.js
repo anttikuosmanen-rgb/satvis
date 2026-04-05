@@ -77,7 +77,7 @@ export class DescriptionHelper {
   }
 
   static renderSatelliteDescription(time, position, props) {
-    const { name, passes, orbit, overpassMode, groundStationAvailable } = props;
+    const { name, passes, orbit, groundStationAvailable } = props;
     const { tle, julianDate } = orbit;
 
     // Name already has asterisk if epoch is in future (set in constructor)
@@ -164,14 +164,14 @@ export class DescriptionHelper {
             </tr>
           </tbody>
         </table>
-        ${this.renderPasses(passes, time, false, overpassMode, epochInFuture, orbit.orbitalPeriod, groundStationAvailable, name)}
+        ${this.renderPasses(passes, time, false, epochInFuture, orbit.orbitalPeriod, groundStationAvailable, name)}
         ${this.renderTLE(tle, julianDate)}
       </div>
     `;
     return description;
   }
 
-  static renderGroundstationDescription(time, name, position, passes, overpassMode = null) {
+  static renderGroundstationDescription(time, name, position, passes) {
     // Get current lighting conditions
     const currentTime = JulianDate.toDate(time);
     const lightingCondition = GroundStationConditions.getLightingConditionWithEmoji(position, currentTime);
@@ -241,13 +241,13 @@ export class DescriptionHelper {
             </tr>
           </tbody>
         </table>
-        ${this.renderPasses(passes, time, true, overpassMode, false, 0, false, name)}
+        ${this.renderPasses(passes, time, true, false, 0, false, name)}
       </div>
     `;
     return description;
   }
 
-  static renderPasses(passes, time, isGroundStation, overpassMode, epochInFuture = false, orbitalPeriod = 0, groundStationAvailable = false, entityId = "default") {
+  static renderPasses(passes, time, isGroundStation, epochInFuture = false, orbitalPeriod = 0, groundStationAvailable = false, entityId = "default") {
     const epochNote = epochInFuture ? " (* Epoch in future)" : "";
     if (passes.length === 0) {
       if (isGroundStation) {
@@ -367,7 +367,7 @@ export class DescriptionHelper {
         : "";
 
     const html = `
-      <h3>Passes (${overpassMode.charAt(0).toUpperCase() + overpassMode.slice(1)})${epochNote}</h3>
+      <h3>Passes${epochNote}</h3>
       <div class="passes-list">
         ${displayedPasses.map((pass) => this.renderPassCard(start, pass, passNameField)).join("")}
         ${batchesHtml}
@@ -506,7 +506,7 @@ export class DescriptionHelper {
     return html;
   }
 
-  static renderPass(time, pass, passNameField = "name", overpassMode = "elevation") {
+  static renderPass(time, pass, passNameField = "name") {
     const satStore = useSatStore();
     const useLocalTime = satStore.useLocalTime;
 
@@ -603,16 +603,8 @@ export class DescriptionHelper {
     // passNameField contains the satellite name which may already have an asterisk
     const htmlName = passNameField && pass[passNameField] ? `<td>${pass[passNameField]}</td>\n` : "";
 
-    // Handle different pass types based on overpass mode
-    let elevationCell, azimuthCell;
-    if (overpassMode === "swath") {
-      elevationCell = `${pass.minDistance.toFixed(1)}km`;
-      azimuthCell = `${pass.swathWidth.toFixed(0)}km`;
-    } else {
-      // Default to elevation mode
-      elevationCell = `${pass.maxElevation.toFixed(0)}&deg`;
-      azimuthCell = `${pass.azimuthApex.toFixed(2)}&deg`;
-    }
+    const elevationCell = `${pass.maxElevation.toFixed(0)}&deg`;
+    const azimuthCell = `${pass.azimuthApex.toFixed(2)}&deg`;
     const formattedPassStart = TimeFormatHelper.formatPassTime(pass.start, useLocalTime, groundStationPosition);
     const formattedPassEnd = TimeFormatHelper.formatTime(pass.end, useLocalTime, "HH:mm:ss", true, groundStationPosition);
     const html = `

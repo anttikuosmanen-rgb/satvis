@@ -194,108 +194,6 @@ function computePassesElevation(tle, groundStationPosition, startDateMs, endDate
   return passes;
 }
 
-/**
- * Calculate satellite passes over a ground station using swath width
- */
-function computePassesSwath(tle, groundStationPosition, swathKm, startDateMs, endDateMs, maxPasses = 50) {
-  const satrec = getSatrec(tle);
-
-  // For satellites with future epochs
-  const epochDate = new Date((satrec.jdsatepoch - 2440587.5) * 86400000);
-  const epochMinus1Hour = new Date(epochDate.getTime() - 3600000);
-  const effectiveStartDate = new Date(Math.max(startDateMs, epochMinus1Hour.getTime()));
-
-  const groundStation = {
-    latitude: groundStationPosition.latitude * deg2rad,
-    longitude: groundStationPosition.longitude * deg2rad,
-    height: groundStationPosition.height / 1000,
-  };
-
-  const date = new Date(effectiveStartDate);
-  const endDate = new Date(endDateMs);
-  const passes = [];
-  let ongoingPass = false;
-  let pass = null;
-  let lastDistance = Number.MAX_VALUE;
-
-  // Get orbital period
-  const meanMotionRad = satrec.no;
-  const orbitalPeriod = (2 * Math.PI) / meanMotionRad;
-
-  while (date < endDate) {
-    const positionResult = satellitejs.propagate(satrec, date);
-
-    if (!positionResult || !positionResult.position) {
-      date.setMinutes(date.getMinutes() + 1);
-      continue;
-    }
-
-    const gmst = satellitejs.gstime(date);
-    const positionGd = satellitejs.eciToGeodetic(positionResult.position, gmst);
-
-    const satLat = positionGd.latitude;
-    const satLon = positionGd.longitude;
-
-    // Calculate great circle distance
-    const deltaLat = satLat - groundStation.latitude;
-    const deltaLon = satLon - groundStation.longitude;
-    const a = Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) + Math.cos(groundStation.latitude) * Math.cos(satLat) * Math.sin(deltaLon / 2) * Math.sin(deltaLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    const earthRadius = 6371;
-    const distanceKm = earthRadius * c;
-
-    const halfSwath = swathKm / 2;
-    const withinSwath = distanceKm <= halfSwath;
-
-    if (withinSwath) {
-      if (!ongoingPass) {
-        pass = {
-          start: date.getTime(),
-          minDistance: distanceKm,
-          minDistanceTime: date.getTime(),
-          swathWidth: swathKm,
-          maxElevation: 0,
-          azimuthApex: 0,
-        };
-        ongoingPass = true;
-      } else if (distanceKm < pass.minDistance) {
-        pass.minDistance = distanceKm;
-        pass.minDistanceTime = date.getTime();
-      }
-      date.setSeconds(date.getSeconds() + 30);
-    } else if (ongoingPass) {
-      pass.end = date.getTime();
-      pass.duration = pass.end - pass.start;
-      passes.push(pass);
-
-      if (passes.length >= maxPasses) {
-        break;
-      }
-
-      ongoingPass = false;
-      lastDistance = Number.MAX_VALUE;
-      date.setMinutes(date.getMinutes() + Math.max(5, orbitalPeriod * 0.1));
-    } else {
-      const deltaDistance = distanceKm - lastDistance;
-      lastDistance = distanceKm;
-
-      if (deltaDistance > 0 && distanceKm > halfSwath * 4) {
-        date.setMinutes(date.getMinutes() + Math.max(10, orbitalPeriod * 0.2));
-      } else if (distanceKm > halfSwath * 3) {
-        date.setMinutes(date.getMinutes() + 5);
-      } else if (distanceKm > halfSwath * 2) {
-        date.setMinutes(date.getMinutes() + 2);
-      } else if (distanceKm > halfSwath * 1.2) {
-        date.setMinutes(date.getMinutes() + 1);
-      } else {
-        date.setSeconds(date.getSeconds() + 15);
-      }
-    }
-  }
-
-  return passes;
-}
-
 // Message handler
 self.onmessage = function (event) {
   const { id, type, data } = event.data;
@@ -314,10 +212,6 @@ self.onmessage = function (event) {
 
       case "COMPUTE_PASSES_ELEVATION":
         result = computePassesElevation(data.tle, data.groundStationPosition, data.startDateMs, data.endDateMs, data.minElevation, data.maxPasses);
-        break;
-
-      case "COMPUTE_PASSES_SWATH":
-        result = computePassesSwath(data.tle, data.groundStationPosition, data.swathKm, data.startDateMs, data.endDateMs, data.maxPasses);
         break;
 
       case "CLEAR_CACHE":

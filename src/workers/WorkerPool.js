@@ -156,20 +156,6 @@ export class WorkerPool {
   }
 
   /**
-   * Compute satellite passes using swath width
-   */
-  async computePassesSwath(tle, groundStationPosition, swathKm, startDateMs, endDateMs, maxPasses = 50) {
-    return this.execute("COMPUTE_PASSES_SWATH", {
-      tle,
-      groundStationPosition,
-      swathKm,
-      startDateMs,
-      endDateMs,
-      maxPasses,
-    });
-  }
-
-  /**
    * Clear the satrec cache in all workers
    */
   async clearCache() {

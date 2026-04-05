@@ -37,8 +37,6 @@ export class SatelliteManager {
 
   #groundStations = [];
 
-  #overpassMode = "elevation";
-
   // Pass calculation state tracking to prevent race conditions
   #passCalculationInProgress = false;
   #currentPassCalculation = null;
@@ -69,14 +67,14 @@ export class SatelliteManager {
     this._isUpdatingSatellites = false;
 
     // State for spacebar toggle functionality
-    this.lastTrackedSatelliteName = null; // Persists across deselection
+    this.lastTrackedSatellite = null; // Persists across deselection
     this.lastGlobeView = null; // Stores camera position/orientation
 
     this.viewer.trackedEntityChanged.addEventListener(() => {
       if (this.trackedSatellite) {
         this.getSatellite(this.trackedSatellite).show(this.#enabledComponents);
-        // Persist the satellite name for spacebar toggle
-        this.lastTrackedSatelliteName = this.trackedSatellite;
+        // Persist the satellite object for spacebar toggle
+        this.lastTrackedSatellite = this.getSatellite(this.trackedSatellite);
       }
       useSatStore().trackedSatellite = this.trackedSatellite;
     });
@@ -352,12 +350,7 @@ export class SatelliteManager {
         this.#debugLog(`[updatePassHighlightsAfterTimelineChange] Filtering passes for time: ${currentJsDate.toISOString()}`);
 
         // Collect all satellites with passes
-        const satellitesWithPasses = this.activeSatellites
-          .filter((sat) => sat.props.passes && sat.props.passes.length > 0)
-          .map((sat) => ({
-            name: sat.props.name,
-            passes: sat.props.passes,
-          }));
+        const satellitesWithPasses = this.activeSatellites.filter((sat) => sat.props.passes && sat.props.passes.length > 0);
 
         if (satellitesWithPasses.length === 0) {
           this.#debugLog("[updatePassHighlightsAfterTimelineChange] No satellites with passes");
@@ -386,12 +379,12 @@ export class SatelliteManager {
           // This ensures passes closest to current simulation time are prioritized across all satellites
           const maxTotalHighlights = 100; // Maximum highlights across all satellites
 
-          // Collect all passes with their satellite name
+          // Collect all passes with their satellite reference
           const allPasses = [];
-          satellitesWithPasses.forEach(({ name, passes }) => {
-            this.#debugLog(`[updatePassHighlightsAfterTimelineChange] ${name}: ${passes.length} total passes`);
+          satellitesWithPasses.forEach((sat) => {
+            this.#debugLog(`[updatePassHighlightsAfterTimelineChange] ${sat.props.name}: ${sat.props.passes.length} total passes`);
 
-            passes.forEach((pass) => {
+            sat.props.passes.forEach((pass) => {
               const passStartMs = new Date(pass.start).getTime();
               const passEndMs = new Date(pass.end).getTime();
 
@@ -431,7 +424,7 @@ export class SatelliteManager {
               const distanceFromCurrent = Math.abs(passMidMs - currentTimeMs);
 
               allPasses.push({
-                satelliteName: name,
+                satellite: sat,
                 pass,
                 distanceFromCurrent,
               });
@@ -449,17 +442,17 @@ export class SatelliteManager {
 
           // Group passes by satellite for adding highlights
           const passesBySatellite = new Map();
-          closestPasses.forEach(({ satelliteName, pass }) => {
-            if (!passesBySatellite.has(satelliteName)) {
-              passesBySatellite.set(satelliteName, []);
+          closestPasses.forEach(({ satellite, pass }) => {
+            if (!passesBySatellite.has(satellite)) {
+              passesBySatellite.set(satellite, []);
             }
-            passesBySatellite.get(satelliteName).push(pass);
+            passesBySatellite.get(satellite).push(pass);
           });
 
           // Add highlights for each satellite (skip per-satellite limit since we've already globally limited)
           let totalPassesAdded = 0;
-          passesBySatellite.forEach((passes, satelliteName) => {
-            CesiumTimelineHelper.addHighlightRanges(this.viewer, passes, satelliteName, { skipPerSatelliteLimit: true });
+          passesBySatellite.forEach((passes, satellite) => {
+            CesiumTimelineHelper.addHighlightRanges(this.viewer, passes, satellite, { skipPerSatelliteLimit: true });
             totalPassesAdded += passes.length;
           });
 
@@ -624,8 +617,6 @@ export class SatelliteManager {
     if (this.groundStationAvailable) {
       newSat.groundStations = this.#groundStations;
     }
-    // Set overpass mode for newly added satellite
-    newSat.props.overpassMode = this.#overpassMode;
     this.satellites.push(newSat);
     existing.push(newSat);
 
@@ -709,6 +700,16 @@ export class SatelliteManager {
       // Satellite does not exist (yet?)
       this.pendingTrackedSatellite = name;
     }
+  }
+
+  trackSatellite(sat) {
+    if (!sat) {
+      this.viewer.trackedEntity = undefined;
+      return;
+    }
+    if (sat.isTracked) return;
+    sat.track();
+    this.pendingTrackedSatellite = undefined;
   }
 
   get visibleSatellites() {
@@ -927,13 +928,17 @@ export class SatelliteManager {
       }
 
       const batch = list.slice(index, index + batchSize);
-      batch.forEach((sat) => {
-        if (operation === "show") {
-          sat.show(this.#enabledComponents);
-        } else {
-          sat.hide();
-        }
-      });
+      try {
+        batch.forEach((sat) => {
+          if (operation === "show") {
+            sat.show(this.#enabledComponents);
+          } else {
+            sat.hide();
+          }
+        });
+      } catch (error) {
+        console.warn(`Error during satellite ${operation}:`, error);
+      }
 
       // Request render after this batch
       if (this.viewer && this.viewer.scene) {
@@ -1100,7 +1105,7 @@ export class SatelliteManager {
             // Filter passes based on time and user preferences (sunlight/eclipse filters)
             const filteredPasses = filterAndSortPasses(satellite.props.passes, JulianDate.toDate(currentTime));
             if (filteredPasses && filteredPasses.length > 0) {
-              CesiumTimelineHelper.addHighlightRanges(this.viewer, filteredPasses, satellite.props.name);
+              CesiumTimelineHelper.addHighlightRanges(this.viewer, filteredPasses, satellite);
             }
           })
           .catch(() => {
@@ -1110,38 +1115,45 @@ export class SatelliteManager {
       return Promise.resolve();
     });
 
-    Promise.all(passPromises).then(() => {
-      // Always mark calculation as complete and reset flags
-      // This must happen regardless of cancellation to prevent deadlocks
-      this.#passCalculationInProgress = false;
-      this.#currentPassCalculation = null;
+    Promise.all(passPromises)
+      .then(() => {
+        // Always mark calculation as complete and reset flags
+        // This must happen regardless of cancellation to prevent deadlocks
+        this.#passCalculationInProgress = false;
+        this.#currentPassCalculation = null;
 
-      // Hide loading spinner
-      this.loadingSpinner.hide();
+        // Hide loading spinner
+        this.loadingSpinner.hide();
 
-      // Check if this calculation was cancelled by a newer calculation
-      if (calculationId.cancelled) {
-        return;
-      }
-
-      // Dispatch event: pass calculation completed
-      // This event is used by E2E tests to wait for calculation completion
-      window.dispatchEvent(
-        new CustomEvent("satvis:passCalculationComplete", {
-          detail: {
-            satelliteCount: activeSatellites.length,
-          },
-        }),
-      );
-
-      // Force an immediate timeline update after all passes are loaded
-      if (this.viewer.timeline) {
-        this.viewer.timeline.updateFromClock();
-        if (this.viewer.timeline._makeTics) {
-          this.viewer.timeline._makeTics();
+        // Check if this calculation was cancelled by a newer calculation
+        if (calculationId.cancelled) {
+          return;
         }
-      }
-    });
+
+        // Dispatch event: pass calculation completed
+        // This event is used by E2E tests to wait for calculation completion
+        window.dispatchEvent(
+          new CustomEvent("satvis:passCalculationComplete", {
+            detail: {
+              satelliteCount: activeSatellites.length,
+            },
+          }),
+        );
+
+        // Force an immediate timeline update after all passes are loaded
+        if (this.viewer.timeline) {
+          this.viewer.timeline.updateFromClock();
+          if (this.viewer.timeline._makeTics) {
+            this.viewer.timeline._makeTics();
+          }
+        }
+      })
+      .catch((error) => {
+        console.warn("Pass calculation failed:", error);
+        this.#passCalculationInProgress = false;
+        this.#currentPassCalculation = null;
+        this.loadingSpinner.hide();
+      });
   }
 
   focusGroundStation() {
@@ -1792,31 +1804,10 @@ export class SatelliteManager {
     }));
   }
 
-  get overpassMode() {
-    return this.#overpassMode;
-  }
-
-  set overpassMode(newMode) {
-    this.#overpassMode = newMode;
-    // Update overpass mode for all satellites
-    this.satellites.forEach((sat) => {
-      sat.props.overpassMode = newMode;
-    });
-    // Clear passes immediately to show old data is stale
-    this.satellites.forEach((sat) => {
-      if (sat.props.groundStationAvailable) {
-        sat.props.clearPasses();
-      }
-    });
-
-    // Invalidate ground station caches
-    this.invalidateGroundStationCaches();
-
-    // Recalculate passes asynchronously in batches to avoid blocking UI
-    this.recalculatePassesAsync();
-  }
-
   async recalculatePassesAsync() {
+    // Don't calculate passes while initial TLE loading is still in progress
+    if (!this._initialTleLoadComplete) return;
+
     // Only recalculate for active satellites (enabled by tag or name) that have a ground station
     const satellitesWithGS = this.activeSatellites.filter((sat) => sat.props.groundStationAvailable);
     if (satellitesWithGS.length === 0) return;
@@ -1851,7 +1842,7 @@ export class SatelliteManager {
       if (satellite.props.passes && satellite.props.passes.length > 0) {
         const filteredPasses = filterAndSortPasses(satellite.props.passes, currentTime);
         if (filteredPasses.length > 0) {
-          CesiumTimelineHelper.addHighlightRanges(this.viewer, filteredPasses, satellite.props.name);
+          CesiumTimelineHelper.addHighlightRanges(this.viewer, filteredPasses, satellite);
         }
       }
     });

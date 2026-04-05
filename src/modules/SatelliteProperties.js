@@ -64,7 +64,6 @@ export class SatelliteProperties {
     this.orbit = new Orbit(this.canonicalName, tle);
     this.satnum = this.orbit.satnum;
     this.tags = tags;
-    this.overpassMode = "elevation";
 
     // TLE signature for duplicate detection (lines 1+2, the actual orbital elements)
     this.tleSignature = this.computeTleSignature(tle);
@@ -82,6 +81,7 @@ export class SatelliteProperties {
       console.warn(`Stale TLE for ${this.name}: ${this.stalenessInfo.reason}`);
     }
 
+    this.owner = null;
     this.groundStations = [];
     this.passes = [];
     this.passInterval = undefined;
@@ -511,18 +511,14 @@ export class SatelliteProperties {
 
     // Calculate passes for all ground stations in parallel
     const passPromises = this.groundStations.map(async (groundStation) => {
-      let passes;
-      if (this.overpassMode === "swath") {
-        passes = await this.orbit.computePassesSwath(
-          groundStation.position,
-          this.swath,
-          JulianDate.toDate(this.passInterval.start),
-          JulianDate.toDate(this.passInterval.stopPrediction),
-        );
-      } else {
-        passes = await this.orbit.computePassesElevation(groundStation.position, JulianDate.toDate(this.passInterval.start), JulianDate.toDate(this.passInterval.stopPrediction));
-      }
+      const passes = await this.orbit.computePassesElevation(
+        groundStation.position,
+        JulianDate.toDate(this.passInterval.start),
+        JulianDate.toDate(this.passInterval.stopPrediction),
+      );
       passes.forEach((pass) => {
+        // Non-enumerable to avoid circular reference in JSON.stringify(pass)
+        Object.defineProperty(pass, "satellite", { value: this.owner, writable: true, enumerable: false });
         pass.groundStationName = groundStation.name;
         pass.epochInFuture = epochInFuture;
         pass.epochTime = epochTime;
@@ -557,34 +553,5 @@ export class SatelliteProperties {
       });
     });
     this.passIntervals = new TimeIntervalCollection(passIntervalArray);
-  }
-
-  get swath() {
-    // Use canonicalName (without prefixes/suffixes) for matching
-    const nameToMatch = this.canonicalName;
-
-    // Hardcoded swath for certain satellites
-    if (["SUOMI NPP", "NOAA 20 (JPSS-1)", "NOAA 21 (JPSS-2)"].includes(nameToMatch)) {
-      return 3000;
-    }
-    if (["AQUA", "TERRA"].includes(nameToMatch)) {
-      return 2330;
-    }
-    if (nameToMatch.includes("SENTINEL-2")) {
-      return 290;
-    }
-    if (nameToMatch.includes("SENTINEL-3")) {
-      return 740;
-    }
-    if (nameToMatch.includes("LANDSAT")) {
-      return 185;
-    }
-    if (nameToMatch.includes("FENGYUN")) {
-      return 2900;
-    }
-    if (nameToMatch.includes("METOP")) {
-      return 2900;
-    }
-    return 200;
   }
 }
