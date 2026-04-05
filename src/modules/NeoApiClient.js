@@ -1,6 +1,10 @@
 /**
  * API client for NASA NeoWs (Near Earth Object Web Service) and JPL SBDB (Small-Body Database).
  */
+// Resolve API base relative to Vite's configured base path so the same
+// proxy paths work whether deployed at / or /avaruustekniikka/satvis/.
+const API_BASE = (import.meta.env?.BASE_URL || "/").replace(/\/$/, "");
+
 export class NeoApiClient {
   /**
    * Fetch close-approach NEOs from NASA NeoWs API.
@@ -62,7 +66,7 @@ export class NeoApiClient {
    */
   static async fetchOrbitalElements(designation, retries = 3) {
     // Use Vite dev server proxy to bypass CORS (proxied to ssd-api.jpl.nasa.gov/sbdb.api)
-    const url = `/api/sbdb?sstr=${encodeURIComponent(designation)}&phys-par=1`;
+    const url = `${API_BASE}/api/sbdb?sstr=${encodeURIComponent(designation)}&phys-par=1`;
 
     for (let attempt = 0; attempt <= retries; attempt++) {
       const response = await fetch(url);
@@ -188,7 +192,7 @@ export class NeoApiClient {
       VEC_TABLE: "'1'",
     });
 
-    const response = await fetch(`/api/horizons?${params}`);
+    const response = await fetch(`${API_BASE}/api/horizons?${params}`);
     if (!response.ok) {
       throw new Error(`Horizons API error: ${response.status} ${response.statusText}`);
     }
@@ -207,7 +211,7 @@ export class NeoApiClient {
         console.log(`[Horizons] Retrying ${command} with START_TIME='${retryStart}'`);
         params.set("START_TIME", `'${retryStart}'`);
         params.set("STOP_TIME", `'${retryStop}'`);
-        const retryResponse = await fetch(`/api/horizons?${params}`);
+        const retryResponse = await fetch(`${API_BASE}/api/horizons?${params}`);
         if (retryResponse.ok) {
           return NeoApiClient._parseHorizonsVectors(await retryResponse.json());
         }
@@ -258,7 +262,7 @@ export class NeoApiClient {
       VEC_TABLE: "'1'",
     });
 
-    const response = await fetch(`/api/horizons?${params}`);
+    const response = await fetch(`${API_BASE}/api/horizons?${params}`);
     if (!response.ok) return { start: null, end: null };
     const data = await response.json();
     const text = data.result;
@@ -304,7 +308,7 @@ export class NeoApiClient {
    */
   static async fetchMajorBodies() {
     const params = new URLSearchParams({ format: "json", COMMAND: "'MB'" });
-    const response = await fetch(`/api/horizons?${params}`);
+    const response = await fetch(`${API_BASE}/api/horizons?${params}`);
     if (!response.ok) {
       throw new Error(`Horizons API error: ${response.status}`);
     }
