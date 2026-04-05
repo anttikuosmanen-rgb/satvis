@@ -1215,7 +1215,8 @@ export class NeoManager {
         VEC_TABLE: "'1'",
       });
 
-      const response = await fetch(`/api/horizons?${params}`);
+      const apiBase = (import.meta.env?.BASE_URL || "/").replace(/\/$/, "");
+      const response = await fetch(`${apiBase}/api/horizons?${params}`);
       if (!response.ok) {
         throw new Error(`Horizons API error: ${response.status}`);
       }
