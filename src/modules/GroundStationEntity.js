@@ -1,6 +1,7 @@
 import { BillboardGraphics, HorizontalOrigin, JulianDate, NearFarScalar, VerticalOrigin } from "@cesium/engine";
 import icon from "../images/icons/dish.svg";
 import { useSatStore } from "../stores/sat";
+import { rasterizeSvg } from "./util/SvgRasterizer";
 import { CesiumComponentCollection } from "./util/CesiumComponentCollection";
 import { DescriptionHelper } from "./util/DescriptionHelper";
 import { filterAndSortPasses } from "./util/PassFilter";
@@ -48,7 +49,7 @@ export class GroundStationEntity extends CesiumComponentCollection {
 
   createGroundStation() {
     const billboard = new BillboardGraphics({
-      image: icon,
+      image: rasterizeSvg(icon),
       horizontalOrigin: HorizontalOrigin.CENTER,
       verticalOrigin: VerticalOrigin.BOTTOM,
       scaleByDistance: new NearFarScalar(1e2, 0.2, 4e7, 0.1),
