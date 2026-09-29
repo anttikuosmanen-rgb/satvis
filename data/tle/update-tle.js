@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import * as fs from "fs";
+import * as https from "https";
 import * as process from "process";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
@@ -14,13 +15,30 @@ process.chdir(__dirname);
 
 const SUPPLEMENTAL_URL = "https://celestrak.org/NORAD/elements/supplemental/";
 
-async function fetchText(url) {
-  const response = await fetch(url);
-  const text = await response.text();
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}: ${text.trim().split("\n")[0]}`);
-  }
-  return text;
+// Uses the https module instead of fetch() so the script runs on Node 16 (production server)
+function fetchText(url, redirects = 3) {
+  return new Promise((resolve, reject) => {
+    https
+      .get(url, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && redirects > 0) {
+          res.resume();
+          resolve(fetchText(new URL(res.headers.location, url).href, redirects - 1));
+          return;
+        }
+        let text = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk) => (text += chunk));
+        res.on("end", () => {
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            resolve(text);
+          } else {
+            reject(new Error(`HTTP ${res.statusCode}: ${text.trim().split("\n")[0]}`));
+          }
+        });
+        res.on("error", reject);
+      })
+      .on("error", reject);
+  });
 }
 
 /**
