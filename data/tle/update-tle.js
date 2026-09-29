@@ -15,6 +15,36 @@ process.chdir(__dirname);
 
 const SUPPLEMENTAL_URL = "https://celestrak.org/NORAD/elements/supplemental/";
 
+// CelesTrak updates GP data every 2 hours and refuses repeated downloads within that window.
+// Remember when each data set was last downloaded and skip it until the interval has passed.
+// Pass --force to download everything regardless.
+const MIN_DOWNLOAD_INTERVAL_MS = 2 * 60 * 60 * 1000;
+const STATE_FILE = "groups/.last-download.json";
+const force = process.argv.includes("--force");
+
+function loadDownloadState() {
+  try {
+    return JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+const downloadState = loadDownloadState();
+
+function isRecentlyDownloaded(key) {
+  const last = downloadState[key];
+  return !force && typeof last === "number" && Date.now() - last < MIN_DOWNLOAD_INTERVAL_MS;
+}
+
+function markDownloaded(key) {
+  downloadState[key] = Date.now();
+}
+
+function minutesUntilDue(key) {
+  return Math.ceil((downloadState[key] + MIN_DOWNLOAD_INTERVAL_MS - Date.now()) / 60000);
+}
+
 // Uses the https module instead of fetch() so the script runs on Node 16 (production server)
 function fetchText(url, redirects = 3) {
   return new Promise((resolve, reject) => {
@@ -66,8 +96,13 @@ function writeTles(filename, tles) {
 
 async function downloadGroup(groupName) {
   const filename = `${groupName}.txt`;
+  if (isRecentlyDownloaded(groupName)) {
+    console.log(`Skipping ${groupName}, downloaded less than 2 hours ago (next in ${minutesUntilDue(groupName)} min)`);
+    return;
+  }
   try {
     const tles = await fetchOmmAsTles(`https://celestrak.org/NORAD/elements/gp.php?GROUP=${groupName}&FORMAT=csv`, groupName);
+    markDownloaded(groupName);
     if (tles.length === 0) {
       console.log(`No data for ${groupName}, keeping existing ${filename}`);
       return;
@@ -76,11 +111,18 @@ async function downloadGroup(groupName) {
     console.log(`Downloaded ${filename} (${tles.length} satellites)`);
   } catch (error) {
     // Keep the existing file on errors, e.g. CelesTrak's 403 when data has not changed in the last 2 hours
+    if (error.message.startsWith("HTTP 403")) {
+      markDownloaded(groupName);
+    }
     console.error(`Failed to download ${groupName}, keeping existing ${filename}: ${error.message}`);
   }
 }
 
 async function downloadPrelaunch() {
+  if (isRecentlyDownloaded("prelaunch")) {
+    console.log(`Skipping prelaunch, downloaded less than 2 hours ago (next in ${minutesUntilDue("prelaunch")} min)`);
+    return;
+  }
   try {
     // Pre-launch data sets are listed on the supplemental index page as "<Launch> Pre-Launch"
     // entries. Backup launch opportunities are listed separately and ignored here.
@@ -99,6 +141,7 @@ async function downloadPrelaunch() {
     const tles = results.flat();
     // Always rewrite so launched missions do not linger as pre-launch satellites
     writeTles("prelaunch.txt", tles);
+    markDownloaded("prelaunch");
     console.log(files.size > 0 ? `Downloaded prelaunch.txt (${files.size} launches, ${tles.length} objects)` : "No prelaunch data available, cleared prelaunch.txt");
   } catch (error) {
     console.error(`Failed to download prelaunch data, keeping existing prelaunch.txt: ${error.message}`);
@@ -164,3 +207,4 @@ const groups = [
 ];
 
 await Promise.all([...groups.map((group) => downloadGroup(group)), downloadPrelaunch()]);
+fs.writeFileSync(STATE_FILE, `${JSON.stringify(downloadState, null, 2)}\n`);
