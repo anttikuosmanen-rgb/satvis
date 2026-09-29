@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
-import * as https from "https";
 import * as fs from "fs";
 import * as process from "process";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
+import { ommTextToTles } from "../../src/modules/util/OmmConverter.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -12,72 +12,78 @@ const __dirname = dirname(__filename);
 // Change dir to the location of this script
 process.chdir(__dirname);
 
-function fetchUrl(url) {
-  return new Promise((resolve, reject) => {
-    https.get(url, (res) => {
-      let data = "";
-      res.on("data", (chunk) => (data += chunk));
-      res.on("end", () => resolve(data));
-      res.on("error", reject);
-    }).on("error", reject);
-  });
+const SUPPLEMENTAL_URL = "https://celestrak.org/NORAD/elements/supplemental/";
+
+async function fetchText(url) {
+  const response = await fetch(url);
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${text.trim().split("\n")[0]}`);
+  }
+  return text;
 }
 
-function downloadTLE(groupName) {
-  const url = `https://celestrak.org/NORAD/elements/gp.php?GROUP=${groupName}&FORMAT=tle`;
-  const path = "groups/";
+/**
+ * Fetch OMM data as CSV and convert it to TLEs.
+ * CelesTrak does not serve TLEs for catalog numbers >= 100000, so the OMM data is
+ * converted locally using Alpha-5 catalog numbers.
+ */
+async function fetchOmmAsTles(url, label) {
+  const text = await fetchText(url);
+  if (!text.trimStart().startsWith("OBJECT_NAME,")) {
+    // CelesTrak answers with plain text (e.g. "No GP data found") when nothing matches
+    return [];
+  }
+  let skipped = 0;
+  const tles = ommTextToTles(text, () => skipped++);
+  if (skipped > 0) {
+    console.log(`${label}: skipped ${skipped} objects not representable as TLE (e.g. temporary catalog numbers)`);
+  }
+  return tles;
+}
+
+function writeTles(filename, tles) {
+  fs.writeFileSync(`groups/${filename}`, tles.length > 0 ? `${tles.join("\n")}\n` : "");
+}
+
+async function downloadGroup(groupName) {
   const filename = `${groupName}.txt`;
-
-  https.get(url, (res) => {
-    const writeStream = fs.createWriteStream(path + filename);
-    res.pipe(writeStream);
-    writeStream.on("finish", () => {
-      writeStream.close();
-      console.log(`Downloaded ${filename}`);
-    });
-  });
+  try {
+    const tles = await fetchOmmAsTles(`https://celestrak.org/NORAD/elements/gp.php?GROUP=${groupName}&FORMAT=csv`, groupName);
+    if (tles.length === 0) {
+      console.log(`No data for ${groupName}, keeping existing ${filename}`);
+      return;
+    }
+    writeTles(filename, tles);
+    console.log(`Downloaded ${filename} (${tles.length} satellites)`);
+  } catch (error) {
+    // Keep the existing file on errors, e.g. CelesTrak's 403 when data has not changed in the last 2 hours
+    console.error(`Failed to download ${groupName}, keeping existing ${filename}: ${error.message}`);
+  }
 }
 
-async function downloadPrelaunchTLEs() {
+async function downloadPrelaunch() {
   try {
-    // Fetch the supplemental index page
-    const indexUrl = "https://celestrak.org/NORAD/elements/supplemental/";
-    const html = await fetchUrl(indexUrl);
-
-    // Find all prelaunch entries by looking for lines with "Pre-Launch"
-    // and extracting the FILE parameter from those lines
-    const prelaunchFiles = new Set();
-    const lines = html.split("\n");
-
-    for (const line of lines) {
+    // Pre-launch data sets are listed on the supplemental index page as "<Launch> Pre-Launch"
+    // entries. Backup launch opportunities are listed separately and ignored here.
+    const html = await fetchText(SUPPLEMENTAL_URL);
+    const files = new Set();
+    for (const line of html.split("\n")) {
       if (line.includes("Pre-Launch")) {
-        const fileMatch = line.match(/sup-gp\.php\?FILE=([^&]+)&FORMAT=tle/);
-        if (fileMatch) {
-          prelaunchFiles.add(fileMatch[1]);
+        const match = line.match(/sup-gp\.php\?FILE=([^&"]+)/);
+        if (match) {
+          files.add(match[1]);
         }
       }
     }
 
-    const files = [...prelaunchFiles];
-    if (files.length === 0) {
-      console.log("No prelaunch TLEs found");
-      return;
-    }
-
-    // Download each prelaunch TLE
-    const tlePromises = files.map(async (file) => {
-      const url = `https://celestrak.org/NORAD/elements/supplemental/sup-gp.php?FILE=${file}&FORMAT=tle`;
-      return fetchUrl(url);
-    });
-
-    const tleData = await Promise.all(tlePromises);
-
-    // Combine and write to groups/prelaunch.txt (where the app expects it)
-    const combined = tleData.join("");
-    fs.writeFileSync("groups/prelaunch.txt", combined);
-    console.log(`Downloaded groups/prelaunch.txt (${files.length} launches)`);
+    const results = await Promise.all([...files].map((file) => fetchOmmAsTles(`${SUPPLEMENTAL_URL}sup-gp.php?FILE=${file}&FORMAT=csv`, file)));
+    const tles = results.flat();
+    // Always rewrite so launched missions do not linger as pre-launch satellites
+    writeTles("prelaunch.txt", tles);
+    console.log(files.size > 0 ? `Downloaded prelaunch.txt (${files.size} launches, ${tles.length} objects)` : "No prelaunch data available, cleared prelaunch.txt");
   } catch (error) {
-    console.error("Failed to download prelaunch TLEs:", error.message);
+    console.error(`Failed to download prelaunch data, keeping existing prelaunch.txt: ${error.message}`);
   }
 }
 
@@ -139,9 +145,4 @@ const groups = [
   "eutelsat",
 ];
 
-groups.forEach((group) => {
-  downloadTLE(group);
-});
-
-// Also download prelaunch TLEs from supplemental data
-downloadPrelaunchTLEs();
+await Promise.all([...groups.map((group) => downloadGroup(group)), downloadPrelaunch()]);

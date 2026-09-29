@@ -3,6 +3,7 @@ import dayjs from "dayjs";
 import * as Astronomy from "astronomy-engine";
 import { SGP4WorkerPool } from "../workers/SGP4WorkerPool";
 import { GroundStationConditions } from "./util/GroundStationConditions";
+import { decodeAlpha5 } from "./util/OmmConverter";
 
 const deg2rad = Math.PI / 180;
 const rad2deg = 180 / Math.PI;
@@ -86,7 +87,8 @@ export default class Orbit {
   }
 
   get satnum() {
-    return this.satrec.satnum;
+    // Decode Alpha-5 catalog numbers (e.g. "A0001" -> "100001")
+    return decodeAlpha5(this.satrec.satnum);
   }
 
   get error() {

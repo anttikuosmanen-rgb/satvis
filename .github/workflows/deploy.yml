@@ -166,18 +166,10 @@ jobs:
       # STEP 4: Update TLE Data
       # -----------------------------------------------------------------------
       # Updates satellite orbital data from external sources.
-      # This runs an npm script that fetches fresh TLE data.
+      # This runs an npm script that fetches fresh GP and pre-launch data
+      # from CelesTrak (OMM CSV, converted to TLE with Alpha-5 catalog numbers).
       - name: Update TLE data
         run: npm run update-tle
-
-      # STEP 5: Update Prelaunch Data
-      # -----------------------------------------------------------------------
-      # Updates pre-launch satellite data from external sources.
-      - name: Update prelaunch data
-        run: |
-          cd data/tle
-          sh update-prelaunch-data.sh
-          mv prelaunch.txt groups/
 
       # STEP 6: Copy TLE Data to Dist
       # -----------------------------------------------------------------------
