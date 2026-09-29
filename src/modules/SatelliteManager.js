@@ -27,6 +27,7 @@ import { filterAndSortPasses } from "./util/PassFilter";
 import { GroundStationConditions } from "./util/GroundStationConditions";
 import { LoadingSpinner } from "./util/LoadingSpinner";
 import { formatZenithTooltip, formatSunTooltip } from "./util/zenithViewHelper";
+import { isOmmText, ommTextToTles } from "./util/OmmConverter";
 
 export class SatelliteManager {
   #enabledComponents = ["Point", "Label"];
@@ -538,6 +539,11 @@ export class SatelliteManager {
       })
       .then((response) => response.text())
       .then((data) => {
+        // OMM data (CelesTrak JSON/CSV) is converted to TLEs with Alpha-5 catalog numbers
+        if (isOmmText(data)) {
+          ommTextToTles(data, (record, error) => console.warn(`Skipping ${record.OBJECT_NAME}: ${error.message}`)).forEach((tle) => this.addFromTle(tle, tags, updateStore));
+          return;
+        }
         const lines = data.split(/\r?\n/);
         for (let i = 3; i < lines.length; i += 3) {
           const tle = lines.slice(i - 3, i).join("\n");

@@ -182,6 +182,21 @@ describe("Sat Store - URL Sync - Custom Satellites (TLE Parsing)", () => {
     expect(result[0]).toContain("2 25544");
   });
 
+  it("should deserialize TLE with Alpha-5 catalog number (catalog >= 100000)", () => {
+    const config = customSatellitesConfig;
+    const alpha5Tle = [
+      "STARLINK-38128",
+      "1 A0001C 26160A   26272.40534722 -.02340800  00000+0 -56082-1 0  2726",
+      "2 A0001  69.9994 170.8340 0003323 273.6876 179.4318 15.42456401    18",
+    ].join("\n");
+
+    const result = config.deserialize(config.serialize([alpha5Tle, ISS_TLE_NO_NAME]));
+
+    expect(result).toHaveLength(2);
+    expect(result[0]).toBe(alpha5Tle);
+    expect(result[1]).toContain("1 25544U");
+  });
+
   it("should detect TLE line 1 by '1 ' + 5 digits pattern", () => {
     const store = useSatStore();
     const config = customSatellitesConfig;

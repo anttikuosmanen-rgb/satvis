@@ -1,5 +1,6 @@
 import { BillboardGraphics, Cartesian3, Cartographic, Color, HorizontalOrigin, Math as CesiumMath, NearFarScalar, VerticalOrigin } from "cesium";
 import rocketIcon from "../images/icons/rocket.svg";
+import { rasterizeSvg } from "./util/SvgRasterizer";
 
 /**
  * Launch Site data - major orbital launch facilities worldwide
@@ -68,7 +69,7 @@ export class LaunchSiteManager {
    */
   createBillboard(prominent = false) {
     return new BillboardGraphics({
-      image: rocketIcon,
+      image: rasterizeSvg(rocketIcon),
       horizontalOrigin: HorizontalOrigin.CENTER,
       verticalOrigin: VerticalOrigin.BOTTOM,
       // Default: small and semi-transparent
