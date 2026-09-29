@@ -5,6 +5,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 SatVis is a satellite orbit visualization web application built with Vue.js and CesiumJS. It calculates satellite positions from TLE (Two-Line Element) data, displays orbits on a 3D globe, and provides pass prediction for ground stations. The application runs as a Progressive Web App (PWA) with offline capabilities.
 
+## Git
+- Main branch is `master` (PR target). `next` is obsolete.
+
 ## Development Commands
 
 ### Build & Development
