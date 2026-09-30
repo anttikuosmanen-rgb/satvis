@@ -5,7 +5,7 @@ import * as https from "https";
 import * as process from "process";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
-import { ommTextToTles } from "./OmmConverter.js";
+import { ommTextToTles, parseOmm } from "./OmmConverter.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -85,7 +85,12 @@ async function fetchOmmAsTles(url, label) {
   let skipped = 0;
   const tles = ommTextToTles(text, () => skipped++);
   if (skipped > 0) {
-    console.log(`${label}: skipped ${skipped} objects not representable as TLE (e.g. temporary catalog numbers)`);
+    console.log(`${label}: skipped ${skipped} objects not representable as TLE`);
+  }
+  // Pre-launch and newly launched objects can have temporary 9-digit analyst numbers (7995xxxxx)
+  const placeholders = parseOmm(text).filter((record) => Number(record.NORAD_CAT_ID) > 339999).length;
+  if (placeholders > 0) {
+    console.log(`${label}: ${placeholders} objects with temporary catalog numbers use placeholders 330000-339999`);
   }
   return tles;
 }
