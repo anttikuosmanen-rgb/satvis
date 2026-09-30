@@ -333,6 +333,7 @@ import { useSatStore } from "../stores/sat";
 import { DeviceDetect } from "../modules/util/DeviceDetect";
 import { NeoApiClient } from "../modules/NeoApiClient";
 import { SnapshotService } from "../modules/util/SnapshotService";
+import { decodeAlpha5 } from "../modules/util/OmmConverter";
 import SatelliteSelect from "./SatelliteSelect.vue";
 import PassCountdownTimer from "./PassCountdownTimer.vue";
 
@@ -963,9 +964,9 @@ export default {
         if (!line1 || !line2) {
           const text = tle.trim();
           // Find line 1 (starts with "1 " followed by satellite number)
-          const line1Match = text.match(/1 \d{5}[A-Z].*?(?=2 \d{5}|$)/);
+          const line1Match = text.match(/1 [\dA-HJ-NP-Z]\d{4}[A-Z].*?(?=2 [\dA-HJ-NP-Z]\d{4}|$)/);
           // Find line 2 (starts with "2 " followed by satellite number)
-          const line2Match = text.match(/2 \d{5} .*$/);
+          const line2Match = text.match(/2 [\dA-HJ-NP-Z]\d{4} .*$/);
 
           if (line1Match && line2Match) {
             const line1Start = text.indexOf(line1Match[0]);
@@ -999,8 +1000,8 @@ export default {
         let originalName = line0;
         if (!originalName) {
           // Extract satellite number from line 1 and use as name
-          const satNumMatch = line1.match(/^1 (\d{5})/);
-          originalName = satNumMatch ? `NORAD ${satNumMatch[1]}` : "Custom Satellite";
+          const satNumMatch = line1.match(/^1 ([\dA-HJ-NP-Z]\d{4})/);
+          originalName = satNumMatch ? `NORAD ${decodeAlpha5(satNumMatch[1])}` : "Custom Satellite";
         }
 
         // Check if custom satellite with this name already exists

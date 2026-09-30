@@ -1,2 +1,3 @@
 *.txt
 ~*
+.last-download.json

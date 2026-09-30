@@ -94,7 +94,7 @@ export const satStoreUrlSyncConfig = [
 
       // Parse TLEs by detecting line boundaries
       // TLE lines have fixed structure:
-      // - Line 1 starts with "1 " (69 chars)
+      // - Line 1 starts with "1 " and a 5-char catalog number, digits or Alpha-5 like "A0001" (69 chars)
       // - Line 2 starts with "2 " (69 chars)
       // - Name line (optional, variable length, doesn't start with "1 " or "2 ")
 
@@ -103,7 +103,7 @@ export const satStoreUrlSyncConfig = [
 
       while (buffer.length > 0) {
         // Find next "1 " that starts a TLE line 1
-        const line1Index = buffer.search(/1 \d{5}/);
+        const line1Index = buffer.search(/1 [\dA-HJ-NP-Z]\d{4}/);
 
         if (line1Index === -1) break; // No more TLEs found
 
@@ -116,7 +116,7 @@ export const satStoreUrlSyncConfig = [
         const line1 = buffer.substring(line1Start, line1End);
 
         // Find line 2 (should be right after line 1, starts with "2 ")
-        const line2Start = buffer.substring(line1End).search(/2 \d{5}/);
+        const line2Start = buffer.substring(line1End).search(/2 [\dA-HJ-NP-Z]\d{4}/);
 
         if (line2Start === -1) break; // Invalid TLE, missing line 2
 

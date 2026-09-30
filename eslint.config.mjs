@@ -15,6 +15,17 @@ export default [
   ...vue.configs["flat/recommended"],
   importPlugin.flatConfigs.recommended,
   prettierConfig,
+  // Configuration for data update scripts (run with Node, also deployed to dist/data/tle)
+  {
+    files: ["data/tle/**/*.js"],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+      ecmaVersion: 2024,
+      sourceType: "module",
+    },
+  },
   // Configuration for JavaScript files
   {
     files: ["src/**/*.js"],

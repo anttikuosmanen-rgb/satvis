@@ -151,12 +151,6 @@ jobs:
       - name: Update TLE data
         run: npm run update-tle
 
-      - name: Update prelaunch data
-        run: |
-          cd data/tle
-          sh update-prelaunch-data.sh
-          mv prelaunch.txt groups/
-
       # STEP 8: Copy TLE Data
       # -----------------------------------------------------------------------
       - name: Copy TLE data to dist
