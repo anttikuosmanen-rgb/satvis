@@ -14,6 +14,8 @@
 // Alpha-5 skips I and O to avoid confusion with 1 and 0
 const ALPHA5_LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ";
 const ALPHA5_MAX = 339999;
+// Placeholder block for temporary catalog numbers (Alpha-5 "Z0000"-"Z9999"), far above the real catalog
+const PLACEHOLDER_BASE = 330000;
 
 /**
  * Encode a catalog number as a 5-character TLE field (Alpha-5 for >= 100000)
@@ -30,6 +32,18 @@ export function encodeAlpha5(catnr) {
   }
   const letter = ALPHA5_LETTERS[Math.floor(num / 10000) - 10];
   return `${letter}${String(num % 10000).padStart(4, "0")}`;
+}
+
+/**
+ * Placeholder catalog number for objects whose (temporary) catalog number cannot be represented as
+ * Alpha-5, e.g. pre-launch and newly launched objects with 9-digit analyst numbers (7995xxxxx).
+ * Deterministic (330000 + last 4 digits), so the same object gets the same placeholder in every
+ * update and every file it appears in, and satellites are matched across files by catalog number.
+ * @param {number|string} catnr - Catalog number above the Alpha-5 range
+ * @returns {number} Catalog number in 330000-339999
+ */
+export function placeholderCatalogNumber(catnr) {
+  return PLACEHOLDER_BASE + (Number(catnr) % 10000);
 }
 
 /**
@@ -201,10 +215,14 @@ function formatAngle(value) {
 /**
  * Convert an OMM record to a three-line element set
  * @param {Object} omm - OMM record (CelesTrak JSON/CSV field names)
+ * @param {Object} [options]
+ * @param {boolean} [options.placeholderCatalogNumbers=true] - Map catalog numbers above the Alpha-5
+ *   range to placeholder numbers (see placeholderCatalogNumber) instead of throwing
  * @returns {string} TLE string "NAME\nLINE1\nLINE2"
  */
-export function ommToTle(omm) {
-  const catalog = encodeAlpha5(omm.NORAD_CAT_ID);
+export function ommToTle(omm, { placeholderCatalogNumbers = true } = {}) {
+  const catnr = Number(omm.NORAD_CAT_ID);
+  const catalog = encodeAlpha5(placeholderCatalogNumbers && catnr > ALPHA5_MAX ? placeholderCatalogNumber(catnr) : catnr);
   const classification = (omm.CLASSIFICATION_TYPE || "U").slice(0, 1);
   const ephemerisType = String(omm.EPHEMERIS_TYPE ?? 0).slice(0, 1);
   const elementSet = String(Number(omm.ELEMENT_SET_NO || 999) % 10000).padStart(4, " ");
@@ -243,13 +261,14 @@ export function ommToTle(omm) {
  * Convert OMM text (JSON or CSV) to TLE strings, skipping records that cannot be represented
  * @param {string} text - OMM data
  * @param {(record: Object, error: Error) => void} [onSkip] - Called for each skipped record
+ * @param {Object} [options] - Passed to ommToTle
  * @returns {string[]} TLE strings "NAME\nLINE1\nLINE2"
  */
-export function ommTextToTles(text, onSkip) {
+export function ommTextToTles(text, onSkip, options) {
   const tles = [];
   for (const record of parseOmm(text)) {
     try {
-      tles.push(ommToTle(record));
+      tles.push(ommToTle(record, options));
     } catch (error) {
       onSkip?.(record, error);
     }

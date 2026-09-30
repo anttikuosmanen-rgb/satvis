@@ -1,6 +1,6 @@
 import { describe, test, expect } from "vitest";
 import * as satellitejs from "satellite.js";
-import { decodeAlpha5, encodeAlpha5, isOmmText, ommTextToTles, ommToTle, parseOmm } from "../modules/util/OmmConverter.js";
+import { decodeAlpha5, encodeAlpha5, isOmmText, ommTextToTles, ommToTle, parseOmm, placeholderCatalogNumber } from "../modules/util/OmmConverter.js";
 import Orbit from "../modules/Orbit";
 
 // Real CelesTrak SupGP CSV rows (2026-09-29) with the TLEs CelesTrak served for the same data
@@ -116,9 +116,26 @@ describe("OmmConverter", () => {
   });
 
   describe("ommTextToTles", () => {
-    test("skips records that cannot be represented as TLE", () => {
+    test("maps temporary catalog numbers to stable placeholder numbers", () => {
+      const tles = ommTextToTles(`${CSV_HEADER}\n${CSV_STARLINK_2606}\n${CSV_TEMPORARY_CATNR}\n`);
+      expect(tles).toHaveLength(2);
+      expect(tles[0]).toBe(TLE_STARLINK_2606);
+      // 799501648 -> 330000 + 1648 = 331648 = "Z1648"
+      const [name, line1, line2] = tles[1].split("\n");
+      expect(name).toBe("STARLINK-40083");
+      expect(line1.slice(0, 7)).toBe("1 Z1648");
+      expect(line2.slice(0, 7)).toBe("2 Z1648");
+      expect(placeholderCatalogNumber(799501648)).toBe(331648);
+      expect(decodeAlpha5("Z1648")).toBe("331648");
+      const satrec = satellitejs.twoline2satrec(line1, line2);
+      expect(satrec.error).toBe(0);
+    });
+
+    test("skips records that cannot be represented when placeholders are disabled", () => {
       const skipped = [];
-      const tles = ommTextToTles(`${CSV_HEADER}\n${CSV_STARLINK_2606}\n${CSV_TEMPORARY_CATNR}\n`, (record) => skipped.push(record.OBJECT_NAME));
+      const tles = ommTextToTles(`${CSV_HEADER}\n${CSV_STARLINK_2606}\n${CSV_TEMPORARY_CATNR}\n`, (record) => skipped.push(record.OBJECT_NAME), {
+        placeholderCatalogNumbers: false,
+      });
       expect(tles).toEqual([TLE_STARLINK_2606]);
       expect(skipped).toEqual(["STARLINK-40083"]);
     });
