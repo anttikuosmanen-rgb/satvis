@@ -225,7 +225,9 @@ export function ommToTle(omm, { placeholderCatalogNumbers = true } = {}) {
   const catalog = encodeAlpha5(placeholderCatalogNumbers && catnr > ALPHA5_MAX ? placeholderCatalogNumber(catnr) : catnr);
   const classification = (omm.CLASSIFICATION_TYPE || "U").slice(0, 1);
   const ephemerisType = String(omm.EPHEMERIS_TYPE ?? 0).slice(0, 1);
-  const elementSet = String(Number(omm.ELEMENT_SET_NO || 999) % 10000).padStart(4, " ");
+  // Missing (undefined/null, or "" from CSV) defaults to 999; a real 0 (number in JSON) is kept
+  const elementSetNo = omm.ELEMENT_SET_NO === undefined || omm.ELEMENT_SET_NO === null || omm.ELEMENT_SET_NO === "" ? 999 : Number(omm.ELEMENT_SET_NO);
+  const elementSet = String(elementSetNo % 10000).padStart(4, " ");
 
   const eccentricity = Number(omm.ECCENTRICITY);
   if (!(eccentricity >= 0 && eccentricity < 1)) {
