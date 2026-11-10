@@ -66,6 +66,17 @@ describe("OmmConverter", () => {
   });
 
   describe("ommToTle", () => {
+    test("keeps element set number 0 from JSON and defaults missing values to 999", () => {
+      const [record] = parseOmm(`${CSV_HEADER}\n${CSV_STARLINK_2606}`);
+      const elementSet = (omm) => ommToTle(omm).split("\n")[1].slice(64, 68);
+      expect(elementSet({ ...record, ELEMENT_SET_NO: 0 })).toBe("   0");
+      expect(elementSet({ ...record, ELEMENT_SET_NO: "0" })).toBe("   0");
+      expect(elementSet({ ...record, ELEMENT_SET_NO: 272 })).toBe(" 272");
+      expect(elementSet({ ...record, ELEMENT_SET_NO: "" })).toBe(" 999");
+      expect(elementSet({ ...record, ELEMENT_SET_NO: undefined })).toBe(" 999");
+      expect(elementSet({ ...record, ELEMENT_SET_NO: null })).toBe(" 999");
+    });
+
     test("produces the same TLE as CelesTrak", () => {
       const records = parseOmm(`${CSV_HEADER}\n${CSV_STARLINK_2606}\n${CSV_STARLINK_3068}\n`);
       expect(ommToTle(records[0])).toBe(TLE_STARLINK_2606);
